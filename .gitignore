@@ -38,3 +38,7 @@ captures/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Release signing (keep private, back up)
+keystore.properties
+release/
