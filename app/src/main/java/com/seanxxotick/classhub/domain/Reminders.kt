@@ -63,7 +63,7 @@ object Reminders {
 
     fun owingText(className: String, balanceCentavos: Long): ReminderText = ReminderText(
         "You owe ${Money.format(-balanceCentavos)}",
-        "Your balance in $className is short by ${Money.format(-balanceCentavos)}. Please settle it with your treasurer.",
+        "Your balance in $className is short by ${Money.format(-balanceCentavos)}. Please settle it with your class officers.",
     )
 
     fun weeklySummaryText(className: String, owing: List<Pair<Member, Long>>): ReminderText {

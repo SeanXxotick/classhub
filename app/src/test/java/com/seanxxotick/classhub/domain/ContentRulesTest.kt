@@ -61,15 +61,26 @@ class ContentRulesTest {
     fun grouped_putsGeneralFirst_thenCoursesInOrder_skippingEmptyOnes() {
         val courses = listOf(Course("adcal", "Advanced Calculus I"), Course("or", "Operations Research"), Course("mg", "Modern Geometry"))
         val items = listOf(
-            ContentItem(id = "1", courseId = "or", title = "B quiz reviewer"),
-            ContentItem(id = "2", courseId = "", title = "Class calendar"),
-            ContentItem(id = "3", courseId = "adcal", title = "Syllabus"),
-            ContentItem(id = "4", courseId = "or", title = "A lecture notes"),
-            ContentItem(id = "5", courseId = "deleted-course", title = "Old file"),
+            ContentItem(id = "1", courseId = "or", title = "Module 2 notes", createdAtMillis = 20),
+            ContentItem(id = "2", courseId = "", title = "Class calendar", createdAtMillis = 50),
+            ContentItem(id = "3", courseId = "adcal", title = "Syllabus", createdAtMillis = 5),
+            ContentItem(id = "4", courseId = "or", title = "Module 10 notes", createdAtMillis = 30),
+            ContentItem(id = "5", courseId = "deleted-course", title = "Old file", createdAtMillis = 1),
+            ContentItem(id = "6", courseId = "or", title = "Syllabus", createdAtMillis = 10),
         )
         val groups = ContentRules.grouped(items, courses)
         assertEquals(listOf(null, "adcal", "or"), groups.map { it.first?.id })
-        assertEquals(listOf("2", "5"), groups[0].second.map { it.id })
-        assertEquals(listOf("4", "1"), groups[2].second.map { it.id })
+        assertEquals(listOf("5", "2"), groups[0].second.map { it.id })
+        // Added order (oldest first), not alphabetical: Syllabus, then Module 2, then Module 10.
+        assertEquals(listOf("6", "1", "4"), groups[2].second.map { it.id })
+    }
+
+    @Test
+    fun grouped_itemsAddedAtTheSameMoment_fallBackToTitleOrder() {
+        val items = listOf(
+            ContentItem(id = "b", courseId = "", title = "Beta", createdAtMillis = 7),
+            ContentItem(id = "a", courseId = "", title = "alpha", createdAtMillis = 7),
+        )
+        assertEquals(listOf("a", "b"), ContentRules.grouped(items, emptyList()).single().second.map { it.id })
     }
 }

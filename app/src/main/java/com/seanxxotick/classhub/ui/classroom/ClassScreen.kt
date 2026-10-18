@@ -485,14 +485,3 @@ private fun MemberRow(member: Member, state: ClassUiState, isMe: Boolean, onClic
         RoleChip(role?.name ?: "No role", role?.colorHex ?: "#6B768A")
     }
 }
-
-@Composable
-private fun ComingSoon(title: String, body: String) {
-    Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Text(body, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(8.dp))
-        Text("Coming in the next build.", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-    }
-}

@@ -36,6 +36,7 @@ import com.seanxxotick.classhub.ui.ledger.PayoutFormScreen
 import com.seanxxotick.classhub.ui.ledger.RecordFormScreen
 import com.seanxxotick.classhub.ui.auth.AuthScreen
 import com.seanxxotick.classhub.ui.auth.AuthViewModel
+import com.seanxxotick.classhub.ui.auth.ChangePasswordScreen
 import com.seanxxotick.classhub.ui.auth.Session
 import com.seanxxotick.classhub.ui.classes.ClassesScreen
 import com.seanxxotick.classhub.ui.classes.ClassesViewModel
@@ -72,9 +73,22 @@ fun ClassHubApp(
                     }
                     Session.SignedOut -> {
                         val ui by authVm.ui.collectAsState()
-                        AuthScreen(ui, authVm::signIn, authVm::signUp, authVm::clearError)
+                        AuthScreen(ui, authVm::signIn, authVm::signUp, authVm::sendPasswordReset, authVm::clearError)
                     }
-                    is Session.SignedIn -> SignedInApp(s.user, onSignOut = authVm::signOut, pendingJoinCode, onJoinCodeHandled)
+                    is Session.SignedIn -> if (s.user.mustChangePassword) {
+                        // Accounts created by the class must pick their own password before anything else.
+                        val ui by authVm.ui.collectAsState()
+                        ChangePasswordScreen(
+                            name = s.user.displayName,
+                            forced = true,
+                            state = ui,
+                            onSubmit = { password, confirm -> authVm.changePassword(password, confirm, s.user.email) },
+                            onClearError = authVm::clearError,
+                            onLeave = authVm::signOut,
+                        )
+                    } else {
+                        SignedInApp(s.user, onSignOut = authVm::signOut, pendingJoinCode, onJoinCodeHandled, authVm)
+                    }
                 }
             }
         }
@@ -84,6 +98,7 @@ fun ClassHubApp(
 private object Routes {
     const val CLASSES = "classes"
     const val ACCOUNT = "account"
+    const val PASSWORD = "account/password"
     const val CREATE = "create"
     const val JOIN = "join?code={code}"
     fun joinRoute(code: String = "") = if (code.isEmpty()) "join" else "join?code=$code"
@@ -126,7 +141,13 @@ private fun classViewModel(nav: NavHostController, entry: NavBackStackEntry, use
 }
 
 @Composable
-private fun SignedInApp(user: AppUser, onSignOut: () -> Unit, pendingJoinCode: String?, onJoinCodeHandled: () -> Unit) {
+private fun SignedInApp(
+    user: AppUser,
+    onSignOut: () -> Unit,
+    pendingJoinCode: String?,
+    onJoinCodeHandled: () -> Unit,
+    authVm: AuthViewModel,
+) {
     val nav = rememberNavController()
     val classesVm: ClassesViewModel = viewModel(key = "classes-${user.uid}") { ClassesViewModel(user.uid) }
 
@@ -170,7 +191,19 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit, pendingJoinCode: S
                 onPhotoError = accountVm::showNotice,
                 onClearNotice = accountVm::clearNotice,
                 onSignOut = onSignOut,
+                onChangePassword = { authVm.clearError(); nav.navigate(Routes.PASSWORD) },
                 onBack = { nav.popBackStack() },
+            )
+        }
+        composable(Routes.PASSWORD) {
+            val ui by authVm.ui.collectAsState()
+            ChangePasswordScreen(
+                name = user.displayName,
+                forced = false,
+                state = ui,
+                onSubmit = { password, confirm -> authVm.changePassword(password, confirm, user.email) { nav.popBackStack() } },
+                onClearError = authVm::clearError,
+                onLeave = { nav.popBackStack() },
             )
         }
         composable(Routes.CREATE) {

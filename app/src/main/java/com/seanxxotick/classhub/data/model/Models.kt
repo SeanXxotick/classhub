@@ -43,6 +43,8 @@ data class AppUser(
     val uid: String = "",
     val email: String = "",
     val displayName: String = "",
+    /** Set for accounts the class created with a temporary password; cleared once the user picks their own. */
+    val mustChangePassword: Boolean = false,
 )
 
 /** Firestore: users/{uid}/memberships/{classId}. The "My classes" list. */

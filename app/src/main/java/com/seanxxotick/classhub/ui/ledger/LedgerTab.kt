@@ -246,7 +246,7 @@ fun MyBalanceCard(records: List<LedgerRecord>, balanceCentavos: Long, myUid: Str
             Text(Money.format(if (owes) -balanceCentavos else balanceCentavos), color = onBackground, fontSize = 30.sp, fontWeight = FontWeight.Bold)
             Text(
                 when {
-                    owes -> "Please settle it with your treasurer."
+                    owes -> "Please settle it with your class officers."
                     balanceCentavos > 0 -> "Credit that will cover your next class charges."
                     else -> "You are all settled."
                 },

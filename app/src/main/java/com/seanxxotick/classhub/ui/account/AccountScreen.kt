@@ -63,6 +63,7 @@ fun AccountScreen(
     onPhotoError: (String) -> Unit,
     onClearNotice: () -> Unit,
     onSignOut: () -> Unit,
+    onChangePassword: () -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -183,6 +184,8 @@ fun AccountScreen(
                     )
                 }
             }
+
+            OutlinedButton(onClick = onChangePassword, modifier = Modifier.fillMaxWidth()) { Text("Change password") }
 
             OutlinedButton(
                 onClick = { confirmSignOut = true },

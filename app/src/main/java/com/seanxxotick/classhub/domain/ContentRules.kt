@@ -51,6 +51,7 @@ object ContentRules {
 
     /**
      * Groups items under their course, in the class's course order, with general material (no course) first.
+     * Inside each group, items are in the order they were added (oldest first), like a class's running list.
      * Items whose course was deleted also go under general. Courses with no items are left out.
      */
     fun grouped(items: List<ContentItem>, courses: List<Course>): List<Pair<Course?, List<ContentItem>>> {
@@ -59,7 +60,7 @@ object ContentRules {
         val byCourse = courses.map { course -> course to items.filter { it.courseId == course.id } }
         return (listOf<Pair<Course?, List<ContentItem>>>(null to general) + byCourse)
             .filter { (_, list) -> list.isNotEmpty() }
-            .map { (course, list) -> course to list.sortedBy { it.title.lowercase() } }
+            .map { (course, list) -> course to list.sortedWith(compareBy({ it.createdAtMillis }, { it.title.lowercase() })) }
     }
 
     private val FILE_EXTENSIONS = listOf(".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".zip")

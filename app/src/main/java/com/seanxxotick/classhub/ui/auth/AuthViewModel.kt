@@ -2,8 +2,10 @@ package com.seanxxotick.classhub.ui.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.seanxxotick.classhub.data.model.AppUser
 import com.seanxxotick.classhub.data.repository.AuthRepository
+import com.seanxxotick.classhub.domain.PasswordRules
 import com.seanxxotick.classhub.ui.common.friendlyMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -19,7 +21,8 @@ sealed interface Session {
     data class SignedIn(val user: AppUser) : Session
 }
 
-data class AuthUiState(val busy: Boolean = false, val error: String? = null)
+/** [notice] is a success message, for example after a reset link is sent. */
+data class AuthUiState(val busy: Boolean = false, val error: String? = null, val notice: String? = null)
 
 class AuthViewModel(private val repo: AuthRepository = AuthRepository()) : ViewModel() {
     val session: StateFlow<Session> = repo.observeUser()
@@ -41,15 +44,53 @@ class AuthViewModel(private val repo: AuthRepository = AuthRepository()) : ViewM
         when {
             name.isBlank() -> _ui.value = AuthUiState(error = "Enter your name so classmates can recognize you.")
             email.isBlank() -> _ui.value = AuthUiState(error = "Enter your email.")
-            password.length < 6 -> _ui.value = AuthUiState(error = "Use a password with at least 6 characters.")
-            else -> launchAction { repo.signUp(name, email, password) }
+            else -> PasswordRules.strength(password, email)?.let { _ui.value = AuthUiState(error = it) }
+                ?: launchAction { repo.signUp(name, email, password) }
+        }
+    }
+
+    /** Validates and saves a new password. [onDone] runs after it is saved. */
+    fun changePassword(password: String, confirm: String, email: String, onDone: () -> Unit = {}) {
+        PasswordRules.check(password, confirm, email)?.let {
+            _ui.value = AuthUiState(error = it)
+            return
+        }
+        viewModelScope.launch {
+            _ui.value = AuthUiState(busy = true)
+            _ui.value = try {
+                repo.changePassword(password)
+                onDone()
+                AuthUiState()
+            } catch (e: Exception) {
+                AuthUiState(error = friendlyMessage(e))
+            }
+        }
+    }
+
+    /** Emails a reset link. The message is the same whether or not the email has an account. */
+    fun sendPasswordReset(email: String) {
+        if (email.isBlank()) {
+            _ui.value = AuthUiState(error = "Enter the email you use to sign in.")
+            return
+        }
+        viewModelScope.launch {
+            _ui.value = AuthUiState(busy = true)
+            _ui.value = try {
+                repo.sendPasswordReset(email)
+                AuthUiState(notice = "If an account exists for ${email.trim()}, a reset link is on its way. Check your inbox and your junk or spam folder.")
+            } catch (_: FirebaseAuthInvalidCredentialsException) {
+                AuthUiState(error = "That email does not look right. Check it and try again.")
+            } catch (e: Exception) {
+                AuthUiState(error = friendlyMessage(e))
+            }
         }
     }
 
     fun signOut() = repo.signOut()
 
+    /** Clears both the error and the success notice. */
     fun clearError() {
-        _ui.value = _ui.value.copy(error = null)
+        _ui.value = _ui.value.copy(error = null, notice = null)
     }
 
     private fun launchAction(block: suspend () -> Unit) {
