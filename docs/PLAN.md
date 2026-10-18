@@ -169,6 +169,21 @@ Replaces the spreadsheet's "Class Contents Directory" tab.
 **Per user** (saved on the device): light, dark or system theme, and which tab opens first.
 **Roles:** fully editable by anyone with `ROLES_MANAGE`.
 
+## App icon: design rationale
+
+**In one sentence:** the ClassHub logo is four tiles for the app's four modules (ledger, schedule, contents and members) brought together in one square, with the mint circle as the "hub" that connects them, in the same teal the app uses throughout.
+
+1. **Four tiles, one app.** A 2x2 grid where each tile stands for one module: top-left Ledger (class fund and balances), top-right Schedule (deadlines, quizzes and exams), bottom-left Contents (shared class materials), bottom-right Members (the class and its officers). Together they express the core idea: everything a class section needs in one place, instead of scattered across spreadsheets, group chats and Drive folders.
+2. **The circle is the "hub".** Three tiles are rounded squares; one is a lighter mint circle (`#99F6E4`). The odd one out draws the eye and stands for the hub in ClassHub: the members and officers who connect the other three parts. It also keeps the grid from looking like a generic "apps" or "menu" icon.
+3. **Teal.** The background is the app's default accent, `#0F766E`, so the icon matches the screens inside. Teal sits between blue (trust and reliability, which matters for a money ledger) and green (growth and calm), so it reads as dependable without feeling corporate.
+4. **Rounded, minimal shapes.** Soft corners feel friendly and approachable for students. There is no text or fine detail, so the mark stays recognizable at small sizes (app drawer, notifications, low-resolution phones). Flat colors match the app's flat, card-based interface; the tiles echo its cards.
+5. **Built for Android.**
+   - Adaptive icon: background and foreground are separate layers, so it fits any launcher shape (circle, squircle, rounded square), and the tiles stay inside the 66dp safe zone so nothing is cut off.
+   - Monochrome version: with themed icons on Android 13 and later, the system recolors the mark to match the wallpaper.
+   - Vector drawables: sharp at every size and almost no added file size.
+
+Files: `app/src/main/res/drawable/ic_launcher_background.xml`, `ic_launcher_foreground.xml`, `ic_launcher_monochrome.xml`, used by `mipmap-anydpi/ic_launcher.xml` and `ic_launcher_round.xml`.
+
 ## Phases
 
 ### Phase 1 (required for the POC)
