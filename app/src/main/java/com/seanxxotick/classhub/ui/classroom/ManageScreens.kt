@@ -50,10 +50,12 @@ import androidx.compose.ui.semantics.Role as SemanticsRole
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.seanxxotick.classhub.data.model.ClassRoom
 import com.seanxxotick.classhub.data.model.Course
 import com.seanxxotick.classhub.data.model.Member
 import com.seanxxotick.classhub.data.model.Permission
 import com.seanxxotick.classhub.data.model.Role
+import com.seanxxotick.classhub.domain.ClassRules
 import com.seanxxotick.classhub.domain.CourseRules
 import com.seanxxotick.classhub.domain.LedgerEntry
 import com.seanxxotick.classhub.domain.LedgerView
@@ -66,6 +68,7 @@ import com.seanxxotick.classhub.ui.common.Initials
 import com.seanxxotick.classhub.ui.common.RoleChip
 import com.seanxxotick.classhub.ui.common.initialsOf
 import com.seanxxotick.classhub.ui.theme.ClassHubTheme
+import com.seanxxotick.classhub.ui.theme.AccentChoices
 import com.seanxxotick.classhub.ui.theme.RoleColorChoices
 import com.seanxxotick.classhub.ui.theme.hexToColor
 
@@ -623,5 +626,125 @@ fun CoursesScreen(
                 )
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------- Class settings
+
+@Composable
+fun ClassSettingsScreen(
+    state: ClassUiState,
+    busy: Boolean,
+    notice: String?,
+    onSave: (ClassRoom) -> Unit,
+    onClearNotice: () -> Unit,
+    onBack: () -> Unit,
+) {
+    val room = state.room
+    ManageScaffold("Class settings", state, notice, onClearNotice, onBack) { padding ->
+        if (room == null) return@ManageScaffold
+        if (!state.can(Permission.CLASS_SETTINGS)) {
+            NoAccess(padding, "change class settings")
+            return@ManageScaffold
+        }
+        var name by rememberSaveable(room.id) { mutableStateOf(room.name) }
+        var description by rememberSaveable(room.id) { mutableStateOf(room.description) }
+        var accent by rememberSaveable(room.id) { mutableStateOf(room.accentColor) }
+        var ledger by rememberSaveable(room.id) { mutableStateOf(room.ledgerEnabled) }
+        var schedule by rememberSaveable(room.id) { mutableStateOf(room.scheduleEnabled) }
+        var contents by rememberSaveable(room.id) { mutableStateOf(room.contentsEnabled) }
+        val error = ClassRules.checkName(name)
+        val changed = name.trim() != room.name || description.trim() != room.description || !accent.equals(room.accentColor, ignoreCase = true) ||
+            ledger != room.ledgerEnabled || schedule != room.scheduleEnabled || contents != room.contentsEnabled
+
+        // Preview the chosen accent on this screen before saving.
+        ClassHubTheme(accentHex = accent) {
+            LazyColumn(Modifier.fillMaxSize().padding(padding).imePadding(), contentPadding = PaddingValues(bottom = 32.dp)) {
+                item {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.primary)
+                                .padding(16.dp),
+                        ) {
+                            Column {
+                                Text(name.ifBlank { "Class name" }, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                                if (description.isNotBlank()) Text(description, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f))
+                                Text("Preview", color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        OutlinedTextField(
+                            value = name,
+                            onValueChange = { name = it.take(ClassRules.MAX_NAME) },
+                            label = { Text("Class name") },
+                            singleLine = true,
+                            isError = error != null,
+                            supportingText = { error?.let { Text(it) } },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OutlinedTextField(
+                            value = description,
+                            onValueChange = { description = it.take(ClassRules.MAX_DESCRIPTION) },
+                            label = { Text("Description (optional)") },
+                            placeholder = { Text("e.g. 1st Semester, AY 2026-2027") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text("Accent color", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        AccentPicker(AccentChoices, accent) { accent = it }
+                    }
+                }
+                item { SectionLabel("Modules") }
+                item {
+                    Text(
+                        "Turn off what your class does not use. Turning a module off hides its tab for everyone and stops its reminders. Nothing is deleted, so turning it back on brings everything back.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
+                item { ModuleSwitch("Ledger", "Class fund, charges, payments and balances", ledger) { ledger = it } }
+                item { ModuleSwitch("Schedule", "Deadlines, quizzes and exams", schedule) { schedule = it } }
+                item { ModuleSwitch("Contents", "Links to files, videos and websites", contents) { contents = it } }
+                item { ModuleSwitch("Members", "Always on", checked = true, enabled = false) {} }
+                item {
+                    Button(
+                        onClick = {
+                            onSave(
+                                room.copy(
+                                    name = name,
+                                    description = description,
+                                    accentColor = accent,
+                                    ledgerEnabled = ledger,
+                                    scheduleEnabled = schedule,
+                                    contentsEnabled = contents,
+                                ),
+                            )
+                        },
+                        enabled = !busy && changed && error == null,
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    ) { Text("Save settings") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModuleSwitch(title: String, subtitle: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled) { onChange(!checked) }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
     }
 }

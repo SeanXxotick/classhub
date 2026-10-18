@@ -16,6 +16,13 @@ class ClassRulesTest {
     private val student = Member(id = "student", name = "Lito", roleId = ROLE_MEMBER, excludedCourseIds = listOf("or"))
 
     @Test
+    fun className_mustBeNonBlank_andShortEnough() {
+        assertEquals("Give the class a name.", ClassRules.checkName("   "))
+        assertEquals("Keep the class name under 40 characters.", ClassRules.checkName("x".repeat(41)))
+        assertEquals(null, ClassRules.checkName("  BSM CS 3A  "))
+    }
+
+    @Test
     fun ownersRole_cannotBeChanged_byAnyone() {
         assertFalse(MemberRules.canChangeRole(actorUid = "officer", target = owner, ownerUid = "owner"))
         assertFalse(MemberRules.canChangeRole(actorUid = "owner", target = owner, ownerUid = "owner"))

@@ -32,6 +32,7 @@ import com.seanxxotick.classhub.data.repository.MemberRepository
 import com.seanxxotick.classhub.data.repository.RoleRepository
 import com.seanxxotick.classhub.domain.ChargePlanner
 import com.seanxxotick.classhub.domain.ChargePreview
+import com.seanxxotick.classhub.domain.ClassRules
 import com.seanxxotick.classhub.domain.CourseRules
 import com.seanxxotick.classhub.domain.Ledger
 import com.seanxxotick.classhub.domain.LedgerEntry
@@ -150,6 +151,31 @@ class ClassViewModel(
             val code = classRepo.regenerateInviteCode(room)
             _notice.value = "New invite code: $code. The old code no longer works."
         }
+    }
+
+    // ---- Class settings ----
+
+    fun saveSettings(updated: ClassRoom, onDone: () -> Unit = {}) {
+        val s = state.value
+        val current = s.room ?: return
+        if (!s.can(Permission.CLASS_SETTINGS)) {
+            _notice.value = "You do not have permission to change class settings."
+            return
+        }
+        ClassRules.checkName(updated.name)?.let {
+            _notice.value = it
+            return
+        }
+        // Only the editable fields change; everything else comes from the live class.
+        val room = current.copy(
+            name = updated.name.trim(),
+            description = updated.description.trim(),
+            accentColor = updated.accentColor,
+            ledgerEnabled = updated.ledgerEnabled,
+            scheduleEnabled = updated.scheduleEnabled,
+            contentsEnabled = updated.contentsEnabled,
+        )
+        runAction("Class settings saved.", onDone) { classRepo.updateSettings(room, uid) }
     }
 
     // ---- Members ----

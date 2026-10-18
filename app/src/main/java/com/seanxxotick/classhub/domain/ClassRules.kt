@@ -4,6 +4,18 @@ import com.seanxxotick.classhub.data.model.Course
 import com.seanxxotick.classhub.data.model.Member
 import com.seanxxotick.classhub.data.model.Role
 
+object ClassRules {
+    const val MAX_NAME = 40
+    const val MAX_DESCRIPTION = 80
+
+    /** Returns an error message, or null when the class name can be saved. */
+    fun checkName(name: String): String? = when {
+        name.isBlank() -> "Give the class a name."
+        name.trim().length > MAX_NAME -> "Keep the class name under $MAX_NAME characters."
+        else -> null
+    }
+}
+
 object MemberRules {
     /**
      * The class owner (Mayor) can't be given another role, and nobody changes their own role,

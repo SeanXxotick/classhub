@@ -1,6 +1,7 @@
 package com.seanxxotick.classhub.data.repository
 
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.seanxxotick.classhub.data.model.ClassMembership
 import com.seanxxotick.classhub.data.model.ClassRoom
 import com.seanxxotick.classhub.data.model.Member
@@ -114,22 +115,28 @@ class ClassRepository(private val db: FirebaseFirestore = FirebaseFirestore.getI
         return newCode
     }
 
-    /** Saves class settings and keeps the public invite entry's class name in step. */
-    suspend fun updateSettings(room: ClassRoom) {
+    /**
+     * Saves class settings and keeps the class name in step in the invite entry and in the
+     * editor's own "My classes" list. Other members' lists keep the old name (see PLAN.md).
+     */
+    suspend fun updateSettings(room: ClassRoom, editorUid: String) {
+        val name = room.name.trim()
         val batch = db.batch()
         batch.update(
             classes.document(room.id),
             mapOf(
-                "name" to room.name.trim(),
+                "name" to name,
                 "description" to room.description.trim(),
                 "accentColor" to room.accentColor,
                 "ledgerEnabled" to room.ledgerEnabled,
                 "scheduleEnabled" to room.scheduleEnabled,
+                "contentsEnabled" to room.contentsEnabled,
             ),
         )
         if (room.inviteCode.isNotEmpty()) {
-            batch.update(invites.document(room.inviteCode), "className", room.name.trim())
+            batch.update(invites.document(room.inviteCode), "className", name)
         }
+        batch.set(memberships(editorUid).document(room.id), mapOf("className" to name), SetOptions.merge())
         batch.commit().await()
     }
 

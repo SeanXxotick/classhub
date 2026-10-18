@@ -90,6 +90,7 @@ fun ClassScreen(
     onOpenMember: (String) -> Unit,
     onOpenRoles: () -> Unit,
     onOpenCourses: () -> Unit,
+    onOpenSettings: () -> Unit,
     onAddRecord: (RecordType) -> Unit,
     onDeleteRecord: (LedgerRecord) -> Unit,
     onUndoCharge: (LedgerEntry.ChargeBatch) -> Unit,
@@ -173,7 +174,7 @@ fun ClassScreen(
                     room == null || state.me == null -> Unit
                     else -> when (tab) {
                         ClassTab.HOME -> HomeTab(
-                            state, myUid, busy, onRegenerateCode, onOpenRoles, onOpenCourses,
+                            state, myUid, busy, onRegenerateCode, onOpenRoles, onOpenCourses, onOpenSettings,
                             onSeeLedger = { tabName = ClassTab.LEDGER.name },
                             onSeeSchedule = { tabName = ClassTab.SCHEDULE.name },
                             onToggleDone = onToggleDone,
@@ -210,6 +211,7 @@ private fun HomeTab(
     onRegenerateCode: () -> Unit,
     onOpenRoles: () -> Unit,
     onOpenCourses: () -> Unit,
+    onOpenSettings: () -> Unit,
     onSeeLedger: () -> Unit,
     onSeeSchedule: () -> Unit,
     onToggleDone: (ScheduleItem, Boolean) -> Unit,
@@ -345,7 +347,7 @@ private fun HomeTab(
                     Column(Modifier.padding(18.dp)) {
                         Text("Manage", fontWeight = FontWeight.Bold)
                         Text(
-                            "Officer roles and the courses your class takes.",
+                            "Officer roles, the courses your class takes, and class settings.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -353,6 +355,9 @@ private fun HomeTab(
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             if (canRoles) OutlinedButton(onClick = onOpenRoles) { Text("Roles (${state.roles.size})") }
                             if (canCourses) OutlinedButton(onClick = onOpenCourses) { Text("Courses (${state.courses.size})") }
+                        }
+                        if (canCourses) {
+                            OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) { Text("Class settings") }
                         }
                     }
                 }

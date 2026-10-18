@@ -40,6 +40,7 @@ import com.seanxxotick.classhub.ui.classes.ClassesViewModel
 import com.seanxxotick.classhub.ui.classes.CreateClassScreen
 import com.seanxxotick.classhub.ui.classes.JoinClassScreen
 import com.seanxxotick.classhub.ui.classroom.ClassScreen
+import com.seanxxotick.classhub.ui.classroom.ClassSettingsScreen
 import com.seanxxotick.classhub.ui.classroom.ClassViewModel
 import com.seanxxotick.classhub.ui.classroom.CoursesScreen
 import com.seanxxotick.classhub.ui.classroom.MemberDetailScreen
@@ -84,6 +85,7 @@ private object Routes {
     const val ROLES = "class/{classId}/roles"
     const val ROLE = "class/{classId}/roles/{roleId}"
     const val COURSES = "class/{classId}/courses"
+    const val SETTINGS = "class/{classId}/settings"
     const val RECORD = "class/{classId}/record/{type}?batch={batch}"
     const val CHARGE = "class/{classId}/charge"
     const val CONTENT = "class/{classId}/content/{contentId}"
@@ -96,6 +98,7 @@ private object Routes {
     fun rolesRoute(classId: String) = "class/$classId/roles"
     fun roleRoute(classId: String, roleId: String) = "class/$classId/roles/$roleId"
     fun coursesRoute(classId: String) = "class/$classId/courses"
+    fun settingsRoute(classId: String) = "class/$classId/settings"
     fun recordRoute(classId: String, type: RecordType) =
         if (type == RecordType.CHARGE) "class/$classId/charge" else "class/$classId/record/${type.name}"
     fun contentRoute(classId: String, contentId: String) = "class/$classId/content/$contentId"
@@ -178,6 +181,7 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
                 onOpenMember = { nav.navigate(Routes.memberRoute(classId, it)) },
                 onOpenRoles = { nav.navigate(Routes.rolesRoute(classId)) },
                 onOpenCourses = { nav.navigate(Routes.coursesRoute(classId)) },
+                onOpenSettings = { nav.navigate(Routes.settingsRoute(classId)) },
                 onAddRecord = { type -> nav.navigate(Routes.recordRoute(classId, type)) },
                 onDeleteRecord = vm::deleteRecord,
                 onUndoCharge = vm::undoCharge,
@@ -323,6 +327,20 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
                 notice = notice,
                 onSave = { item -> vm.saveScheduleItem(item) { nav.popBackStack() } },
                 onDelete = { item -> vm.deleteScheduleItem(item) { nav.popBackStack() } },
+                onClearNotice = vm::clearNotice,
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable(Routes.SETTINGS) { entry ->
+            val vm = classViewModel(nav, entry, user)
+            val state by vm.state.collectAsState()
+            val busy by vm.busy.collectAsState()
+            val notice by vm.notice.collectAsState()
+            ClassSettingsScreen(
+                state = state,
+                busy = busy,
+                notice = notice,
+                onSave = { room -> vm.saveSettings(room) { nav.popBackStack() } },
                 onClearNotice = vm::clearNotice,
                 onBack = { nav.popBackStack() },
             )
