@@ -65,7 +65,8 @@ import java.util.Locale
 
 // ---------------------------------------------------------------- Labels, colors and dates
 
-val ChargeColor = Color(0xFFA21CAF)
+val ChargeColor = Color(0xFFB91C1C)
+private val PayoutColor = Color(0xFFCA8A04)
 private val WithdrawColor = Color(0xFF0369A1)
 
 /** What the user sees for each record type. */
@@ -76,18 +77,11 @@ fun RecordType.label(): String = when (this) {
     RecordType.EXPENSE -> "Pay out from fund"
 }
 
-private fun RecordType.glyph(): String = when (this) {
-    RecordType.PAYMENT -> "+"
-    RecordType.CHARGE -> "C"
-    RecordType.WITHDRAWAL -> "W"
-    RecordType.EXPENSE -> "−"
-}
-
 private fun RecordType.color(): Color = when (this) {
     RecordType.PAYMENT -> Income
     RecordType.CHARGE -> ChargeColor
     RecordType.WITHDRAWAL -> WithdrawColor
-    RecordType.EXPENSE -> Expense
+    RecordType.EXPENSE -> PayoutColor
 }
 
 private fun localDate(millis: Long): LocalDate = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
@@ -111,13 +105,9 @@ fun signedMoney(centavos: Long): String = if (centavos >= 0) "+" + Money.format(
 // ---------------------------------------------------------------- Building blocks
 
 @Composable
-private fun TypeBadge(type: RecordType) {
-    Box(
-        Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(type.color().copy(alpha = 0.14f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(type.glyph(), color = type.color(), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-    }
+private fun TypeBar(type: RecordType) {
+    // A slim bar in the record type's color marks the row; the type itself is written in the subtitle.
+    Box(Modifier.width(4.dp).height(36.dp).clip(RoundedCornerShape(2.dp)).background(type.color()))
 }
 
 @Composable
@@ -161,27 +151,11 @@ fun EntryRow(entry: LedgerEntry, state: ClassUiState, onClick: (() -> Unit)? = n
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        TypeBar(entry.type)
         val photoOwner = (entry as? LedgerEntry.Single)?.record?.takeIf { it.memberId.isNotEmpty() }
         if (photoOwner != null && state.avatars[photoOwner.memberId] != null) {
-            // The member's photo, with the record type in a small badge on its corner.
-            Box {
-                Avatar(state.avatars[photoOwner.memberId], photoOwner.memberName, entry.type.color(), size = 38.dp)
-                Box(
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(16.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(1.5.dp)
-                        .clip(CircleShape)
-                        .background(entry.type.color()),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(entry.type.glyph(), color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, lineHeight = 9.sp)
-                }
-            }
-        } else {
-            TypeBadge(entry.type)
+            Spacer(Modifier.width(10.dp))
+            Avatar(state.avatars[photoOwner.memberId], photoOwner.memberName, entry.type.color(), size = 36.dp)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -506,7 +480,7 @@ fun AddRecordChooser(onPick: (RecordType) -> Unit, onDismiss: () -> Unit) {
                 options.forEach { (type, description) ->
                     OutlinedCard(onClick = { onPick(type) }, modifier = Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TypeBadge(type)
+                            TypeBar(type)
                             Spacer(Modifier.width(12.dp))
                             Column {
                                 Text(type.label(), fontWeight = FontWeight.Bold)

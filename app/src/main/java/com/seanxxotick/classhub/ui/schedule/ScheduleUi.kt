@@ -29,6 +29,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -44,12 +45,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.seanxxotick.classhub.R
+import com.seanxxotick.classhub.data.model.ClassRoom
 import com.seanxxotick.classhub.data.model.Permission
 import com.seanxxotick.classhub.data.model.ScheduleItem
 import com.seanxxotick.classhub.data.model.ScheduleKind
@@ -57,12 +61,15 @@ import com.seanxxotick.classhub.data.model.ScheduleStatus
 import com.seanxxotick.classhub.data.model.StudentProgress
 import com.seanxxotick.classhub.domain.ScheduleFilter
 import com.seanxxotick.classhub.domain.ScheduleForms
+import com.seanxxotick.classhub.domain.ScheduleIcons
 import com.seanxxotick.classhub.domain.ScheduleLogic
 import com.seanxxotick.classhub.domain.ScheduleView
 import com.seanxxotick.classhub.ui.classroom.ClassUiState
 import com.seanxxotick.classhub.ui.classroom.ManageScaffold
 import com.seanxxotick.classhub.ui.common.DateField
 import com.seanxxotick.classhub.ui.common.PickerField
+import com.seanxxotick.classhub.ui.common.StyledIcon
+import com.seanxxotick.classhub.ui.theme.hexToColor
 import com.seanxxotick.classhub.ui.common.noonOf
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -78,21 +85,8 @@ fun ScheduleKind.label(): String = when (this) {
     ScheduleKind.FCO -> "FCO"
 }
 
-private fun ScheduleKind.glyph(): String = when (this) {
-    ScheduleKind.DEADLINE -> "D"
-    ScheduleKind.QUIZ -> "Q"
-    ScheduleKind.EXAM -> "EX"
-    ScheduleKind.RECITATION -> "R"
-    ScheduleKind.FCO -> "FCO"
-}
-
-private fun ScheduleKind.color(): Color = when (this) {
-    ScheduleKind.DEADLINE -> Color(0xFF3730A3)
-    ScheduleKind.QUIZ -> Color(0xFFB45309)
-    ScheduleKind.EXAM -> Color(0xFFB91C1C)
-    ScheduleKind.RECITATION -> Color(0xFF0F766E)
-    ScheduleKind.FCO -> Color(0xFF7C3AED)
-}
+/** The type's default color; classes can choose their own in Class settings. */
+fun ScheduleKind.color(): Color = hexToColor(ScheduleIcons.DEFAULT_COLORS.getValue(this))
 
 private val Green = Color(0xFF15803D)
 private val Amber = Color(0xFFB45309)
@@ -119,13 +113,13 @@ private fun dayHeader(day: LocalDate, today: LocalDate): String = when (day) {
 }
 
 @Composable
-private fun KindBadge(kind: ScheduleKind) {
-    Box(
-        Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(kind.color().copy(alpha = 0.14f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(kind.glyph(), color = kind.color(), fontWeight = FontWeight.Bold, fontSize = if (kind.glyph().length > 2) 11.sp else 14.sp)
-    }
+private fun KindBadge(kind: ScheduleKind, room: ClassRoom?) {
+    // The class's chosen icon and color for this type (or the defaults).
+    StyledIcon(
+        icon = ScheduleIcons.iconFor(kind, room?.scheduleIcons.orEmpty()),
+        colorHex = ScheduleIcons.colorFor(kind, room?.scheduleColors.orEmpty()),
+        description = kind.label(),
+    )
 }
 
 @Composable
@@ -182,7 +176,7 @@ fun ScheduleRow(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        KindBadge(item.kind)
+        KindBadge(item.kind, state.room)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -280,7 +274,7 @@ fun ScheduleTab(
                                         .size(if (selected) 7.dp else 6.dp)
                                         .clip(CircleShape)
                                         .then(if (selected) Modifier.border(1.dp, MaterialTheme.colorScheme.onPrimary, CircleShape) else Modifier)
-                                        .background(kind.color()),
+                                        .background(hexToColor(ScheduleIcons.colorFor(kind, state.room?.scheduleColors.orEmpty()))),
                                 )
                             }
                             if (kinds.size > MAX_DOTS) {
@@ -398,7 +392,7 @@ private fun ScheduleDetailsDialog(
         text = {
             Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    KindBadge(item.kind)
+                    KindBadge(item.kind, state.room)
                     Spacer(Modifier.width(10.dp))
                     Tag(ScheduleView.dueLabel(item, now, done = done), statusColor(item, done, now))
                 }

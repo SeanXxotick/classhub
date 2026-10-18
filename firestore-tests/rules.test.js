@@ -189,6 +189,23 @@ async function main() {
     await assertSucceeds(b.commit());
   });
 
+  await test('The Mayor picks schedule icons; a Member cannot', async () => {
+    await assertSucceeds(updateDoc(doc(db('mayor'), `classes/${CLASS}`), { scheduleIcons: { QUIZ: 'calculator', FCO: 'trophy' } }));
+    await assertFails(updateDoc(doc(db('student'), `classes/${CLASS}`), { scheduleIcons: { QUIZ: 'star' } }));
+  });
+
+  await test('The Mayor picks icon colors and content icons; a Member cannot', async () => {
+    await assertSucceeds(updateDoc(doc(db('mayor'), `classes/${CLASS}`), {
+      scheduleColors: { QUIZ: '#15803D' }, contentIcons: { VIDEO: 'video' }, contentColors: { FILE: '#475569' },
+    }));
+    await assertFails(updateDoc(doc(db('student'), `classes/${CLASS}`), { contentColors: { FILE: '#000000' } }));
+  });
+
+  await test('Schedule icons must be a short map', async () => {
+    await assertFails(updateDoc(doc(db('mayor'), `classes/${CLASS}`), { scheduleIcons: 'calculator' }));
+    await assertFails(updateDoc(doc(db('mayor'), `classes/${CLASS}`), { scheduleIcons: { a: '1', b: '2', c: '3', d: '4', e: '5', f: '6' } }));
+  });
+
   await test('Nobody can change the class owner', () =>
     assertFails(updateDoc(doc(db('mayor'), `classes/${CLASS}`), { ownerUid: 'student' })));
 

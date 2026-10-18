@@ -53,6 +53,11 @@ service cloud.firestore {
       return signedIn() && !exists(classPath(c)) && getAfter(classPath(c)).data.ownerUid == uid();
     }
 
+    // A per-type style setting (icons or colors): a map with at most one entry per type.
+    function isSmallMap(field) {
+      return request.resource.data.get(field, {}) is map && request.resource.data.get(field, {}).size() <= 5;
+    }
+
     // True when an update changes only the listed fields.
     function changesOnly(keys) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
@@ -176,7 +181,10 @@ service cloud.firestore {
 
       allow update: if request.resource.data.ownerUid == resource.data.ownerUid
         && ((can(classId, 'CLASS_SETTINGS')
-              && changesOnly(['name', 'description', 'accentColor', 'ledgerEnabled', 'scheduleEnabled', 'contentsEnabled']))
+              && changesOnly(['name', 'description', 'accentColor', 'ledgerEnabled', 'scheduleEnabled', 'contentsEnabled',
+                              'scheduleIcons', 'scheduleColors', 'contentIcons', 'contentColors'])
+              && isSmallMap('scheduleIcons') && isSmallMap('scheduleColors')
+              && isSmallMap('contentIcons') && isSmallMap('contentColors'))
             || (can(classId, 'MEMBERS_MANAGE') && changesOnly(['inviteCode'])));
 
       allow delete: if false;

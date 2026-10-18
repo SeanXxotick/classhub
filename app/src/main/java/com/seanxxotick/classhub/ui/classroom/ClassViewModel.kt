@@ -15,6 +15,8 @@ import com.seanxxotick.classhub.data.repository.ProgressRepository
 import com.seanxxotick.classhub.data.repository.ScheduleRepository
 import com.seanxxotick.classhub.domain.ContentRules
 import com.seanxxotick.classhub.domain.ScheduleForms
+import com.seanxxotick.classhub.domain.ContentIcons
+import com.seanxxotick.classhub.domain.ScheduleIcons
 import com.seanxxotick.classhub.domain.ScheduleLogic
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -190,6 +192,10 @@ class ClassViewModel(
             ledgerEnabled = updated.ledgerEnabled,
             scheduleEnabled = updated.scheduleEnabled,
             contentsEnabled = updated.contentsEnabled,
+            scheduleIcons = ScheduleIcons.sanitize(updated.scheduleIcons),
+            scheduleColors = ScheduleIcons.sanitizeColors(updated.scheduleColors),
+            contentIcons = ContentIcons.sanitize(updated.contentIcons),
+            contentColors = ContentIcons.sanitizeColors(updated.contentColors),
         )
         runAction("Class settings saved.", onDone) { classRepo.updateSettings(room, uid) }
     }

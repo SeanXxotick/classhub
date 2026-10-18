@@ -131,6 +131,10 @@ class ClassRepository(private val db: FirebaseFirestore = FirebaseFirestore.getI
                 "ledgerEnabled" to room.ledgerEnabled,
                 "scheduleEnabled" to room.scheduleEnabled,
                 "contentsEnabled" to room.contentsEnabled,
+                "scheduleIcons" to room.scheduleIcons,
+                "scheduleColors" to room.scheduleColors,
+                "contentIcons" to room.contentIcons,
+                "contentColors" to room.contentColors,
             ),
         )
         if (room.inviteCode.isNotEmpty()) {

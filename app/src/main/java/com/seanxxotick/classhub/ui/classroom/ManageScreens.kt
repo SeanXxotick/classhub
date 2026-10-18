@@ -25,6 +25,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -46,6 +47,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.border
 import androidx.compose.ui.semantics.Role as SemanticsRole
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -55,6 +58,7 @@ import com.seanxxotick.classhub.data.model.Course
 import com.seanxxotick.classhub.data.model.Member
 import com.seanxxotick.classhub.data.model.Permission
 import com.seanxxotick.classhub.data.model.Role
+import com.seanxxotick.classhub.data.model.ScheduleKind
 import com.seanxxotick.classhub.domain.ClassRules
 import com.seanxxotick.classhub.domain.CourseRules
 import com.seanxxotick.classhub.domain.LedgerEntry
@@ -63,6 +67,12 @@ import com.seanxxotick.classhub.ui.ledger.EntryRow
 import com.seanxxotick.classhub.ui.ledger.balanceText
 import com.seanxxotick.classhub.domain.MemberRules
 import com.seanxxotick.classhub.domain.RoleRules
+import com.seanxxotick.classhub.domain.ScheduleIcons
+import com.seanxxotick.classhub.ui.schedule.label
+import com.seanxxotick.classhub.ui.common.IconStylePicker
+import com.seanxxotick.classhub.ui.common.IconStyleRow
+import com.seanxxotick.classhub.domain.ContentIcons
+import com.seanxxotick.classhub.data.model.ContentKind
 import com.seanxxotick.classhub.ui.common.AccentPicker
 import com.seanxxotick.classhub.ui.common.Avatar
 import com.seanxxotick.classhub.ui.common.rememberPhotoPicker
@@ -658,10 +668,20 @@ fun ClassSettingsScreen(
         var ledger by rememberSaveable(room.id) { mutableStateOf(room.ledgerEnabled) }
         var schedule by rememberSaveable(room.id) { mutableStateOf(room.scheduleEnabled) }
         var contents by rememberSaveable(room.id) { mutableStateOf(room.contentsEnabled) }
+        var scheduleIcons by remember(room.id, room.scheduleIcons) { mutableStateOf(room.scheduleIcons) }
+        var scheduleColors by remember(room.id, room.scheduleColors) { mutableStateOf(room.scheduleColors) }
+        var contentIcons by remember(room.id, room.contentIcons) { mutableStateOf(room.contentIcons) }
+        var contentColors by remember(room.id, room.contentColors) { mutableStateOf(room.contentColors) }
+        var pickingSchedule by remember { mutableStateOf<ScheduleKind?>(null) }
+        var pickingContent by remember { mutableStateOf<ContentKind?>(null) }
         val error = ClassRules.checkName(name)
         val pickClassPhoto = rememberPhotoPicker(onPicked = onSetClassPhoto, onError = onPhotoError)
         val changed = name.trim() != room.name || description.trim() != room.description || !accent.equals(room.accentColor, ignoreCase = true) ||
-            ledger != room.ledgerEnabled || schedule != room.scheduleEnabled || contents != room.contentsEnabled
+            ledger != room.ledgerEnabled || schedule != room.scheduleEnabled || contents != room.contentsEnabled ||
+            ScheduleIcons.sanitize(scheduleIcons) != ScheduleIcons.sanitize(room.scheduleIcons) ||
+            ScheduleIcons.sanitizeColors(scheduleColors) != ScheduleIcons.sanitizeColors(room.scheduleColors) ||
+            ContentIcons.sanitize(contentIcons) != ContentIcons.sanitize(room.contentIcons) ||
+            ContentIcons.sanitizeColors(contentColors) != ContentIcons.sanitizeColors(room.contentColors)
 
         // Preview the chosen accent on this screen before saving.
         ClassHubTheme(accentHex = accent) {
@@ -726,6 +746,32 @@ fun ClassSettingsScreen(
                 item { ModuleSwitch("Schedule", "Deadlines, quizzes and exams", schedule) { schedule = it } }
                 item { ModuleSwitch("Contents", "Links to files, videos and websites", contents) { contents = it } }
                 item { ModuleSwitch("Members", "Always on", checked = true, enabled = false) {} }
+                item { SectionLabel("Schedule icons") }
+                item { StyleHint("The icon and color each type of schedule item shows for everyone in the class, including the week strip dots.") }
+                items(ScheduleKind.entries.toList(), key = { "sicon-" + it.name }) { kind ->
+                    val icon = ScheduleIcons.iconFor(kind, scheduleIcons)
+                    val color = ScheduleIcons.colorFor(kind, scheduleColors)
+                    IconStyleRow(
+                        label = kind.label(),
+                        icon = icon,
+                        colorHex = color,
+                        isDefault = icon == ScheduleIcons.DEFAULTS[kind] && color == ScheduleIcons.DEFAULT_COLORS[kind],
+                        onChange = { pickingSchedule = kind },
+                    )
+                }
+                item { SectionLabel("Content icons") }
+                item { StyleHint("The icon and color for each type of link in Contents.") }
+                items(ContentKind.entries.toList(), key = { "cicon-" + it.name }) { kind ->
+                    val icon = ContentIcons.iconFor(kind, contentIcons)
+                    val color = ContentIcons.colorFor(kind, contentColors)
+                    IconStyleRow(
+                        label = contentKindLabel(kind),
+                        icon = icon,
+                        colorHex = color,
+                        isDefault = icon == ContentIcons.DEFAULTS[kind] && color == ContentIcons.DEFAULT_COLORS[kind],
+                        onChange = { pickingContent = kind },
+                    )
+                }
                 item {
                     Button(
                         onClick = {
@@ -737,6 +783,10 @@ fun ClassSettingsScreen(
                                     ledgerEnabled = ledger,
                                     scheduleEnabled = schedule,
                                     contentsEnabled = contents,
+                                    scheduleIcons = scheduleIcons,
+                                    scheduleColors = scheduleColors,
+                                    contentIcons = contentIcons,
+                                    contentColors = contentColors,
                                 ),
                             )
                         },
@@ -745,8 +795,49 @@ fun ClassSettingsScreen(
                     ) { Text("Save settings") }
                 }
             }
+            pickingSchedule?.let { kind ->
+                IconStylePicker(
+                    title = kind.label(),
+                    icon = ScheduleIcons.iconFor(kind, scheduleIcons),
+                    colorHex = ScheduleIcons.colorFor(kind, scheduleColors),
+                    defaultIcon = ScheduleIcons.DEFAULTS.getValue(kind),
+                    defaultColor = ScheduleIcons.DEFAULT_COLORS.getValue(kind),
+                    onDone = { icon, color ->
+                        scheduleIcons = scheduleIcons + (kind.name to icon)
+                        scheduleColors = scheduleColors + (kind.name to color)
+                        pickingSchedule = null
+                    },
+                    onDismiss = { pickingSchedule = null },
+                )
+            }
+            pickingContent?.let { kind ->
+                IconStylePicker(
+                    title = contentKindLabel(kind),
+                    icon = ContentIcons.iconFor(kind, contentIcons),
+                    colorHex = ContentIcons.colorFor(kind, contentColors),
+                    defaultIcon = ContentIcons.DEFAULTS.getValue(kind),
+                    defaultColor = ContentIcons.DEFAULT_COLORS.getValue(kind),
+                    onDone = { icon, color ->
+                        contentIcons = contentIcons + (kind.name to icon)
+                        contentColors = contentColors + (kind.name to color)
+                        pickingContent = null
+                    },
+                    onDismiss = { pickingContent = null },
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun StyleHint(text: String) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+}
+
+private fun contentKindLabel(kind: ContentKind): String = when (kind) {
+    ContentKind.FILE -> "File"
+    ContentKind.VIDEO -> "Video"
+    ContentKind.WEBSITE -> "Website"
 }
 
 @Composable

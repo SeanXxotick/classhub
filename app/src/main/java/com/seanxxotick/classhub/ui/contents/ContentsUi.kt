@@ -52,10 +52,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.seanxxotick.classhub.data.model.ClassRoom
 import com.seanxxotick.classhub.data.model.ContentItem
 import com.seanxxotick.classhub.data.model.ContentKind
 import com.seanxxotick.classhub.data.model.Permission
+import com.seanxxotick.classhub.domain.ContentIcons
 import com.seanxxotick.classhub.domain.ContentRules
+import com.seanxxotick.classhub.ui.common.StyledIcon
 import com.seanxxotick.classhub.ui.classroom.ClassUiState
 import com.seanxxotick.classhub.ui.classroom.ManageScaffold
 import java.net.URI
@@ -68,29 +71,17 @@ private fun ContentKind.label(): String = when (this) {
     ContentKind.WEBSITE -> "Website"
 }
 
-private fun ContentKind.glyph(): String = when (this) {
-    ContentKind.FILE -> "F"
-    ContentKind.VIDEO -> "▶"
-    ContentKind.WEBSITE -> "W"
-}
-
-private fun ContentKind.color(): Color = when (this) {
-    ContentKind.FILE -> Color(0xFF2563EB)
-    ContentKind.VIDEO -> Color(0xFFDC2626)
-    ContentKind.WEBSITE -> Color(0xFF0F766E)
-}
-
 /** "drive.google.com" from a full link, for the subtitle. */
 private fun hostOf(url: String): String = runCatching { URI(url).host }.getOrNull()?.removePrefix("www.").orEmpty()
 
 @Composable
-private fun KindBadge(kind: ContentKind) {
-    Box(
-        Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(kind.color().copy(alpha = 0.14f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(kind.glyph(), color = kind.color(), fontWeight = FontWeight.Bold, fontSize = 15.sp)
-    }
+private fun KindBadge(kind: ContentKind, room: ClassRoom?) {
+    // The class's chosen icon and color for this type (or the defaults).
+    StyledIcon(
+        icon = ContentIcons.iconFor(kind, room?.contentIcons.orEmpty()),
+        colorHex = ContentIcons.colorFor(kind, room?.contentColors.orEmpty()),
+        description = kind.label(),
+    )
 }
 
 /** Opens a link in Google Drive, YouTube or the browser. Calls [onError] if the phone has nothing that can open it. */
@@ -175,7 +166,7 @@ fun ContentsTab(state: ClassUiState, onEdit: (String) -> Unit, onError: (String)
                         .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    KindBadge(item.kind)
+                    KindBadge(item.kind, state.room)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(item.title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)

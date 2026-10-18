@@ -64,6 +64,13 @@ data class ClassRoom(
     val ledgerEnabled: Boolean = true,
     val scheduleEnabled: Boolean = true,
     val contentsEnabled: Boolean = true,
+    /** Icon chosen per schedule type (type name to icon key); types not listed use the default icon. */
+    val scheduleIcons: Map<String, String> = emptyMap(),
+    /** Color chosen per schedule type (type name to #RRGGBB); others use the default color. */
+    val scheduleColors: Map<String, String> = emptyMap(),
+    /** Icon and color chosen per contents type (FILE, VIDEO, WEBSITE). */
+    val contentIcons: Map<String, String> = emptyMap(),
+    val contentColors: Map<String, String> = emptyMap(),
     val createdAtMillis: Long = 0,
 )
 
