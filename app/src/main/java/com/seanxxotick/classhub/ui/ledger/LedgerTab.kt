@@ -233,15 +233,59 @@ fun FundSummaryCard(records: List<LedgerRecord>, title: String? = null) {
 }
 
 @Composable
-private fun SummaryTile(label: String, centavos: Long, modifier: Modifier) {
+private fun SummaryTile(label: String, centavos: Long, modifier: Modifier, textColor: Color = MaterialTheme.colorScheme.onPrimary) {
     Column(
         modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.14f))
+            .background(textColor.copy(alpha = 0.14f))
             .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
-        Text(label, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
-        Text(Money.format(centavos), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+        Text(label, color = textColor.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
+        Text(Money.format(centavos), color = textColor, fontWeight = FontWeight.Bold)
+    }
+}
+
+/**
+ * The ledger card at the top of Home and Ledger. Officers who manage the ledger see the class fund;
+ * everyone else sees what matters to them: their own balance, or what they owe.
+ */
+@Composable
+fun LedgerSummaryCard(state: ClassUiState, myUid: String) {
+    if (state.can(Permission.RECORDS_MANAGE)) FundSummaryCard(state.records) else MyBalanceCard(state.records, state.balanceOf(myUid), myUid)
+}
+
+/** A member's own balance as the headline, with what they paid in and were charged. */
+@Composable
+fun MyBalanceCard(records: List<LedgerRecord>, balanceCentavos: Long, myUid: String) {
+    val mine = records.filter { it.memberId == myUid }
+    val owes = balanceCentavos < 0
+    val background = if (owes) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    val onBackground = if (owes) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary
+    Card(colors = CardDefaults.cardColors(containerColor = background), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(18.dp)) {
+            Text(if (owes) "You owe" else "Your balance", color = onBackground.copy(alpha = 0.85f))
+            Text(Money.format(if (owes) -balanceCentavos else balanceCentavos), color = onBackground, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Text(
+                when {
+                    owes -> "Please settle it with your treasurer."
+                    balanceCentavos > 0 -> "Credit that will cover your next class charges."
+                    else -> "You are all settled."
+                },
+                color = onBackground,
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SummaryTile("You paid in", Ledger.total(mine, RecordType.PAYMENT), Modifier.weight(1f), onBackground)
+                SummaryTile("Charged to you", Ledger.total(mine, RecordType.CHARGE), Modifier.weight(1f), onBackground)
+            }
+            val withdrawn = Ledger.total(mine, RecordType.WITHDRAWAL)
+            if (withdrawn > 0) {
+                Spacer(Modifier.height(6.dp))
+                Text("You withdrew ${Money.format(withdrawn)} in total.", color = onBackground.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall)
+            }
+        }
     }
 }
 
@@ -270,13 +314,15 @@ fun LedgerTab(
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
         item {
             Column(Modifier.padding(16.dp)) {
-                FundSummaryCard(state.records)
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "Your balance: ${balanceText(state.balanceOf(myUid))}",
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                LedgerSummaryCard(state, myUid)
+                if (state.can(Permission.RECORDS_MANAGE)) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Your balance: ${balanceText(state.balanceOf(myUid))}",
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
         item {

@@ -65,7 +65,7 @@ import com.seanxxotick.classhub.ui.schedule.ScheduleRow
 import com.seanxxotick.classhub.ui.schedule.ScheduleTab
 import com.seanxxotick.classhub.ui.ledger.AddRecordChooser
 import com.seanxxotick.classhub.ui.ledger.EntryRow
-import com.seanxxotick.classhub.ui.ledger.FundSummaryCard
+import com.seanxxotick.classhub.ui.ledger.LedgerSummaryCard
 import com.seanxxotick.classhub.ui.ledger.LedgerTab
 import com.seanxxotick.classhub.ui.ledger.balanceText
 import com.seanxxotick.classhub.ui.common.Avatar
@@ -260,6 +260,31 @@ private fun HomeTab(
             }
         }
 
+        val canRoles = state.can(Permission.ROLES_MANAGE)
+        val canCourses = state.can(Permission.CLASS_SETTINGS)
+        if (canRoles || canCourses) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(18.dp)) {
+                        Text("Manage", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Officer roles, the courses your class takes, and class settings.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if (canRoles) OutlinedButton(onClick = onOpenRoles) { Text("Roles (${state.roles.size})") }
+                            if (canCourses) OutlinedButton(onClick = onOpenCourses) { Text("Courses (${state.courses.size})") }
+                        }
+                        if (canCourses) {
+                            OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) { Text("Class settings") }
+                        }
+                    }
+                }
+            }
+        }
+
         if (room.scheduleEnabled) {
             item {
                 val now = System.currentTimeMillis()
@@ -295,14 +320,20 @@ private fun HomeTab(
         }
 
         if (room.ledgerEnabled) {
-            item { FundSummaryCard(state.records) }
+            val ledgerOfficer = state.can(Permission.RECORDS_MANAGE)
+            item { LedgerSummaryCard(state, myUid) }
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(vertical = 12.dp)) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("Your balance", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(balanceText(state.balanceOf(myUid)), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                if (ledgerOfficer) {
+                                    // Officers see the class fund above, so their own balance goes here.
+                                    Text("Your balance", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(balanceText(state.balanceOf(myUid)), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                } else {
+                                    Text("Class ledger", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                }
                             }
                             TextButton(onClick = onSeeLedger) { Text("Ledger ›") }
                         }
@@ -351,31 +382,6 @@ private fun HomeTab(
                                 context.startActivity(Intent.createChooser(send, "Share invite code"))
                             }) { Text("Share code") }
                             OutlinedButton(onClick = { confirmNewCode = true }, enabled = !busy) { Text("New code") }
-                        }
-                    }
-                }
-            }
-        }
-
-        val canRoles = state.can(Permission.ROLES_MANAGE)
-        val canCourses = state.can(Permission.CLASS_SETTINGS)
-        if (canRoles || canCourses) {
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(18.dp)) {
-                        Text("Manage", fontWeight = FontWeight.Bold)
-                        Text(
-                            "Officer roles, the courses your class takes, and class settings.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            if (canRoles) OutlinedButton(onClick = onOpenRoles) { Text("Roles (${state.roles.size})") }
-                            if (canCourses) OutlinedButton(onClick = onOpenCourses) { Text("Courses (${state.courses.size})") }
-                        }
-                        if (canCourses) {
-                            OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) { Text("Class settings") }
                         }
                     }
                 }
