@@ -53,6 +53,7 @@ import com.seanxxotick.classhub.data.model.Permission
 import com.seanxxotick.classhub.data.model.RecordType
 import com.seanxxotick.classhub.domain.LedgerEntry
 import com.seanxxotick.classhub.domain.LedgerView
+import com.seanxxotick.classhub.ui.contents.ContentsTab
 import com.seanxxotick.classhub.ui.ledger.AddRecordChooser
 import com.seanxxotick.classhub.ui.ledger.EntryRow
 import com.seanxxotick.classhub.ui.ledger.FundSummaryCard
@@ -68,6 +69,7 @@ private enum class ClassTab(val label: String, val glyph: String) {
     HOME("Home", "⌂"),
     LEDGER("Ledger", "₱"),
     SCHEDULE("Schedule", "◷"),
+    CONTENTS("Contents", "▤"),
     MEMBERS("Members", "≡"),
 }
 
@@ -86,6 +88,9 @@ fun ClassScreen(
     onDeleteRecord: (LedgerRecord) -> Unit,
     onUndoCharge: (LedgerEntry.ChargeBatch) -> Unit,
     onRecordPayout: (String) -> Unit,
+    onAddContent: () -> Unit,
+    onEditContent: (String) -> Unit,
+    onShowNotice: (String) -> Unit,
     onClearNotice: () -> Unit,
     onRemoved: () -> Unit,
     onBack: () -> Unit,
@@ -99,6 +104,7 @@ fun ClassScreen(
             when (it) {
                 ClassTab.LEDGER -> room?.ledgerEnabled != false
                 ClassTab.SCHEDULE -> room?.scheduleEnabled != false
+                ClassTab.CONTENTS -> room?.contentsEnabled != false
                 else -> true
             }
         }
@@ -136,6 +142,9 @@ fun ClassScreen(
                 if (tab == ClassTab.LEDGER && state.can(Permission.RECORDS_MANAGE)) {
                     ExtendedFloatingActionButton(onClick = { choosingRecord = true }) { Text("+  New record") }
                 }
+                if (tab == ClassTab.CONTENTS && state.can(Permission.CONTENTS_MANAGE)) {
+                    ExtendedFloatingActionButton(onClick = onAddContent) { Text("+  Add content") }
+                }
             },
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
@@ -153,6 +162,7 @@ fun ClassScreen(
                         ClassTab.MEMBERS -> MembersTab(state, myUid, onOpenMember)
                         ClassTab.LEDGER -> LedgerTab(state, myUid, onDeleteRecord, onUndoCharge, onRecordPayout)
                         ClassTab.SCHEDULE -> ComingSoon("Schedule", "Deadlines, quizzes and exams will appear here.")
+                        ClassTab.CONTENTS -> ContentsTab(state, onEdit = onEditContent, onError = onShowNotice)
                     }
                 }
             }
@@ -298,6 +308,7 @@ private fun HomeTab(
                     PermissionLine("Manage members", state.can(Permission.MEMBERS_MANAGE))
                     PermissionLine("Manage roles", state.can(Permission.ROLES_MANAGE))
                     PermissionLine("Change class settings", state.can(Permission.CLASS_SETTINGS))
+                    PermissionLine("Manage class contents", state.can(Permission.CONTENTS_MANAGE))
                 }
             }
         }

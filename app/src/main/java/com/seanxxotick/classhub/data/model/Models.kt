@@ -18,7 +18,11 @@ enum class Permission {
     MEMBERS_MANAGE,
     ROLES_MANAGE,
     CLASS_SETTINGS,
+    CONTENTS_MANAGE,
 }
+
+/** What a class content link points to. Only links are stored; files stay in Google Drive or elsewhere. */
+enum class ContentKind { FILE, VIDEO, WEBSITE }
 
 /**
  * PAYMENT    a member pays money in (member balance +, cash +)
@@ -59,6 +63,7 @@ data class ClassRoom(
     val defaultRoleId: String = ROLE_MEMBER,
     val ledgerEnabled: Boolean = true,
     val scheduleEnabled: Boolean = true,
+    val contentsEnabled: Boolean = true,
     val createdAtMillis: Long = 0,
 )
 
@@ -117,6 +122,23 @@ data class LedgerRecord(
     val createdByUid: String = "",
     val settlesBatchId: String = "",
     val paidTo: String = "",
+)
+
+/**
+ * Firestore: classes/{classId}/contents/{id}
+ *
+ * A link to class material (a module PDF in Google Drive, a recorded discussion, a website).
+ * [courseId] is empty for general class material that belongs to no single course.
+ */
+data class ContentItem(
+    val id: String = "",
+    val courseId: String = "",
+    val title: String = "",
+    val url: String = "",
+    val kind: ContentKind = ContentKind.WEBSITE,
+    val note: String = "",
+    val createdByUid: String = "",
+    val createdAtMillis: Long = 0,
 )
 
 /** Firestore: classes/{classId}/schedule/{id} */

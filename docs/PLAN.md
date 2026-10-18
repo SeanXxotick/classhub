@@ -1,6 +1,8 @@
 # ClassHub - Plan
 
-ClassHub is a Teams-style app for class officers. A Class Mayor creates a class, students join with an invite code, and the Mayor gives members roles with customizable permissions. Each class has a ledger (class fund) and a schedule (deadlines, quizzes, exams).
+ClassHub is a Teams-style app for class officers. A Class Mayor creates a class, students join with an invite code, and the Mayor gives members roles with customizable permissions. Each class has a ledger (class fund), a schedule (deadlines, quizzes, exams) and class contents (links to files, videos and websites).
+
+There is no limit on the number of APIs or services the FCO may use.
 
 ## Core ideas
 
@@ -20,9 +22,10 @@ A fixed list of switches. Roles are bundles of these.
 | `SCHEDULE_MANAGE` | Add, edit and delete deadlines and exams, and change their status |
 | `MEMBERS_MANAGE` | Remove members, assign roles, regenerate the invite code |
 | `ROLES_MANAGE` | Create, edit and delete roles |
-| `CLASS_SETTINGS` | Rename the class, set accent color, switch modules on or off |
+| `CLASS_SETTINGS` | Rename the class, set accent color, switch modules on or off, manage the course list |
+| `CONTENTS_MANAGE` | Add, edit and delete class content links |
 
-Everyone in a class can view the ledger, schedule and member list (unless a module is switched off).
+Everyone in a class can view the ledger, schedule, contents and member list (unless a module is switched off). The locked Mayor role always has every permission, including permissions added in later versions.
 
 Default roles created with every class:
 
@@ -30,7 +33,7 @@ Default roles created with every class:
 |---|---|---|
 | Mayor | all | The class owner. Cannot be deleted or edited. |
 | Treasurer | `RECORDS_MANAGE` | |
-| Secretary | `SCHEDULE_MANAGE` | |
+| Secretary | `SCHEDULE_MANAGE`, `CONTENTS_MANAGE` | |
 | Member | none | Assigned automatically on joining. |
 
 ## Firestore structure
@@ -118,9 +121,19 @@ Modeled on the class spreadsheet, which has Payment, Charge and "Reimbursed" row
 - Saving creates **one CHARGE record per student**, all sharing a `batchId` and written in one Firestore batch (all or nothing). The ledger shows them as one grouped line; **undo** deletes the whole batch.
 - Records are history: members who join later are not charged for earlier charges, and changing someone's exclusions does not rewrite old charges.
 
+## Class contents
+
+Replaces the spreadsheet's "Class Contents Directory" tab.
+
+- Firestore: `classes/{classId}/contents/{id}` with `courseId` (empty = general), `title`, `url`, `kind` (FILE, VIDEO, WEBSITE), `note`, `createdByUid`, `createdAtMillis`.
+- **Links only, no uploads.** Files stay in Google Drive (or elsewhere); tapping an item opens the link in Drive, YouTube or the browser. Uploads would need Firebase Cloud Storage, which is not needed.
+- The type is guessed from the link (Drive and Docs are files, YouTube is video) and can be changed.
+- Grouped by course (general material first), with search and course filter chips.
+- Managed by anyone with `CONTENTS_MANAGE`; everyone in the class can view.
+
 ## Customization
 
-**Per class** (needs `CLASS_SETTINGS`): name, accent color, ledger and schedule modules on or off.
+**Per class** (needs `CLASS_SETTINGS`): name, accent color, ledger, schedule and contents modules on or off.
 **Per user** (saved on the device): light, dark or system theme, and which tab opens first.
 **Roles:** fully editable by anyone with `ROLES_MANAGE`.
 
@@ -134,10 +147,11 @@ Modeled on the class spreadsheet, which has Payment, Charge and "Reimbursed" row
 5. Role manager: create, edit and delete roles with permission switches
 6. Courses, and which courses each member takes
 7. Ledger: payments, charging students by course (with preview and undo), withdrawals, pay-outs from the fund, member balances, cash on hand
-8. Schedule: deadlines, quizzes and exams with status
-9. Accent color and dark mode
-10. Firestore security rules matching the permissions
-11. Unit tests for balances, charge planning, schedule logic and permission checks
+8. Class contents: links to files, videos and websites, by course
+9. Schedule: deadlines, quizzes and exams with status
+10. Accent color and dark mode
+11. Firestore security rules matching the permissions
+12. Unit tests for balances, charge planning, pay-outs, contents, schedule logic and permission checks
 
 ### Phase 2 (if time allows)
 - Module toggles

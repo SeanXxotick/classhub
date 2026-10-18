@@ -21,6 +21,7 @@ import com.seanxxotick.classhub.data.model.AppUser
 import com.seanxxotick.classhub.data.model.RecordType
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import com.seanxxotick.classhub.ui.contents.ContentFormScreen
 import com.seanxxotick.classhub.ui.ledger.ChargeStudentsScreen
 import com.seanxxotick.classhub.ui.ledger.PayoutFormScreen
 import com.seanxxotick.classhub.ui.ledger.RecordFormScreen
@@ -70,6 +71,8 @@ private object Routes {
     const val COURSES = "class/{classId}/courses"
     const val RECORD = "class/{classId}/record/{type}?batch={batch}"
     const val CHARGE = "class/{classId}/charge"
+    const val CONTENT = "class/{classId}/content/{contentId}"
+    const val NEW_CONTENT = "new"
     const val NEW_ROLE = "new"
 
     fun classRoute(classId: String) = "class/$classId"
@@ -79,6 +82,7 @@ private object Routes {
     fun coursesRoute(classId: String) = "class/$classId/courses"
     fun recordRoute(classId: String, type: RecordType) =
         if (type == RecordType.CHARGE) "class/$classId/charge" else "class/$classId/record/${type.name}"
+    fun contentRoute(classId: String, contentId: String) = "class/$classId/content/$contentId"
     fun payoutRoute(classId: String, batchId: String) = "class/$classId/record/${RecordType.EXPENSE.name}?batch=$batchId"
 }
 
@@ -157,6 +161,9 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
                 onDeleteRecord = vm::deleteRecord,
                 onUndoCharge = vm::undoCharge,
                 onRecordPayout = { batchId -> nav.navigate(Routes.payoutRoute(classId, batchId)) },
+                onAddContent = { nav.navigate(Routes.contentRoute(classId, Routes.NEW_CONTENT)) },
+                onEditContent = { id -> nav.navigate(Routes.contentRoute(classId, id)) },
+                onShowNotice = vm::showNotice,
                 onClearNotice = vm::clearNotice,
                 onRemoved = { vm.forgetClass(); nav.popBackStack(Routes.CLASSES, inclusive = false) },
                 onBack = { nav.popBackStack() },
@@ -255,6 +262,24 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
                 onCharge = { preview, note, courseId, date, payNow, paidTo ->
                     vm.chargeStudents(preview, note, courseId, date, payNow, paidTo) { nav.popBackStack() }
                 },
+                onClearNotice = vm::clearNotice,
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable(Routes.CONTENT) { entry ->
+            val contentId = entry.arguments?.getString("contentId").orEmpty()
+            val vm = classViewModel(nav, entry, user)
+            val state by vm.state.collectAsState()
+            val busy by vm.busy.collectAsState()
+            val notice by vm.notice.collectAsState()
+            ContentFormScreen(
+                state = state,
+                contentId = contentId.takeUnless { it == Routes.NEW_CONTENT },
+                busy = busy,
+                notice = notice,
+                onSave = { item -> vm.saveContent(item) { nav.popBackStack() } },
+                onDelete = { item -> vm.deleteContent(item) { nav.popBackStack() } },
+                onError = vm::showNotice,
                 onClearNotice = vm::clearNotice,
                 onBack = { nav.popBackStack() },
             )

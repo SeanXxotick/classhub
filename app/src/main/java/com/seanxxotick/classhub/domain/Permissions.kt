@@ -7,8 +7,11 @@ import com.seanxxotick.classhub.data.model.ROLE_SECRETARY
 import com.seanxxotick.classhub.data.model.ROLE_TREASURER
 import com.seanxxotick.classhub.data.model.Role
 
-/** True when this role grants [permission]. A missing role (not a member) grants nothing. */
-fun Role?.can(permission: Permission): Boolean = this != null && permission.name in permissions
+/**
+ * True when this role grants [permission]. A missing role (not a member) grants nothing.
+ * The locked Mayor role always has every permission, including ones added in later app versions.
+ */
+fun Role?.can(permission: Permission): Boolean = this != null && (locked || permission.name in permissions)
 
 /** The roles every new class starts with. The Mayor can add, change and delete the others. */
 object DefaultRoles {
@@ -30,7 +33,7 @@ object DefaultRoles {
             id = ROLE_SECRETARY,
             name = "Secretary",
             colorHex = "#3730A3",
-            permissions = listOf(Permission.SCHEDULE_MANAGE.name),
+            permissions = listOf(Permission.SCHEDULE_MANAGE.name, Permission.CONTENTS_MANAGE.name),
         ),
         Role(
             id = ROLE_MEMBER,

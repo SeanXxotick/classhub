@@ -46,6 +46,17 @@ class PermissionsTest {
     }
 
     @Test
+    fun mayorRoleSavedBeforeANewPermissionExisted_stillHasIt() {
+        val oldMayor = Role(id = ROLE_MAYOR, name = "Mayor", permissions = listOf("RECORDS_MANAGE"), locked = true)
+        assertTrue(oldMayor.can(Permission.CONTENTS_MANAGE))
+    }
+
+    @Test
+    fun secretary_canManageClassContents() {
+        assertTrue(roles.getValue(ROLE_SECRETARY).can(Permission.CONTENTS_MANAGE))
+    }
+
+    @Test
     fun member_canDoNothing() {
         Permission.entries.forEach { assertFalse(roles.getValue(ROLE_MEMBER).can(it)) }
     }

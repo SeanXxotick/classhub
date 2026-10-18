@@ -3,8 +3,11 @@ package com.seanxxotick.classhub.ui.classroom
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.seanxxotick.classhub.data.model.ClassRoom
+import com.seanxxotick.classhub.data.model.ContentItem
 import com.seanxxotick.classhub.data.model.Course
 import com.seanxxotick.classhub.data.model.LedgerRecord
+import com.seanxxotick.classhub.data.repository.ContentRepository
+import com.seanxxotick.classhub.domain.ContentRules
 import com.seanxxotick.classhub.data.model.Member
 import com.seanxxotick.classhub.data.model.Permission
 import com.seanxxotick.classhub.data.model.RecordType
@@ -43,6 +46,7 @@ data class ClassUiState(
     val members: List<Member> = emptyList(),
     val courses: List<Course> = emptyList(),
     val records: List<LedgerRecord> = emptyList(),
+    val contents: List<ContentItem> = emptyList(),
     val error: String? = null,
 ) {
     /** Current balance of every member, in centavos. */
@@ -72,6 +76,7 @@ class ClassViewModel(
     private val roleRepo: RoleRepository = RoleRepository(classId),
     private val courseRepo: CourseRepository = CourseRepository(classId),
     private val ledgerRepo: LedgerRepository = LedgerRepository(classId),
+    private val contentRepo: ContentRepository = ContentRepository(classId),
 ) : ViewModel() {
     val state: StateFlow<ClassUiState> = combine(
         combine(
@@ -84,7 +89,8 @@ class ClassViewModel(
             ClassUiState(loading = false, room = room, me = me, roles = roles, members = members, courses = courses)
         },
         ledgerRepo.observeRecords(),
-    ) { base, records -> base.copy(records = records) }
+        contentRepo.observeContents(),
+    ) { base, records, contents -> base.copy(records = records, contents = contents) }
         .catch { emit(ClassUiState(loading = false, error = friendlyMessage(it))) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ClassUiState())
 
@@ -291,6 +297,41 @@ class ClassViewModel(
         runAction("Charge \"${batch.note}\" undone for ${batch.count} student${if (batch.count == 1) "" else "s"}.") {
             ledgerRepo.deleteBatch(batch.batchId)
         }
+    }
+
+    // ---- Class contents ----
+
+    /** Adds a new item (blank id) or saves changes to an existing one. */
+    fun saveContent(item: ContentItem, onDone: () -> Unit = {}) {
+        if (!state.value.can(Permission.CONTENTS_MANAGE)) {
+            _notice.value = "You do not have permission to manage class contents."
+            return
+        }
+        ContentRules.check(item.title, item.url)?.let {
+            _notice.value = it
+            return
+        }
+        val clean = item.copy(title = item.title.trim(), url = ContentRules.normalizeUrl(item.url), note = item.note.trim())
+        if (clean.id.isEmpty()) {
+            runAction("Added \"${clean.title}\".", onDone) {
+                contentRepo.add(clean.copy(createdByUid = uid, createdAtMillis = System.currentTimeMillis()))
+            }
+        } else {
+            runAction("Saved \"${clean.title}\".", onDone) { contentRepo.update(clean) }
+        }
+    }
+
+    fun deleteContent(item: ContentItem, onDone: () -> Unit = {}) {
+        if (!state.value.can(Permission.CONTENTS_MANAGE)) {
+            _notice.value = "You do not have permission to manage class contents."
+            return
+        }
+        runAction("Deleted \"${item.title}\".", onDone) { contentRepo.delete(item.id) }
+    }
+
+    /** Lets screens show a message, for example when a link cannot be opened. */
+    fun showNotice(message: String) {
+        _notice.value = message
     }
 
     /** Drops this class from "My classes" after the user was removed or the class was deleted. */

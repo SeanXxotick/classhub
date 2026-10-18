@@ -76,6 +76,7 @@ internal fun Permission.label(): Pair<String, String> = when (this) {
     Permission.MEMBERS_MANAGE -> "Manage members" to "Assign roles, set courses, remove members, invite code"
     Permission.ROLES_MANAGE -> "Manage roles" to "Create, edit and delete roles"
     Permission.CLASS_SETTINGS -> "Class settings and courses" to "Name, color, modules and the course list"
+    Permission.CONTENTS_MANAGE -> "Manage class contents" to "Add, edit and remove links to files, videos and websites"
 }
 
 /** Shared frame for the management screens: class accent, back button, snackbar for notices. */
