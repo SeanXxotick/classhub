@@ -1,0 +1,35 @@
+# Private class data (real student names and balances) - never commit
+*.xlsx
+*.xls
+*.csv
+reference/
+
+# Firebase / secrets
+google-services.json
+GoogleService-Info.plist
+.firebase/
+.env
+.env.*
+*.jks
+*.keystore
+local.properties
+firebase-debug.log
+
+# Android / Gradle build output
+.gradle/
+build/
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+
+# Android Studio
+.idea/
+*.iml
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini

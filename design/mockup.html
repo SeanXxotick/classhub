@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Class Ledger - Screen Mockups</title>
+<style>
+  :root {
+    --bg: #eef1f6;
+    --surface: #ffffff;
+    --ink: #172033;
+    --muted: #6b768a;
+    --line: #e4e8f0;
+    --brand: #0f766e;
+    --brand-dark: #0b4f4a;
+    --brand-soft: #d9f2ee;
+    --income: #15803d;
+    --expense: #c2410c;
+    --warn: #b45309;
+    --warn-soft: #fef3c7;
+    --info-soft: #e0e7ff;
+    --info: #3730a3;
+    --ok-soft: #dcfce7;
+    --bad-soft: #fee2e2;
+    --bad: #b91c1c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 16px 48px;
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.4 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  .sub { margin: 0 0 28px; color: var(--muted); }
+  .wrap { max-width: 1500px; margin: 0 auto; }
+  .row { display: flex; flex-wrap: wrap; gap: 28px; justify-content: center; }
+  .col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .label { font-weight: 600; color: var(--muted); font-size: 13px; letter-spacing: .02em; }
+
+  .phone {
+    width: 320px; height: 640px;
+    background: var(--surface);
+    border-radius: 34px;
+    border: 8px solid #101624;
+    box-shadow: 0 18px 40px rgba(16,22,36,.22);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    position: relative;
+  }
+  .status { display: flex; justify-content: space-between; padding: 8px 18px 4px; font-size: 11px; font-weight: 600; }
+  .screen { flex: 1; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+  .appbar { padding: 6px 18px 10px; display: flex; align-items: center; justify-content: space-between; }
+  .appbar h2 { margin: 0; font-size: 20px; }
+  .chip-row { display: flex; gap: 6px; padding: 0 18px 10px; }
+  .chip { padding: 5px 11px; border-radius: 999px; background: var(--bg); color: var(--muted); font-size: 12px; font-weight: 600; }
+  .chip.on { background: var(--brand); color: #fff; }
+
+  .hero {
+    margin: 4px 14px 12px; padding: 16px;
+    border-radius: 20px; color: #fff;
+    background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+  }
+  .hero small { opacity: .8; }
+  .hero .big { font-size: 30px; font-weight: 700; margin: 2px 0 12px; letter-spacing: -.01em; }
+  .hero .split { display: flex; gap: 10px; }
+  .hero .split div { flex: 1; background: rgba(255,255,255,.14); border-radius: 12px; padding: 8px 10px; }
+  .hero .split b { display: block; font-size: 15px; }
+
+  .section { padding: 0 18px; margin: 4px 0 6px; display: flex; justify-content: space-between; align-items: baseline; }
+  .section b { font-size: 14px; }
+  .section span { color: var(--brand); font-size: 12px; font-weight: 600; }
+
+  .item { display: flex; align-items: center; gap: 10px; padding: 8px 18px; }
+  .ico {
+    width: 36px; height: 36px; border-radius: 12px; flex: none;
+    display: grid; place-items: center; font-size: 12px; font-weight: 700;
+  }
+  .ico.pay { background: var(--ok-soft); color: var(--income); }
+  .ico.out { background: #ffedd5; color: var(--expense); }
+  .ico.exam { background: var(--bad-soft); color: var(--bad); }
+  .ico.task { background: var(--info-soft); color: var(--info); }
+  .ico.quiz { background: var(--warn-soft); color: var(--warn); }
+  .item .t { flex: 1; min-width: 0; }
+  .item .t b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .t span { color: var(--muted); font-size: 12px; }
+  .amt { font-weight: 700; font-size: 13px; }
+  .amt.in { color: var(--income); }
+  .amt.ex { color: var(--expense); }
+  .day { padding: 8px 18px 2px; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+
+  .tag { font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 999px; }
+  .tag.pending { background: var(--warn-soft); color: var(--warn); }
+  .tag.done { background: var(--ok-soft); color: var(--income); }
+  .tag.cancel { background: var(--line); color: var(--muted); }
+  .tag.owes { background: var(--bad-soft); color: var(--bad); }
+  .tag.credit { background: var(--ok-soft); color: var(--income); }
+
+  .bar { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; margin: 6px 18px 10px; display: flex; }
+  .bar i { display: block; height: 100%; }
+
+  .fab {
+    position: absolute; right: 16px; bottom: 74px;
+    width: 52px; height: 52px; border-radius: 18px; background: var(--brand); color: #fff;
+    display: grid; place-items: center; font-size: 28px; box-shadow: 0 8px 18px rgba(15,118,110,.4);
+  }
+  .nav {
+    margin-top: auto; display: flex; border-top: 1px solid var(--line); background: var(--surface);
+    padding: 6px 4px 10px;
+  }
+  .nav div { flex: 1; text-align: center; font-size: 10.5px; color: var(--muted); font-weight: 600; }
+  .nav div i { display: block; width: 22px; height: 22px; margin: 0 auto 2px; border-radius: 8px; background: var(--line); }
+  .nav div.on { color: var(--brand); }
+  .nav div.on i { background: var(--brand); }
+
+  .seg { display: flex; margin: 4px 18px 14px; background: var(--bg); border-radius: 12px; padding: 3px; }
+  .seg div { flex: 1; text-align: center; padding: 8px; border-radius: 10px; font-weight: 700; font-size: 13px; color: var(--muted); }
+  .seg div.on { background: var(--surface); color: var(--income); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .amount-in { text-align: center; margin: 6px 0 14px; }
+  .amount-in b { font-size: 40px; letter-spacing: -.02em; }
+  .amount-in span { display: block; color: var(--muted); font-size: 12px; }
+  .field { margin: 0 18px 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
+  .field small { color: var(--muted); display: block; font-size: 11px; }
+  .btn { margin: 10px 18px 0; padding: 13px; text-align: center; background: var(--brand); color: #fff; border-radius: 14px; font-weight: 700; }
+
+  .week { display: flex; justify-content: space-between; padding: 0 14px 8px; }
+  .week div { width: 38px; text-align: center; padding: 6px 0; border-radius: 12px; font-size: 11px; color: var(--muted); font-weight: 600; }
+  .week div b { display: block; font-size: 15px; color: var(--ink); }
+  .week div.on { background: var(--brand); color: #fff; }
+  .week div.on b { color: #fff; }
+  .dot { display: block; width: 5px; height: 5px; border-radius: 50%; background: var(--warn); margin: 2px auto 0; }
+  .week div.on .dot { background: #fff; }
+
+  .note { max-width: 760px; margin: 40px auto 0; background: var(--surface); border-radius: 16px; padding: 18px 22px; border: 1px solid var(--line); }
+  .note h3 { margin: 0 0 8px; font-size: 16px; }
+  .note ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .sw { padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Class Ledger</h1>
+  <p class="sub">Proof-of-concept screens for the SWE FCO app. All names and amounts are fake sample data.</p>
+
+  <div class="row">
+
+    <!-- 1 Dashboard -->
+    <div class="col">
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>5G 88%</span></div>
+        <div class="screen">
+          <div class="appbar"><h2>BSM CS 3A</h2><span class="chip on">Group 1 &#9662;</span></div>
+          <div class="hero">
+            <small>Class fund balance</small>
+            <div class="big">&#8369;4,250.00</div>
+            <div class="split">
+              <div><small>Collected</small><b>&#8369;7,800</b></div>
+              <div><small>Spent</small><b>&#8369;3,550</b></div>
+            </div>
+          </div>
+          <div class="section"><b>Where it went</b><span>Details</span></div>
+          <div class="bar"><i style="width:48%;background:#0f766e"></i><i style="width:27%;background:#f59e0b"></i><i style="width:25%;background:#6366f1"></i></div>
+          <div class="section"><b>Coming up</b><span>See all</span></div>
+          <div class="item"><div class="ico exam">EX</div><div class="t"><b>Midterm Exam - Operations Research</b><span>Tue, Oct 20</span></div><span class="tag pending">2 days</span></div>
+          <div class="item"><div class="ico task">FCO</div><div class="t"><b>Android App | Firebase Backend</b><span>Fri, Oct 30</span></div><span class="tag pending">12 days</span></div>
+          <div class="section"><b>Recent</b><span>See all</span></div>
+          <div class="item"><div class="ico pay">+</div><div class="t"><b>Maria S.</b><span>Payment</span></div><span class="amt in">+&#8369;100</span></div>
+          <div class="item"><div class="ico out">&minus;</div><div class="t"><b>Printing - Midterm</b><span>Reimbursed</span></div><span class="amt ex">&minus;&#8369;380</span></div>
+          <div class="fab">+</div>
+          <div class="nav"><div class="on"><i></i>Home</div><div><i></i>Records</div><div><i></i>Schedule</div><div><i></i>Members</div></div>
+        </div>
+      </div>
+      <div class="label">1. Dashboard</div>
+    </div>
+
+    <!-- 2 Records -->
+    <div class="col">
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>5G 88%</span></div>
+        <div class="screen">
+          <div class="appbar"><h2>Records</h2><span class="chip">Oct 2026</span></div>
+          <div class="chip-row"><span class="chip on">All</span><span class="chip">Payments</span><span class="chip">Reimbursed</span></div>
+          <div class="day">Today</div>
+          <div class="item"><div class="ico pay">+</div><div class="t"><b>Maria S.</b><span>Payment</span></div><span class="amt in">+&#8369;100</span></div>
+          <div class="item"><div class="ico pay">+</div><div class="t"><b>Jose R.</b><span>Payment</span></div><span class="amt in">+&#8369;50</span></div>
+          <div class="day">Oct 16</div>
+          <div class="item"><div class="ico out">&minus;</div><div class="t"><b>Printing - Midterm</b><span>Reimbursed to Ana D.</span></div><span class="amt ex">&minus;&#8369;380</span></div>
+          <div class="item"><div class="ico pay">+</div><div class="t"><b>Ana D.</b><span>Payment</span></div><span class="amt in">+&#8369;100</span></div>
+          <div class="day">Oct 12</div>
+          <div class="item"><div class="ico pay">+</div><div class="t"><b>Lito G.</b><span>Payment</span></div><span class="amt in">+&#8369;50</span></div>
+          <div class="item"><div class="ico out">&minus;</div><div class="t"><b>Case tools poster</b><span>Reimbursed to Lito G.</span></div><span class="amt ex">&minus;&#8369;372</span></div>
+          <div class="fab">+</div>
+          <div class="nav"><div><i></i>Home</div><div class="on"><i></i>Records</div><div><i></i>Schedule</div><div><i></i>Members</div></div>
+        </div>
+      </div>
+      <div class="label">2. Records (ledger)</div>
+    </div>
+
+    <!-- 3 Add record -->
+    <div class="col">
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>5G 88%</span></div>
+        <div class="screen">
+          <div class="appbar"><h2>New record</h2><span class="chip">Cancel</span></div>
+          <div class="seg"><div class="on">Payment</div><div>Reimbursed</div></div>
+          <div class="amount-in"><span>Amount</span><b>&#8369;100.00</b></div>
+          <div class="field"><div><small>Member</small>Maria S.</div><span>&#9662;</span></div>
+          <div class="field"><div><small>Group</small>Group 1</div><span>&#9662;</span></div>
+          <div class="field"><div><small>Date</small>Oct 18, 2026</div><span>&#9662;</span></div>
+          <div class="field"><div><small>Note (optional)</small>Midterm exam printing</div></div>
+          <div class="btn">Save record</div>
+        </div>
+      </div>
+      <div class="label">3. Add record</div>
+    </div>
+
+    <!-- 4 Schedule -->
+    <div class="col">
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>5G 88%</span></div>
+        <div class="screen">
+          <div class="appbar"><h2>Schedule</h2><span class="chip">Oct 2026</span></div>
+          <div class="week">
+            <div>Sun<b>18</b></div><div>Mon<b>19</b></div>
+            <div class="on">Tue<b>20</b><i class="dot"></i></div>
+            <div>Wed<b>21</b></div><div>Thu<b>22</b><i class="dot"></i></div>
+            <div>Fri<b>23</b></div><div>Sat<b>24</b></div>
+          </div>
+          <div class="chip-row"><span class="chip on">All</span><span class="chip">Exams</span><span class="chip">Deliverables</span></div>
+          <div class="day">Tue, Oct 20</div>
+          <div class="item"><div class="ico exam">EX</div><div class="t"><b>Midterm - Operations Research</b><span>Exam</span></div><span class="tag pending">Pending</span></div>
+          <div class="day">Thu, Oct 22</div>
+          <div class="item"><div class="ico quiz">Q</div><div class="t"><b>Quiz - Software Engineering</b><span>Group 1</span></div><span class="tag pending">Pending</span></div>
+          <div class="item"><div class="ico task">AS</div><div class="t"><b>Assignment #3 - Modern Geometry</b><span>Deliverable</span></div><span class="tag done">Submitted</span></div>
+          <div class="day">Fri, Oct 30</div>
+          <div class="item"><div class="ico task">FCO</div><div class="t"><b>Final Course Output - SWE</b><span>Android app</span></div><span class="tag pending">Pending</span></div>
+          <div class="fab">+</div>
+          <div class="nav"><div><i></i>Home</div><div><i></i>Records</div><div class="on"><i></i>Schedule</div><div><i></i>Members</div></div>
+        </div>
+      </div>
+      <div class="label">4. Schedule</div>
+    </div>
+
+    <!-- 5 Members -->
+    <div class="col">
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>5G 88%</span></div>
+        <div class="screen">
+          <div class="appbar"><h2>Members</h2><span class="chip on">Group 1 &#9662;</span></div>
+          <div class="field" style="margin-bottom:8px"><div><small>Search</small>Type a name</div></div>
+          <div class="chip-row"><span class="chip on">All</span><span class="chip">Owes</span><span class="chip">Credit</span></div>
+          <div class="item"><div class="ico task">MS</div><div class="t"><b>Maria S.</b><span>Balance</span></div><div style="text-align:right"><div class="amt in">&#8369;26</div><span class="tag credit">Credit</span></div></div>
+          <div class="item"><div class="ico task">AD</div><div class="t"><b>Ana D.</b><span>Balance</span></div><div style="text-align:right"><div class="amt in">&#8369;776</div><span class="tag credit">Credit</span></div></div>
+          <div class="item"><div class="ico task">LG</div><div class="t"><b>Lito G.</b><span>Balance</span></div><div style="text-align:right"><div class="amt ex">&minus;&#8369;8</div><span class="tag owes">Owes</span></div></div>
+          <div class="item"><div class="ico task">JR</div><div class="t"><b>Jose R.</b><span>Balance</span></div><div style="text-align:right"><div class="amt in">&#8369;50</div><span class="tag credit">Credit</span></div></div>
+          <div class="item"><div class="ico task">KP</div><div class="t"><b>Kim P.</b><span>Balance</span></div><div style="text-align:right"><div class="amt in">&#8369;0</div><span class="tag cancel">Settled</span></div></div>
+          <div class="nav"><div><i></i>Home</div><div><i></i>Records</div><div><i></i>Schedule</div><div class="on"><i></i>Members</div></div>
+        </div>
+      </div>
+      <div class="label">5. Members</div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <h3>Design notes</h3>
+    <ul>
+      <li><b>Navigation:</b> four tabs (Home, Records, Schedule, Members) with one floating + button for adding a record or a deadline.</li>
+      <li><b>Money:</b> green for payments in, orange for reimbursements out. Balances show "Owes" or "Credit" instead of only a minus sign.</li>
+      <li><b>Groups:</b> Group 1 and Group 2 are a switch at the top, not separate screens.</li>
+      <li><b>Roles:</b> the treasurer sees the + button and can edit; other members see the same screens read-only.</li>
+    </ul>
+    <div class="swatches">
+      <span class="sw" style="background:#0f766e;color:#fff">Brand #0f766e</span>
+      <span class="sw" style="background:#0b4f4a;color:#fff">Brand dark #0b4f4a</span>
+      <span class="sw" style="background:#dcfce7;color:#15803d">Income #15803d</span>
+      <span class="sw" style="background:#ffedd5;color:#c2410c">Expense #c2410c</span>
+      <span class="sw" style="background:#fef3c7;color:#b45309">Pending #b45309</span>
+      <span class="sw" style="background:#fee2e2;color:#b91c1c">Owes / exam #b91c1c</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>
