@@ -210,6 +210,8 @@ fun ScheduleRow(
 fun ScheduleTab(
     state: ClassUiState,
     progress: List<StudentProgress>,
+    selectedEpochDay: Long?,
+    onSelectDay: (Long?) -> Unit,
     onEdit: (String) -> Unit,
     onToggleDone: (ScheduleItem, Boolean) -> Unit,
     onSetCancelled: (ScheduleItem, Boolean) -> Unit,
@@ -217,7 +219,6 @@ fun ScheduleTab(
     val now = System.currentTimeMillis()
     val today = LocalDate.now()
     var anchorEpochDay by rememberSaveable { mutableStateOf(today.toEpochDay()) }
-    var selectedEpochDay by rememberSaveable { mutableStateOf<Long?>(null) }
     var filterName by rememberSaveable { mutableStateOf(ScheduleFilter.UPCOMING.name) }
     var openedId by remember { mutableStateOf<String?>(null) }
 
@@ -239,7 +240,7 @@ fun ScheduleTab(
                         week.last().format(DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())),
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f).clickable { anchorEpochDay = today.toEpochDay(); selectedEpochDay = null },
+                    modifier = Modifier.weight(1f).clickable { anchorEpochDay = today.toEpochDay(); onSelectDay(null) },
                 )
                 TextButton(onClick = { anchorEpochDay += 7 }) { Text("›") }
             }
@@ -256,7 +257,7 @@ fun ScheduleTab(
                             .padding(horizontal = 2.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
-                            .clickable { selectedEpochDay = if (selected) null else day.toEpochDay() }
+                            .clickable { onSelectDay(if (selected) null else day.toEpochDay()) }
                             .padding(vertical = 6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -296,7 +297,7 @@ fun ScheduleTab(
             if (selectedDay != null) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Due ${longDay(selectedDay)}", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { selectedEpochDay = null }) { Text("Show all") }
+                    TextButton(onClick = { onSelectDay(null) }) { Text("Show all") }
                 }
             } else {
                 LazyRow(
@@ -468,6 +469,7 @@ private fun DetailLine(label: String, value: String) {
 fun ScheduleFormScreen(
     state: ClassUiState,
     itemId: String?,
+    defaultDay: LocalDate?,
     busy: Boolean,
     notice: String?,
     onSave: (ScheduleItem) -> Unit,
@@ -490,7 +492,7 @@ fun ScheduleFormScreen(
         var kindName by rememberSaveable(existing?.id) { mutableStateOf(existing?.kind?.name ?: ScheduleKind.DEADLINE.name) }
         var title by rememberSaveable(existing?.id) { mutableStateOf(existing?.title.orEmpty()) }
         var courseId by rememberSaveable(existing?.id) { mutableStateOf(existing?.courseId.orEmpty()) }
-        var dueMillis by rememberSaveable(existing?.id) { mutableStateOf(existing?.dueMillis ?: noonOf(LocalDate.now())) }
+        var dueMillis by rememberSaveable(existing?.id) { mutableStateOf(existing?.dueMillis ?: noonOf(defaultDay ?: LocalDate.now())) }
         var cancelled by rememberSaveable(existing?.id) { mutableStateOf(existing?.let { ScheduleLogic.isCancelled(it) } ?: false) }
         var note by rememberSaveable(existing?.id) { mutableStateOf(existing?.note.orEmpty()) }
         var pickingCourse by remember { mutableStateOf(false) }

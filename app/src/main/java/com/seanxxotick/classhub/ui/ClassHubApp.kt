@@ -89,7 +89,7 @@ private object Routes {
     const val RECORD = "class/{classId}/record/{type}?batch={batch}"
     const val CHARGE = "class/{classId}/charge"
     const val CONTENT = "class/{classId}/content/{contentId}"
-    const val SCHEDULE_ITEM = "class/{classId}/schedule/{itemId}"
+    const val SCHEDULE_ITEM = "class/{classId}/schedule/{itemId}?day={day}"
     const val NEW_CONTENT = "new"
     const val NEW_ROLE = "new"
 
@@ -102,7 +102,8 @@ private object Routes {
     fun recordRoute(classId: String, type: RecordType) =
         if (type == RecordType.CHARGE) "class/$classId/charge" else "class/$classId/record/${type.name}"
     fun contentRoute(classId: String, contentId: String) = "class/$classId/content/$contentId"
-    fun scheduleItemRoute(classId: String, itemId: String) = "class/$classId/schedule/$itemId"
+    fun scheduleItemRoute(classId: String, itemId: String, dayEpoch: Long? = null) =
+        "class/$classId/schedule/$itemId" + (dayEpoch?.let { "?day=$it" } ?: "")
     fun payoutRoute(classId: String, batchId: String) = "class/$classId/record/${RecordType.EXPENSE.name}?batch=$batchId"
 }
 
@@ -188,7 +189,7 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
                 onRecordPayout = { batchId -> nav.navigate(Routes.payoutRoute(classId, batchId)) },
                 onAddContent = { nav.navigate(Routes.contentRoute(classId, Routes.NEW_CONTENT)) },
                 onEditContent = { id -> nav.navigate(Routes.contentRoute(classId, id)) },
-                onAddScheduleItem = { nav.navigate(Routes.scheduleItemRoute(classId, Routes.NEW_CONTENT)) },
+                onAddScheduleItem = { day -> nav.navigate(Routes.scheduleItemRoute(classId, Routes.NEW_CONTENT, day)) },
                 onEditScheduleItem = { id -> nav.navigate(Routes.scheduleItemRoute(classId, id)) },
                 progress = progress,
                 onToggleDone = vm::setDone,
@@ -314,7 +315,10 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
                 onBack = { nav.popBackStack() },
             )
         }
-        composable(Routes.SCHEDULE_ITEM) { entry ->
+        composable(
+            Routes.SCHEDULE_ITEM,
+            arguments = listOf(navArgument("day") { type = NavType.LongType; defaultValue = -1L }),
+        ) { entry ->
             val itemId = entry.arguments?.getString("itemId").orEmpty()
             val vm = classViewModel(nav, entry, user)
             val state by vm.state.collectAsState()
@@ -323,6 +327,7 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
             ScheduleFormScreen(
                 state = state,
                 itemId = itemId.takeUnless { it == Routes.NEW_CONTENT },
+                defaultDay = entry.arguments?.getLong("day")?.takeIf { it >= 0 }?.let { java.time.LocalDate.ofEpochDay(it) },
                 busy = busy,
                 notice = notice,
                 onSave = { item -> vm.saveScheduleItem(item) { nav.popBackStack() } },

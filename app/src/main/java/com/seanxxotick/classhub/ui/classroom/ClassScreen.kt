@@ -1,6 +1,9 @@
 package com.seanxxotick.classhub.ui.classroom
 
 import android.content.Intent
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -97,7 +100,7 @@ fun ClassScreen(
     onRecordPayout: (String) -> Unit,
     onAddContent: () -> Unit,
     onEditContent: (String) -> Unit,
-    onAddScheduleItem: () -> Unit,
+    onAddScheduleItem: (dayEpoch: Long?) -> Unit,
     onEditScheduleItem: (String) -> Unit,
     progress: List<StudentProgress>,
     onToggleDone: (ScheduleItem, Boolean) -> Unit,
@@ -112,6 +115,8 @@ fun ClassScreen(
     val room = state.room
     ClassHubTheme(accentHex = room?.accentColor) {
         var tabName by rememberSaveable { mutableStateOf(ClassTab.HOME.name) }
+        // The day tapped in the schedule's week strip; adding a schedule item starts on it.
+        var scheduleDay by rememberSaveable { mutableStateOf<Long?>(null) }
         val tabs = ClassTab.entries.filter {
             when (it) {
                 ClassTab.LEDGER -> room?.ledgerEnabled != false
@@ -155,7 +160,9 @@ fun ClassScreen(
                     ExtendedFloatingActionButton(onClick = { choosingRecord = true }) { Text("+  New record") }
                 }
                 if (tab == ClassTab.SCHEDULE && state.can(Permission.SCHEDULE_MANAGE)) {
-                    ExtendedFloatingActionButton(onClick = onAddScheduleItem) { Text("+  Add") }
+                    ExtendedFloatingActionButton(onClick = { onAddScheduleItem(scheduleDay) }) {
+                        Text(scheduleDay?.let { "+  Add on " + LocalDate.ofEpochDay(it).format(DateTimeFormatter.ofPattern("MMM d", Locale.getDefault())) } ?: "+  Add")
+                    }
                 }
                 if (tab == ClassTab.CONTENTS && state.can(Permission.CONTENTS_MANAGE)) {
                     ExtendedFloatingActionButton(onClick = onAddContent) { Text("+  Add content") }
@@ -184,6 +191,8 @@ fun ClassScreen(
                         ClassTab.SCHEDULE -> ScheduleTab(
                             state = state,
                             progress = progress,
+                            selectedEpochDay = scheduleDay,
+                            onSelectDay = { scheduleDay = it },
                             onEdit = onEditScheduleItem,
                             onToggleDone = onToggleDone,
                             onSetCancelled = onSetCancelled,
