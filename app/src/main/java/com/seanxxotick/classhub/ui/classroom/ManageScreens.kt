@@ -80,6 +80,7 @@ import com.seanxxotick.classhub.ui.common.Initials
 import com.seanxxotick.classhub.ui.common.RoleChip
 import com.seanxxotick.classhub.ui.common.initialsOf
 import com.seanxxotick.classhub.ui.theme.ClassHubTheme
+import com.seanxxotick.classhub.ui.theme.heroColors
 import com.seanxxotick.classhub.ui.theme.AccentChoices
 import com.seanxxotick.classhub.ui.theme.RoleColorChoices
 import com.seanxxotick.classhub.ui.theme.hexToColor
@@ -688,20 +689,21 @@ fun ClassSettingsScreen(
             LazyColumn(Modifier.fillMaxSize().padding(padding).imePadding(), contentPadding = PaddingValues(bottom = 32.dp)) {
                 item {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        val hero = heroColors()
                         Box(
                             Modifier
                                 .fillMaxWidth()
                                 .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
-                                .background(MaterialTheme.colorScheme.primary)
+                                .background(hero.container)
                                 .padding(16.dp),
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Avatar(state.classPhoto, name.ifBlank { "Class" }, MaterialTheme.colorScheme.primary, size = 56.dp, circle = false)
                                 Spacer(Modifier.width(12.dp))
                                 Column {
-                                    Text(name.ifBlank { "Class name" }, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                                    if (description.isNotBlank()) Text(description, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f))
-                                    Text("Preview", color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
+                                    Text(name.ifBlank { "Class name" }, color = hero.content, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                                    if (description.isNotBlank()) Text(description, color = hero.content.copy(alpha = 0.85f))
+                                    Text("Preview", color = hero.content.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }

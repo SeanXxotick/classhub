@@ -7,6 +7,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 
 private val LightColorScheme = lightColorScheme(
     primary = Brand,
@@ -36,6 +37,21 @@ private val DarkColorScheme = darkColorScheme(
 /** Light or dark as chosen in Account (null until the root of the app provides it). */
 val LocalDarkTheme = compositionLocalOf<Boolean?> { null }
 
+/** True when the app is showing its dark theme, whether chosen in Account or by the phone. */
+@Composable
+fun isDarkTheme(): Boolean = LocalDarkTheme.current ?: isSystemInDarkTheme()
+
+data class HeroColors(val container: Color, val content: Color)
+
+/**
+ * Colors for the big colored cards (class header, fund and balance cards). Light mode uses the full
+ * accent; dark mode blends it into the dark surface so it keeps its hue without glaring.
+ */
+@Composable
+fun heroColors(base: Color = MaterialTheme.colorScheme.primary): HeroColors =
+    if (isDarkTheme()) HeroColors(lerp(MaterialTheme.colorScheme.surface, base, 0.30f), Color(0xFFF1F5F9))
+    else HeroColors(base, Color.White)
+
 /**
  * App theme. Dynamic (wallpaper) colors are off so the class's accent always shows.
  * [accentHex] overrides the primary color, for example with a class's chosen accent.
@@ -53,7 +69,8 @@ fun ClassHubTheme(
         base.copy(
             primary = accent,
             onPrimary = Color.White,
-            primaryContainer = accent.copy(alpha = if (darkTheme) 0.35f else 0.14f),
+            // A solid blend (not transparency), so nothing behind shows through.
+            primaryContainer = lerp(base.surface, accent, if (darkTheme) 0.35f else 0.14f),
         )
     }
     MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)

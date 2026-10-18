@@ -61,7 +61,7 @@ fun ClassesScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = { showAdd = true }) { Text("+  Add a class") }
+            ExtendedFloatingActionButton(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary, onClick = { showAdd = true }) { Text("+  Add a class") }
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {

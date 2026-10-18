@@ -54,6 +54,8 @@ import com.seanxxotick.classhub.domain.LedgerView
 import com.seanxxotick.classhub.domain.Money
 import com.seanxxotick.classhub.ui.classroom.ClassUiState
 import com.seanxxotick.classhub.ui.common.Avatar
+import com.seanxxotick.classhub.ui.theme.heroColors
+import com.seanxxotick.classhub.ui.theme.hexToColor
 import androidx.compose.foundation.shape.CircleShape
 import com.seanxxotick.classhub.ui.theme.Expense
 import com.seanxxotick.classhub.ui.theme.Income
@@ -153,9 +155,10 @@ fun EntryRow(entry: LedgerEntry, state: ClassUiState, onClick: (() -> Unit)? = n
     ) {
         TypeBar(entry.type)
         val photoOwner = (entry as? LedgerEntry.Single)?.record?.takeIf { it.memberId.isNotEmpty() }
-        if (photoOwner != null && state.avatars[photoOwner.memberId] != null) {
+        if (photoOwner != null) {
+            val role = state.roleOf(state.members.firstOrNull { it.id == photoOwner.memberId })
             Spacer(Modifier.width(10.dp))
-            Avatar(state.avatars[photoOwner.memberId], photoOwner.memberName, entry.type.color(), size = 36.dp)
+            Avatar(state.avatars[photoOwner.memberId], photoOwner.memberName, hexToColor(role?.colorHex ?: "#6B768A"), size = 36.dp)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -175,30 +178,31 @@ fun EntryRow(entry: LedgerEntry, state: ClassUiState, onClick: (() -> Unit)? = n
 /** The three fund numbers: Cash on hand, Collected, Charged to members. */
 @Composable
 fun FundSummaryCard(records: List<LedgerRecord>, title: String? = null) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary), modifier = Modifier.fillMaxWidth()) {
+    val hero = heroColors()
+    Card(colors = CardDefaults.cardColors(containerColor = hero.container), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(18.dp)) {
             if (title != null) {
-                Text(title, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                Text(title, color = hero.content, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(6.dp))
             }
-            Text("Cash on hand", color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f))
-            Text(Money.format(Ledger.cashOnHand(records)), color = MaterialTheme.colorScheme.onPrimary, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Text("Cash on hand", color = hero.content.copy(alpha = 0.85f))
+            Text(Money.format(Ledger.cashOnHand(records)), color = hero.content, fontSize = 30.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SummaryTile("Collected", Ledger.total(records, RecordType.PAYMENT), Modifier.weight(1f))
-                SummaryTile("Charged to members", Ledger.total(records, RecordType.CHARGE), Modifier.weight(1f))
+                SummaryTile("Collected", Ledger.total(records, RecordType.PAYMENT), Modifier.weight(1f), hero.content)
+                SummaryTile("Charged to members", Ledger.total(records, RecordType.CHARGE), Modifier.weight(1f), hero.content)
             }
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SummaryTile("Waiting to be paid out", Ledger.awaitingPayout(records), Modifier.weight(1f))
-                SummaryTile("Available cash", Ledger.availableCash(records), Modifier.weight(1f))
+                SummaryTile("Waiting to be paid out", Ledger.awaitingPayout(records), Modifier.weight(1f), hero.content)
+                SummaryTile("Available cash", Ledger.availableCash(records), Modifier.weight(1f), hero.content)
             }
             Spacer(Modifier.height(10.dp))
             val difference = Ledger.booksDifference(records)
             Text(
                 if (difference == 0L) "✓ Books balanced"
                 else "⚠ Books off by ${Money.format(kotlin.math.abs(difference))}. A record may be missing or entered wrong.",
-                color = MaterialTheme.colorScheme.onPrimary,
+                color = hero.content,
                 fontWeight = FontWeight.SemiBold,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -233,8 +237,9 @@ fun LedgerSummaryCard(state: ClassUiState, myUid: String) {
 fun MyBalanceCard(records: List<LedgerRecord>, balanceCentavos: Long, myUid: String) {
     val mine = records.filter { it.memberId == myUid }
     val owes = balanceCentavos < 0
-    val background = if (owes) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    val onBackground = if (owes) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary
+    val hero = heroColors(if (owes) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+    val background = hero.container
+    val onBackground = hero.content
     Card(colors = CardDefaults.cardColors(containerColor = background), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(18.dp)) {
             Text(if (owes) "You owe" else "Your balance", color = onBackground.copy(alpha = 0.85f))

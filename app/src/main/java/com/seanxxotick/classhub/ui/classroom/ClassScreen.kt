@@ -73,6 +73,7 @@ import com.seanxxotick.classhub.ui.common.Initials
 import com.seanxxotick.classhub.ui.common.RoleChip
 import com.seanxxotick.classhub.ui.common.initialsOf
 import com.seanxxotick.classhub.ui.theme.ClassHubTheme
+import com.seanxxotick.classhub.ui.theme.heroColors
 import com.seanxxotick.classhub.ui.theme.hexToColor
 
 private enum class ClassTab(val label: String, val glyph: String) {
@@ -158,15 +159,15 @@ fun ClassScreen(
             snackbarHost = { SnackbarHost(snackbar) },
             floatingActionButton = {
                 if (tab == ClassTab.LEDGER && state.can(Permission.RECORDS_MANAGE)) {
-                    ExtendedFloatingActionButton(onClick = { choosingRecord = true }) { Text("+  New record") }
+                    ExtendedFloatingActionButton(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary, onClick = { choosingRecord = true }) { Text("+  New record") }
                 }
                 if (tab == ClassTab.SCHEDULE && state.can(Permission.SCHEDULE_MANAGE)) {
-                    ExtendedFloatingActionButton(onClick = { onAddScheduleItem(scheduleDay) }) {
+                    ExtendedFloatingActionButton(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary, onClick = { onAddScheduleItem(scheduleDay) }) {
                         Text(scheduleDay?.let { "+  Add on " + LocalDate.ofEpochDay(it).format(DateTimeFormatter.ofPattern("MMM d", Locale.getDefault())) } ?: "+  Add")
                     }
                 }
                 if (tab == ClassTab.CONTENTS && state.can(Permission.CONTENTS_MANAGE)) {
-                    ExtendedFloatingActionButton(onClick = onAddContent) { Text("+  Add content") }
+                    ExtendedFloatingActionButton(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary, onClick = onAddContent) { Text("+  Add content") }
                 }
             },
         ) { padding ->
@@ -233,8 +234,9 @@ private fun HomeTab(
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
+            val hero = heroColors()
             Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
+                colors = CardDefaults.cardColors(containerColor = hero.container),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(Modifier.padding(18.dp)) {
@@ -244,16 +246,16 @@ private fun HomeTab(
                             Spacer(Modifier.width(12.dp))
                         }
                         Column {
-                            Text(room.name, color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            Text(room.name, color = hero.content, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                             if (room.description.isNotBlank()) {
-                                Text(room.description, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f))
+                                Text(room.description, color = hero.content.copy(alpha = 0.85f))
                             }
                         }
                     }
                     Spacer(Modifier.height(10.dp))
                     Text(
                         "${state.members.size} member${if (state.members.size == 1) "" else "s"}  ·  You are ${myRole?.name ?: "a member"}",
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = hero.content,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
