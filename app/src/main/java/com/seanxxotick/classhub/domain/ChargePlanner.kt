@@ -35,6 +35,17 @@ object ChargePlanner {
         return ChargePreview(charged, skipped, perMemberCentavos)
     }
 
+    /** The pay-out that settles a charge: always exactly the charge's total, linked by [batchId]. */
+    fun buildPayout(batchId: String, totalCentavos: Long, note: String, dateMillis: Long, paidTo: String): LedgerRecord =
+        LedgerRecord(
+            type = RecordType.EXPENSE,
+            amountCentavos = totalCentavos,
+            note = note,
+            dateMillis = dateMillis,
+            settlesBatchId = batchId,
+            paidTo = paidTo.trim(),
+        )
+
     /** One CHARGE record per charged member, all sharing [batchId] so they can be undone together. */
     fun buildRecords(
         preview: ChargePreview,

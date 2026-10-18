@@ -18,6 +18,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.seanxxotick.classhub.data.model.AppUser
+import com.seanxxotick.classhub.data.model.RecordType
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import com.seanxxotick.classhub.ui.ledger.ChargeStudentsScreen
+import com.seanxxotick.classhub.ui.ledger.PayoutFormScreen
+import com.seanxxotick.classhub.ui.ledger.RecordFormScreen
 import com.seanxxotick.classhub.ui.auth.AuthScreen
 import com.seanxxotick.classhub.ui.auth.AuthViewModel
 import com.seanxxotick.classhub.ui.auth.Session
@@ -62,6 +68,8 @@ private object Routes {
     const val ROLES = "class/{classId}/roles"
     const val ROLE = "class/{classId}/roles/{roleId}"
     const val COURSES = "class/{classId}/courses"
+    const val RECORD = "class/{classId}/record/{type}?batch={batch}"
+    const val CHARGE = "class/{classId}/charge"
     const val NEW_ROLE = "new"
 
     fun classRoute(classId: String) = "class/$classId"
@@ -69,6 +77,9 @@ private object Routes {
     fun rolesRoute(classId: String) = "class/$classId/roles"
     fun roleRoute(classId: String, roleId: String) = "class/$classId/roles/$roleId"
     fun coursesRoute(classId: String) = "class/$classId/courses"
+    fun recordRoute(classId: String, type: RecordType) =
+        if (type == RecordType.CHARGE) "class/$classId/charge" else "class/$classId/record/${type.name}"
+    fun payoutRoute(classId: String, batchId: String) = "class/$classId/record/${RecordType.EXPENSE.name}?batch=$batchId"
 }
 
 /**
@@ -142,6 +153,10 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
                 onOpenMember = { nav.navigate(Routes.memberRoute(classId, it)) },
                 onOpenRoles = { nav.navigate(Routes.rolesRoute(classId)) },
                 onOpenCourses = { nav.navigate(Routes.coursesRoute(classId)) },
+                onAddRecord = { type -> nav.navigate(Routes.recordRoute(classId, type)) },
+                onDeleteRecord = vm::deleteRecord,
+                onUndoCharge = vm::undoCharge,
+                onRecordPayout = { batchId -> nav.navigate(Routes.payoutRoute(classId, batchId)) },
                 onClearNotice = vm::clearNotice,
                 onRemoved = { vm.forgetClass(); nav.popBackStack(Routes.CLASSES, inclusive = false) },
                 onBack = { nav.popBackStack() },
@@ -193,6 +208,53 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
                 notice = notice,
                 onSave = { role -> vm.saveRole(role) { nav.popBackStack() } },
                 onDelete = { role -> vm.deleteRole(role) { nav.popBackStack() } },
+                onClearNotice = vm::clearNotice,
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable(
+            Routes.RECORD,
+            arguments = listOf(navArgument("batch") { type = NavType.StringType; defaultValue = "" }),
+        ) { entry ->
+            val type = runCatching { RecordType.valueOf(entry.arguments?.getString("type").orEmpty()) }.getOrDefault(RecordType.PAYMENT)
+            val vm = classViewModel(nav, entry, user)
+            val state by vm.state.collectAsState()
+            val busy by vm.busy.collectAsState()
+            val notice by vm.notice.collectAsState()
+            if (type == RecordType.EXPENSE) {
+                PayoutFormScreen(
+                    state = state,
+                    preselectedBatchId = entry.arguments?.getString("batch").orEmpty(),
+                    busy = busy,
+                    notice = notice,
+                    onSave = { charge, paidTo, date -> vm.addPayout(charge, paidTo, date) { nav.popBackStack() } },
+                    onClearNotice = vm::clearNotice,
+                    onBack = { nav.popBackStack() },
+                )
+            } else {
+                RecordFormScreen(
+                    state = state,
+                    type = type,
+                    busy = busy,
+                    notice = notice,
+                    onSave = { record -> vm.addRecord(record) { nav.popBackStack() } },
+                    onClearNotice = vm::clearNotice,
+                    onBack = { nav.popBackStack() },
+                )
+            }
+        }
+        composable(Routes.CHARGE) { entry ->
+            val vm = classViewModel(nav, entry, user)
+            val state by vm.state.collectAsState()
+            val busy by vm.busy.collectAsState()
+            val notice by vm.notice.collectAsState()
+            ChargeStudentsScreen(
+                state = state,
+                busy = busy,
+                notice = notice,
+                onCharge = { preview, note, courseId, date, payNow, paidTo ->
+                    vm.chargeStudents(preview, note, courseId, date, payNow, paidTo) { nav.popBackStack() }
+                },
                 onClearNotice = vm::clearNotice,
                 onBack = { nav.popBackStack() },
             )

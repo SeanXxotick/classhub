@@ -103,6 +103,14 @@ Modeled on the class spreadsheet, which has Payment, Charge and "Reimbursed" row
 - The sheet's "Reimbursed" label covered both Withdrawal (with a name) and Pay out from fund (without one); the app separates them.
 - Wording note: the class says "expense" for what the code calls `CHARGE`, so the screens use plain action names ("Charge students", "Pay out from fund") instead of the code names.
 
+### Pay-outs settle charges (the cross-check)
+
+- **Every pay-out settles exactly one charge**, for exactly that charge's total (`settlesBatchId` links them; the amount is filled in and cannot be edited). There are no unlinked pay-outs, so money never leaves the fund without being charged to someone. An optional `paidTo` names who received it.
+- A charge is either **Not yet paid out** or **Paid out**. The "To pay out" filter lists unpaid charges, oldest first. A charge's details have a **Record pay-out** button.
+- The **Charge students** form has "Also record the pay-out now" for money spent the same day; the charge and its pay-out are saved in one batch.
+- A paid-out charge cannot be undone until its pay-out is deleted. One student's share of a charge cannot be deleted on its own.
+- Dashboard: **Waiting to be paid out** (unpaid charges), **Available cash** (cash on hand minus that), and the **books check**: cash on hand must equal all balances plus charges waiting to be paid out. "Books balanced" or "Books off by X".
+
 ### Charging by course
 
 - The class has a list of **courses**. Each member stores the courses they do **not** take (`excludedCourseIds`), so a new course includes everyone and only exceptions are marked.

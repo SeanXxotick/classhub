@@ -46,8 +46,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.ExtendedFloatingActionButton
+import com.seanxxotick.classhub.data.model.LedgerRecord
 import com.seanxxotick.classhub.data.model.Member
 import com.seanxxotick.classhub.data.model.Permission
+import com.seanxxotick.classhub.data.model.RecordType
+import com.seanxxotick.classhub.domain.LedgerEntry
+import com.seanxxotick.classhub.domain.LedgerView
+import com.seanxxotick.classhub.ui.ledger.AddRecordChooser
+import com.seanxxotick.classhub.ui.ledger.EntryRow
+import com.seanxxotick.classhub.ui.ledger.FundSummaryCard
+import com.seanxxotick.classhub.ui.ledger.LedgerTab
+import com.seanxxotick.classhub.ui.ledger.balanceText
 import com.seanxxotick.classhub.ui.common.Initials
 import com.seanxxotick.classhub.ui.common.RoleChip
 import com.seanxxotick.classhub.ui.common.initialsOf
@@ -72,6 +82,10 @@ fun ClassScreen(
     onOpenMember: (String) -> Unit,
     onOpenRoles: () -> Unit,
     onOpenCourses: () -> Unit,
+    onAddRecord: (RecordType) -> Unit,
+    onDeleteRecord: (LedgerRecord) -> Unit,
+    onUndoCharge: (LedgerEntry.ChargeBatch) -> Unit,
+    onRecordPayout: (String) -> Unit,
     onClearNotice: () -> Unit,
     onRemoved: () -> Unit,
     onBack: () -> Unit,
@@ -90,6 +104,7 @@ fun ClassScreen(
         }
         val tab = tabs.firstOrNull { it.name == tabName } ?: ClassTab.HOME
         val snackbar = remember { SnackbarHostState() }
+        var choosingRecord by remember { mutableStateOf(false) }
         LaunchedEffect(notice) {
             if (notice != null) {
                 snackbar.showSnackbar(notice)
@@ -117,6 +132,11 @@ fun ClassScreen(
                 }
             },
             snackbarHost = { SnackbarHost(snackbar) },
+            floatingActionButton = {
+                if (tab == ClassTab.LEDGER && state.can(Permission.RECORDS_MANAGE)) {
+                    ExtendedFloatingActionButton(onClick = { choosingRecord = true }) { Text("+  New record") }
+                }
+            },
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 when {
@@ -129,13 +149,20 @@ fun ClassScreen(
                     )
                     room == null || state.me == null -> Unit
                     else -> when (tab) {
-                        ClassTab.HOME -> HomeTab(state, busy, onRegenerateCode, onOpenRoles, onOpenCourses)
+                        ClassTab.HOME -> HomeTab(state, myUid, busy, onRegenerateCode, onOpenRoles, onOpenCourses, onSeeLedger = { tabName = ClassTab.LEDGER.name })
                         ClassTab.MEMBERS -> MembersTab(state, myUid, onOpenMember)
-                        ClassTab.LEDGER -> ComingSoon("Ledger", "Payments, charges by course, withdrawals and pay-outs will appear here.")
+                        ClassTab.LEDGER -> LedgerTab(state, myUid, onDeleteRecord, onUndoCharge, onRecordPayout)
                         ClassTab.SCHEDULE -> ComingSoon("Schedule", "Deadlines, quizzes and exams will appear here.")
                     }
                 }
             }
+        }
+
+        if (choosingRecord) {
+            AddRecordChooser(
+                onPick = { type -> choosingRecord = false; onAddRecord(type) },
+                onDismiss = { choosingRecord = false },
+            )
         }
     }
 }
@@ -143,10 +170,12 @@ fun ClassScreen(
 @Composable
 private fun HomeTab(
     state: ClassUiState,
+    myUid: String,
     busy: Boolean,
     onRegenerateCode: () -> Unit,
     onOpenRoles: () -> Unit,
     onOpenCourses: () -> Unit,
+    onSeeLedger: () -> Unit,
 ) {
     val room = state.room ?: return
     val myRole = state.myRole
@@ -170,6 +199,34 @@ private fun HomeTab(
                         color = MaterialTheme.colorScheme.onPrimary,
                         fontWeight = FontWeight.SemiBold,
                     )
+                }
+            }
+        }
+
+        if (room.ledgerEnabled) {
+            item { FundSummaryCard(state.records) }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(vertical = 12.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Your balance", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(balanceText(state.balanceOf(myUid)), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            }
+                            TextButton(onClick = onSeeLedger) { Text("Ledger ›") }
+                        }
+                        val recent = LedgerView.entries(state.records).take(3)
+                        if (recent.isNotEmpty()) {
+                            Text(
+                                "RECENT",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 16.dp, top = 8.dp),
+                            )
+                            recent.forEach { EntryRow(it, state) }
+                        }
+                    }
                 }
             }
         }
@@ -304,11 +361,15 @@ private fun MemberRow(member: Member, state: ClassUiState, isMe: Boolean, onClic
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(if (isMe) "${member.name} (you)" else member.name, fontWeight = FontWeight.SemiBold)
-            if (skipped > 0) {
+            val details = listOfNotNull(
+                if (state.room?.ledgerEnabled != false) balanceText(state.balanceOf(member.id)) else null,
+                if (skipped > 0) "Does not take $skipped course${if (skipped == 1) "" else "s"}" else null,
+            )
+            if (details.isNotEmpty()) {
                 Text(
-                    "Does not take $skipped course${if (skipped == 1) "" else "s"}",
+                    details.joinToString("  ·  "),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (state.balanceOf(member.id) < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

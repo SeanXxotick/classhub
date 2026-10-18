@@ -101,6 +101,8 @@ data class Course(
  * Money is stored as whole centavos (Long) so balances never drift.
  * [memberId] is empty for an EXPENSE. Charging many members creates one record per member,
  * all sharing the same [batchId] so the whole charge can be undone together.
+ * Every EXPENSE (pay-out) settles exactly one charge: [settlesBatchId] is that charge's batch id,
+ * and its amount equals the charge's total. [paidTo] optionally names who received the money.
  */
 data class LedgerRecord(
     val id: String = "",
@@ -113,6 +115,8 @@ data class LedgerRecord(
     val batchId: String = "",
     val courseId: String = "",
     val createdByUid: String = "",
+    val settlesBatchId: String = "",
+    val paidTo: String = "",
 )
 
 /** Firestore: classes/{classId}/schedule/{id} */

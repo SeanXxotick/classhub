@@ -4,15 +4,24 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.seanxxotick.classhub.data.model.ClassRoom
 import com.seanxxotick.classhub.data.model.Course
+import com.seanxxotick.classhub.data.model.LedgerRecord
 import com.seanxxotick.classhub.data.model.Member
 import com.seanxxotick.classhub.data.model.Permission
+import com.seanxxotick.classhub.data.model.RecordType
 import com.seanxxotick.classhub.data.model.Role
 import com.seanxxotick.classhub.data.repository.ClassRepository
 import com.seanxxotick.classhub.data.repository.CourseRepository
+import com.seanxxotick.classhub.data.repository.LedgerRepository
 import com.seanxxotick.classhub.data.repository.MemberRepository
 import com.seanxxotick.classhub.data.repository.RoleRepository
+import com.seanxxotick.classhub.domain.ChargePlanner
+import com.seanxxotick.classhub.domain.ChargePreview
 import com.seanxxotick.classhub.domain.CourseRules
+import com.seanxxotick.classhub.domain.Ledger
+import com.seanxxotick.classhub.domain.LedgerEntry
+import com.seanxxotick.classhub.domain.LedgerForms
 import com.seanxxotick.classhub.domain.MemberRules
+import com.seanxxotick.classhub.domain.Money
 import com.seanxxotick.classhub.domain.RoleRules
 import com.seanxxotick.classhub.domain.can
 import com.seanxxotick.classhub.ui.common.friendlyMessage
@@ -24,6 +33,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 data class ClassUiState(
     val loading: Boolean = true,
@@ -32,8 +42,14 @@ data class ClassUiState(
     val roles: List<Role> = emptyList(),
     val members: List<Member> = emptyList(),
     val courses: List<Course> = emptyList(),
+    val records: List<LedgerRecord> = emptyList(),
     val error: String? = null,
 ) {
+    /** Current balance of every member, in centavos. */
+    val balances: Map<String, Long> by lazy { Ledger.memberBalances(members, records) }
+
+    fun balanceOf(memberId: String): Long = balances[memberId] ?: 0L
+
     /** The class is gone, or this user is no longer in it. */
     val removed: Boolean get() = !loading && error == null && (room == null || me == null)
 
@@ -55,16 +71,20 @@ class ClassViewModel(
     private val memberRepo: MemberRepository = MemberRepository(classId),
     private val roleRepo: RoleRepository = RoleRepository(classId),
     private val courseRepo: CourseRepository = CourseRepository(classId),
+    private val ledgerRepo: LedgerRepository = LedgerRepository(classId),
 ) : ViewModel() {
     val state: StateFlow<ClassUiState> = combine(
-        classRepo.observeClass(classId),
-        memberRepo.observeMember(uid),
-        roleRepo.observeRoles(),
-        memberRepo.observeMembers(),
-        courseRepo.observeCourses(),
-    ) { room, me, roles, members, courses ->
-        ClassUiState(loading = false, room = room, me = me, roles = roles, members = members, courses = courses)
-    }
+        combine(
+            classRepo.observeClass(classId),
+            memberRepo.observeMember(uid),
+            roleRepo.observeRoles(),
+            memberRepo.observeMembers(),
+            courseRepo.observeCourses(),
+        ) { room, me, roles, members, courses ->
+            ClassUiState(loading = false, room = room, me = me, roles = roles, members = members, courses = courses)
+        },
+        ledgerRepo.observeRecords(),
+    ) { base, records -> base.copy(records = records) }
         .catch { emit(ClassUiState(loading = false, error = friendlyMessage(it))) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ClassUiState())
 
@@ -169,6 +189,108 @@ class ClassViewModel(
             return
         }
         runAction("Deleted ${course.name}.", onDone) { courseRepo.delete(course.id) }
+    }
+
+    // ---- Ledger ----
+
+    /** Payment or Withdrawal. Re-checks the form against the live balance before saving. */
+    fun addRecord(record: LedgerRecord, onDone: () -> Unit = {}) {
+        val s = state.value
+        if (!s.can(Permission.RECORDS_MANAGE)) {
+            _notice.value = "You do not have permission to add ledger records."
+            return
+        }
+        val error = LedgerForms.checkRecord(
+            type = record.type,
+            amountCentavos = record.amountCentavos.takeIf { it > 0 },
+            memberId = record.memberId,
+            memberBalanceCentavos = record.memberId.takeIf { it.isNotEmpty() }?.let { s.balanceOf(it) },
+        )
+        if (error != null) {
+            _notice.value = error
+            return
+        }
+        val label = when (record.type) {
+            RecordType.WITHDRAWAL -> "Withdrawal of ${Money.format(record.amountCentavos)} by ${record.memberName} saved."
+            else -> "Payment of ${Money.format(record.amountCentavos)} from ${record.memberName} saved."
+        }
+        runAction(label, onDone) { ledgerRepo.add(record.copy(createdByUid = uid)) }
+    }
+
+    /** Pays out a charge in full. The amount is always the charge's total. */
+    fun addPayout(charge: LedgerEntry.ChargeBatch?, paidTo: String, dateMillis: Long, onDone: () -> Unit = {}) {
+        val s = state.value
+        if (!s.can(Permission.RECORDS_MANAGE)) {
+            _notice.value = "You do not have permission to record pay-outs."
+            return
+        }
+        val alreadyPaid = charge != null && charge.batchId in Ledger.paidOutBatchIds(s.records)
+        LedgerForms.checkPayout(charge, alreadyPaid)?.let {
+            _notice.value = it
+            return
+        }
+        val c = charge ?: return
+        val payout = ChargePlanner.buildPayout(c.batchId, c.totalCentavos, c.note, dateMillis, paidTo).copy(createdByUid = uid)
+        runAction("Paid out ${Money.format(c.totalCentavos)} for \"${c.note}\".", onDone) { ledgerRepo.add(payout) }
+    }
+
+    /**
+     * Charges every member in [preview] the same amount, as one undoable batch.
+     * With [payNow], the pay-out for the full total is saved in the same batch.
+     */
+    fun chargeStudents(
+        preview: ChargePreview,
+        note: String,
+        courseId: String,
+        dateMillis: Long,
+        payNow: Boolean,
+        paidTo: String,
+        onDone: () -> Unit = {},
+    ) {
+        if (!state.value.can(Permission.RECORDS_MANAGE)) {
+            _notice.value = "You do not have permission to charge students."
+            return
+        }
+        val error = LedgerForms.checkCharge(preview.perMemberCentavos.takeIf { it > 0 }, note, preview.charged.size)
+        if (error != null) {
+            _notice.value = error
+            return
+        }
+        val batchId = UUID.randomUUID().toString()
+        val charges = ChargePlanner.buildRecords(preview, note.trim(), courseId, dateMillis, batchId)
+        val payout = if (payNow) listOf(ChargePlanner.buildPayout(batchId, preview.totalCentavos, note.trim(), dateMillis, paidTo)) else emptyList()
+        val records = (charges + payout).map { it.copy(createdByUid = uid) }
+        val message = "Charged ${preview.charged.size} student${if (preview.charged.size == 1) "" else "s"} " +
+            "${Money.format(preview.perMemberCentavos)} each (${Money.format(preview.totalCentavos)} in total)" +
+            if (payNow) " and recorded the pay-out." else "."
+        runAction(message, onDone) { ledgerRepo.addAll(records) }
+    }
+
+    fun deleteRecord(record: LedgerRecord) {
+        if (!state.value.can(Permission.RECORDS_MANAGE)) {
+            _notice.value = "You do not have permission to delete ledger records."
+            return
+        }
+        if (record.type == RecordType.CHARGE && record.batchId.isNotEmpty()) {
+            _notice.value = "This is part of a charge to several students. Use Undo charge on the charge instead."
+            return
+        }
+        val message = if (record.type == RecordType.EXPENSE) "Pay-out deleted. Its charge is waiting to be paid out again." else "Record deleted."
+        runAction(message) { ledgerRepo.delete(record.id) }
+    }
+
+    fun undoCharge(batch: LedgerEntry.ChargeBatch) {
+        if (!state.value.can(Permission.RECORDS_MANAGE)) {
+            _notice.value = "You do not have permission to undo charges."
+            return
+        }
+        if (batch.batchId in Ledger.paidOutBatchIds(state.value.records)) {
+            _notice.value = "This charge has already been paid out. Delete its pay-out first, then undo the charge."
+            return
+        }
+        runAction("Charge \"${batch.note}\" undone for ${batch.count} student${if (batch.count == 1) "" else "s"}.") {
+            ledgerRepo.deleteBatch(batch.batchId)
+        }
     }
 
     /** Drops this class from "My classes" after the user was removed or the class was deleted. */

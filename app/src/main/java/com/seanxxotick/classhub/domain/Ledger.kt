@@ -36,6 +36,29 @@ object Ledger {
         return members.associate { it.id to (byMember[it.id] ?: 0L) }
     }
 
+    /** Batch ids of charges that a pay-out has settled. */
+    fun paidOutBatchIds(records: List<LedgerRecord>): Set<String> =
+        records.filter { it.type == RecordType.EXPENSE && it.settlesBatchId.isNotEmpty() }.map { it.settlesBatchId }.toSet()
+
+    /** Money charged to students that has not been paid out yet (still owed to professors and others). */
+    fun awaitingPayout(records: List<LedgerRecord>): Long {
+        val paid = paidOutBatchIds(records)
+        return records.filter { it.type == RecordType.CHARGE && it.batchId.isNotEmpty() && it.batchId !in paid }.sumOf { it.amountCentavos }
+    }
+
+    /** Cash that is not already owed for a charge. */
+    fun availableCash(records: List<LedgerRecord>): Long = cashOnHand(records) - awaitingPayout(records)
+
+    /**
+     * The books balance when cash on hand equals everyone's balances plus charges not yet paid out.
+     * Returns the difference in centavos: 0 means balanced. Every member who ever had a record counts,
+     * including people who were later removed from the class.
+     */
+    fun booksDifference(records: List<LedgerRecord>): Long {
+        val allBalances = records.filter { it.memberId.isNotEmpty() }.sumOf { memberDelta(it) }
+        return cashOnHand(records) - allBalances - awaitingPayout(records)
+    }
+
     fun status(balanceCentavos: Long): BalanceStatus = when {
         balanceCentavos < 0 -> BalanceStatus.OWES
         balanceCentavos > 0 -> BalanceStatus.CREDIT

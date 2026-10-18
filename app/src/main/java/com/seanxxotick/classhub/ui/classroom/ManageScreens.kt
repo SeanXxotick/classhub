@@ -55,6 +55,10 @@ import com.seanxxotick.classhub.data.model.Member
 import com.seanxxotick.classhub.data.model.Permission
 import com.seanxxotick.classhub.data.model.Role
 import com.seanxxotick.classhub.domain.CourseRules
+import com.seanxxotick.classhub.domain.LedgerEntry
+import com.seanxxotick.classhub.domain.LedgerView
+import com.seanxxotick.classhub.ui.ledger.EntryRow
+import com.seanxxotick.classhub.ui.ledger.balanceText
 import com.seanxxotick.classhub.domain.MemberRules
 import com.seanxxotick.classhub.domain.RoleRules
 import com.seanxxotick.classhub.ui.common.AccentPicker
@@ -197,6 +201,23 @@ private fun MemberDetailContent(
                 RoleChip(currentRole?.name ?: "No role", currentRole?.colorHex ?: "#6B768A")
             }
             HorizontalDivider()
+        }
+
+        // Balance
+        if (state.room?.ledgerEnabled != false) {
+            item { SectionLabel("Balance") }
+            item {
+                Text(
+                    balanceText(state.balanceOf(member.id)),
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (state.balanceOf(member.id) < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
+            items(LedgerView.statement(member.id, state.records).take(5), key = { "st-" + it.id }) { record ->
+                EntryRow(LedgerEntry.Single(record), state)
+            }
         }
 
         // Role
