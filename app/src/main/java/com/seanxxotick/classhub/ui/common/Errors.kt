@@ -16,8 +16,8 @@ fun friendlyMessage(error: Throwable): String = when (error) {
     is FirebaseAuthInvalidCredentialsException -> "The email or password is incorrect."
     is FirebaseNetworkException -> "No internet connection. Check your connection and try again."
     is FirebaseFirestoreException -> when (error.code) {
-        FirebaseFirestoreException.Code.PERMISSION_DENIED -> "You don't have permission to do that."
-        FirebaseFirestoreException.Code.UNAVAILABLE -> "Can't reach the server. Check your connection and try again."
+        FirebaseFirestoreException.Code.PERMISSION_DENIED -> "You do not have permission to do that."
+        FirebaseFirestoreException.Code.UNAVAILABLE -> "Cannot reach the server. Check your connection and try again."
         else -> "Something went wrong (${error.code.name}). Please try again."
     }
     else -> error.message?.takeIf { it.isNotBlank() } ?: "Something went wrong. Please try again."

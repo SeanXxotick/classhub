@@ -22,14 +22,14 @@ class RoleRepository(
 
     /** Creates a role (blank id) or updates an existing one. Locked roles are refused. */
     suspend fun save(role: Role) {
-        require(RoleRules.canEdit(role)) { "The ${role.name} role can't be changed." }
+        require(RoleRules.canEdit(role)) { "The ${role.name} role cannot be changed." }
         val clean = role.copy(permissions = RoleRules.sanitize(role.permissions))
         if (role.id.isEmpty()) roles.add(clean).await() else roles.document(role.id).set(clean).await()
     }
 
     /** Deletes a role and moves everyone who had it to [defaultRoleId], all in one batch. */
     suspend fun delete(role: Role, defaultRoleId: String) {
-        require(RoleRules.canDelete(role, defaultRoleId)) { "The ${role.name} role can't be deleted." }
+        require(RoleRules.canDelete(role, defaultRoleId)) { "The ${role.name} role cannot be deleted." }
         val affected = members.whereEqualTo("roleId", role.id).get().await().documents
         val batch = db.batch()
         affected.forEach { batch.update(it.reference, "roleId", defaultRoleId) }

@@ -78,13 +78,13 @@ class ClassRepository(private val db: FirebaseFirestore = FirebaseFirestore.getI
         require(InviteCode.isValid(code)) { "Invite codes have ${InviteCode.LENGTH} letters and numbers." }
 
         val invite = invites.document(code).get().await()
-        require(invite.exists()) { "That code doesn't match any class." }
+        require(invite.exists()) { "That code does not match any class." }
         val classId = invite.getString("classId").orEmpty()
         val className = invite.getString("className").orEmpty()
         val roleId = invite.getString("defaultRoleId").orEmpty().ifBlank { ROLE_MEMBER }
 
         val alreadyIn = memberships(uid).document(classId).get().await().exists()
-        require(!alreadyIn) { "You're already in $className." }
+        require(!alreadyIn) { "You are already in $className." }
 
         val now = System.currentTimeMillis()
         val batch = db.batch()

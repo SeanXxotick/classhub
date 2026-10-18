@@ -141,7 +141,7 @@ fun JoinClassScreen(state: ClassActionState, onJoin: (String) -> Unit, onBack: (
                 if (state.busy) CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.height(20.dp)) else Text("Join class")
             }
             Text(
-                "You'll join as a Member. The Mayor can give you an officer role afterward.",
+                "You will join as a Member. The Mayor can give you an officer role afterward.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

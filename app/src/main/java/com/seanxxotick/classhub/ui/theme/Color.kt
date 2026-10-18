@@ -15,6 +15,9 @@ val Danger = Color(0xFFB91C1C)
 /** Accent choices offered when creating a class or editing its settings. */
 val AccentChoices = listOf("#0F766E", "#6366F1", "#DB2777", "#EA580C", "#2563EB", "#7C3AED")
 
+/** Color choices for roles in the role editor. */
+val RoleColorChoices = listOf("#15803D", "#3730A3", "#BE123C", "#EA580C", "#0369A1", "#A21CAF", "#6B768A")
+
 /** "#0F766E" -> Color. Falls back to [fallback] for anything that isn't a valid #RRGGBB value. */
 fun hexToColor(hex: String, fallback: Color = Brand): Color {
     val digits = hex.removePrefix("#")

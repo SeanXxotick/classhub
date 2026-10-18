@@ -140,7 +140,7 @@ private fun EmptyClasses(name: String, error: String?, modifier: Modifier = Modi
         Text("Hi, $name!", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(
-            "You're not in any classes yet. Tap \"Add a class\" to create one or join with a code.",
+            "You are not in any classes yet. Tap \"Add a class\" to create one or join with a code.",
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

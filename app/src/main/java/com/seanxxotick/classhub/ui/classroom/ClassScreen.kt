@@ -1,6 +1,7 @@
 package com.seanxxotick.classhub.ui.classroom
 
 import android.content.Intent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +69,9 @@ fun ClassScreen(
     busy: Boolean,
     notice: String?,
     onRegenerateCode: () -> Unit,
+    onOpenMember: (String) -> Unit,
+    onOpenRoles: () -> Unit,
+    onOpenCourses: () -> Unit,
     onClearNotice: () -> Unit,
     onRemoved: () -> Unit,
     onBack: () -> Unit,
@@ -125,8 +129,8 @@ fun ClassScreen(
                     )
                     room == null || state.me == null -> Unit
                     else -> when (tab) {
-                        ClassTab.HOME -> HomeTab(state, busy, onRegenerateCode)
-                        ClassTab.MEMBERS -> MembersTab(state, myUid)
+                        ClassTab.HOME -> HomeTab(state, busy, onRegenerateCode, onOpenRoles, onOpenCourses)
+                        ClassTab.MEMBERS -> MembersTab(state, myUid, onOpenMember)
                         ClassTab.LEDGER -> ComingSoon("Ledger", "Payments, charges by course, withdrawals and pay-outs will appear here.")
                         ClassTab.SCHEDULE -> ComingSoon("Schedule", "Deadlines, quizzes and exams will appear here.")
                     }
@@ -137,7 +141,13 @@ fun ClassScreen(
 }
 
 @Composable
-private fun HomeTab(state: ClassUiState, busy: Boolean, onRegenerateCode: () -> Unit) {
+private fun HomeTab(
+    state: ClassUiState,
+    busy: Boolean,
+    onRegenerateCode: () -> Unit,
+    onOpenRoles: () -> Unit,
+    onOpenCourses: () -> Unit,
+) {
     val room = state.room ?: return
     val myRole = state.myRole
     var confirmNewCode by remember { mutableStateOf(false) }
@@ -199,6 +209,28 @@ private fun HomeTab(state: ClassUiState, busy: Boolean, onRegenerateCode: () -> 
             }
         }
 
+        val canRoles = state.can(Permission.ROLES_MANAGE)
+        val canCourses = state.can(Permission.CLASS_SETTINGS)
+        if (canRoles || canCourses) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(18.dp)) {
+                        Text("Manage", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Officer roles and the courses your class takes.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if (canRoles) OutlinedButton(onClick = onOpenRoles) { Text("Roles (${state.roles.size})") }
+                            if (canCourses) OutlinedButton(onClick = onOpenCourses) { Text("Courses (${state.courses.size})") }
+                        }
+                    }
+                }
+            }
+        }
+
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(18.dp)) {
@@ -239,34 +271,47 @@ private fun PermissionLine(label: String, allowed: Boolean) {
 }
 
 @Composable
-private fun MembersTab(state: ClassUiState, myUid: String) {
+private fun MembersTab(state: ClassUiState, myUid: String, onOpenMember: (String) -> Unit) {
+    val canManage = state.can(Permission.MEMBERS_MANAGE)
     LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
         item {
             Text(
-                "${state.members.size} member${if (state.members.size == 1) "" else "s"}",
+                "${state.members.size} member${if (state.members.size == 1) "" else "s"}" +
+                    if (canManage) "  ·  Tap someone to set their role or courses" else "",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
-        items(state.members, key = { it.id }) { member -> MemberRow(member, state, isMe = member.id == myUid) }
+        items(state.members, key = { it.id }) { member ->
+            MemberRow(member, state, isMe = member.id == myUid, onClick = if (canManage) ({ onOpenMember(member.id) }) else null)
+        }
     }
 }
 
 @Composable
-private fun MemberRow(member: Member, state: ClassUiState, isMe: Boolean) {
+private fun MemberRow(member: Member, state: ClassUiState, isMe: Boolean, onClick: (() -> Unit)?) {
     val role = state.roleOf(member)
+    val skipped = state.courses.count { it.id in member.excludedCourseIds }
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Initials(initialsOf(member.name), hexToColor(role?.colorHex ?: "#6B768A"), circle = true)
         Spacer(Modifier.width(12.dp))
-        Text(
-            if (isMe) "${member.name} (you)" else member.name,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(1f),
-        )
+        Column(Modifier.weight(1f)) {
+            Text(if (isMe) "${member.name} (you)" else member.name, fontWeight = FontWeight.SemiBold)
+            if (skipped > 0) {
+                Text(
+                    "Does not take $skipped course${if (skipped == 1) "" else "s"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         RoleChip(role?.name ?: "No role", role?.colorHex ?: "#6B768A")
     }
 }
