@@ -37,19 +37,19 @@ Default roles created with every class:
 
 ```
 users/{uid}
-    displayName, email, themeMode (SYSTEM|LIGHT|DARK), startTab
+    displayName, email                   (theme and start tab are stored on the device)
 users/{uid}/memberships/{classId}
-    className, roleId                    (the "my classes" list)
+    className, joinedAtMillis            (the "My classes" list; a person's role is read from the class itself)
 
 invites/{code}
-    classId                              (readable by any signed-in user, one doc at a time)
+    classId, className, defaultRoleId    (readable by any signed-in user, one doc at a time)
 
 classes/{classId}
-    name, ownerUid, accentColor, inviteCode, defaultRoleId,
-    modules { ledger: true, schedule: true }, createdAtMillis
+    name, description, ownerUid, accentColor, inviteCode, defaultRoleId,
+    ledgerEnabled, scheduleEnabled, createdAtMillis
 
 classes/{classId}/roles/{roleId}
-    name, color, permissions: [String], isSystem
+    name, colorHex, permissions: [String], locked   (Mayor is locked)
 
 classes/{classId}/courses/{courseId}
     name
@@ -113,7 +113,7 @@ Modeled on the class spreadsheet, which has Payment, Charge and "Reimbursed" row
 ## Customization
 
 **Per class** (needs `CLASS_SETTINGS`): name, accent color, ledger and schedule modules on or off.
-**Per user:** light, dark or system theme, and which tab opens first.
+**Per user** (saved on the device): light, dark or system theme, and which tab opens first.
 **Roles:** fully editable by anyone with `ROLES_MANAGE`.
 
 ## Phases
@@ -148,8 +148,9 @@ Modeled on the class spreadsheet, which has Payment, Charge and "Reimbursed" row
 
 ## What carries over from the code written so far
 
-- Done: `Money`, `Ledger` (four record types), `ChargePlanner` (charge by course), `ScheduleLogic`, and 31 unit tests.
-- To change in the class refactor: remove `group` from the models and the fixed `Role` enum, add class, role and permission models, move repository paths under `classes/{classId}`, and make `AuthRepository` read the role from the class membership.
+- Done: `Money`, `Ledger` (four record types), `ChargePlanner` (charge by course), `ScheduleLogic`, `Permissions` (default roles and role rules), `InviteCode`.
+- Done (class refactor): models for classes, roles, members and courses; repositories for auth, classes (create, join by code, regenerate code, settings), roles, members, courses, ledger and schedule, all working inside `classes/{classId}`; 48 unit tests.
+- Known limitation: a person's "My classes" entry lives in their own account area, so it can show a stale class name after a rename, and it stays until they open the class and find they were removed. The app handles that by dropping the entry when the class no longer lists them.
 
 ## Deadline
 

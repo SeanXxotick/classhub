@@ -7,16 +7,19 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 
-class ScheduleRepository(private val db: FirebaseFirestore = FirebaseFirestore.getInstance()) {
-    private val items = db.collection("schedule")
+class ScheduleRepository(
+    classId: String,
+    db: FirebaseFirestore = FirebaseFirestore.getInstance(),
+) {
+    private val items = db.collection("classes").document(classId).collection("schedule")
 
-    /** Soonest first. Items with group 0 apply to the whole class, so the screen filters by group itself. */
+    /** Soonest first. */
     fun observeItems(): Flow<List<ScheduleItem>> =
         items.listFlow<ScheduleItem> { item, id -> item.copy(id = id) }
             .map { list -> list.sortedBy { it.dueMillis } }
 
     suspend fun add(item: ScheduleItem) {
-        items.add(item.copy(id = "")).await()
+        items.add(item).await()
     }
 
     suspend fun setStatus(itemId: String, status: ScheduleStatus) {
