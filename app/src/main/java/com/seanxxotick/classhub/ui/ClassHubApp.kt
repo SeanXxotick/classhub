@@ -1,6 +1,12 @@
 package com.seanxxotick.classhub.ui
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.CompositionLocalProvider
+import com.seanxxotick.classhub.settings.AppSettings
+import com.seanxxotick.classhub.settings.ThemeMode
+import com.seanxxotick.classhub.ui.account.AccountScreen
+import com.seanxxotick.classhub.ui.theme.LocalDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -45,17 +51,24 @@ import com.seanxxotick.classhub.ui.theme.ClassHubTheme
 @Composable
 fun ClassHubApp(authVm: AuthViewModel = viewModel()) {
     val session by authVm.session.collectAsState()
-    ClassHubTheme {
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            when (val s = session) {
-                Session.Loading -> Box(Modifier.fillMaxSize()) {
-                    CircularProgressIndicator(Modifier.align(Alignment.Center))
+    val dark = when (AppSettings.themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+    CompositionLocalProvider(LocalDarkTheme provides dark) {
+        ClassHubTheme(darkTheme = dark) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                when (val s = session) {
+                    Session.Loading -> Box(Modifier.fillMaxSize()) {
+                        CircularProgressIndicator(Modifier.align(Alignment.Center))
+                    }
+                    Session.SignedOut -> {
+                        val ui by authVm.ui.collectAsState()
+                        AuthScreen(ui, authVm::signIn, authVm::signUp, authVm::clearError)
+                    }
+                    is Session.SignedIn -> SignedInApp(s.user, onSignOut = authVm::signOut)
                 }
-                Session.SignedOut -> {
-                    val ui by authVm.ui.collectAsState()
-                    AuthScreen(ui, authVm::signIn, authVm::signUp, authVm::clearError)
-                }
-                is Session.SignedIn -> SignedInApp(s.user, onSignOut = authVm::signOut)
             }
         }
     }
@@ -63,6 +76,7 @@ fun ClassHubApp(authVm: AuthViewModel = viewModel()) {
 
 private object Routes {
     const val CLASSES = "classes"
+    const val ACCOUNT = "account"
     const val CREATE = "create"
     const val JOIN = "join"
     const val CLASS = "class/{classId}"
@@ -116,8 +130,11 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
                 onOpenClass = { nav.navigate(Routes.classRoute(it)) },
                 onCreate = { classesVm.clearError(); nav.navigate(Routes.CREATE) },
                 onJoin = { classesVm.clearError(); nav.navigate(Routes.JOIN) },
-                onSignOut = onSignOut,
+                onOpenAccount = { nav.navigate(Routes.ACCOUNT) },
             )
+        }
+        composable(Routes.ACCOUNT) {
+            AccountScreen(user = user, onSignOut = onSignOut, onBack = { nav.popBackStack() })
         }
         composable(Routes.CREATE) {
             val action by classesVm.action.collectAsState()

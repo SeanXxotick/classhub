@@ -47,16 +47,15 @@ fun ClassesScreen(
     onOpenClass: (String) -> Unit,
     onCreate: () -> Unit,
     onJoin: () -> Unit,
-    onSignOut: () -> Unit,
+    onOpenAccount: () -> Unit,
 ) {
     var showAdd by remember { mutableStateOf(false) }
-    var confirmSignOut by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("My classes", fontWeight = FontWeight.Bold) },
-                actions = { TextButton(onClick = { confirmSignOut = true }) { Text("Sign out") } },
+                actions = { TextButton(onClick = onOpenAccount) { Text("Account") } },
             )
         },
         floatingActionButton = {
@@ -99,16 +98,6 @@ fun ClassesScreen(
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { showAdd = false }) { Text("Close") } },
-        )
-    }
-
-    if (confirmSignOut) {
-        AlertDialog(
-            onDismissRequest = { confirmSignOut = false },
-            title = { Text("Sign out?") },
-            text = { Text("You can sign back in any time with your email and password.") },
-            confirmButton = { TextButton(onClick = { confirmSignOut = false; onSignOut() }) { Text("Sign out") } },
-            dismissButton = { TextButton(onClick = { confirmSignOut = false }) { Text("Cancel") } },
         )
     }
 }

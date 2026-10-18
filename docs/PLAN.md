@@ -138,6 +138,21 @@ Replaces the spreadsheet's "Submissions & Deadlines" tab (general submissions, q
 - Home shows "Coming up" (the student's next 3 open items) and how many are overdue for them.
 - Officers with `SCHEDULE_MANAGE`: add, edit, delete, and cancel or restore an item for the whole class.
 
+## Reminders (phone notifications)
+
+No server and no email: the app checks once a day in the background with Android WorkManager (around 6 PM, when there is internet) and shows phone notifications. It reads only what the security rules let that user read.
+
+| Reminder | Goes to | How often |
+|---|---|---|
+| Due tomorrow | Each student, for items they have not marked done | Daily |
+| New class materials | Everyone in the class | Daily, since the last check |
+| You owe ₱X | Only the student who owes | At most weekly, or when the amount changes |
+| Who still owes | Roles with `RECORDS_MANAGE` | Weekly |
+
+- Each reminder can be switched off in the **Account** screen, which also has **Send a test reminder now**, the light/dark/phone theme setting and Sign out.
+- Settings and the worker's bookkeeping are stored on the phone (`AppSettings`), not in Firestore.
+- Android 13 and later ask for notification permission once. Some phones may stop background work to save battery; the Account screen explains how to allow it.
+
 ## Class contents
 
 Replaces the spreadsheet's "Class Contents Directory" tab.
