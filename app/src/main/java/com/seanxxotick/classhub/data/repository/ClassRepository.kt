@@ -104,6 +104,14 @@ class ClassRepository(private val db: FirebaseFirestore = FirebaseFirestore.getI
         return classId
     }
 
+    /** The name of the class an invite code belongs to, or null when the code matches no class. */
+    suspend fun lookupInvite(rawCode: String): String? {
+        val code = InviteCode.normalize(rawCode)
+        if (!InviteCode.isValid(code)) return null
+        val invite = invites.document(code).get().await()
+        return if (invite.exists()) invite.getString("className").orEmpty().ifBlank { "this class" } else null
+    }
+
     /** Replaces the class's invite code. The old code stops working; people already in the class stay. */
     suspend fun regenerateInviteCode(room: ClassRoom): String {
         val newCode = uniqueInviteCode()

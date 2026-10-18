@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.seanxxotick.classhub",
+      "sha256_cert_fingerprints": [
+        "CC:45:56:8C:70:C3:EE:ED:88:D0:6F:C7:15:59:AE:FC:1B:89:B9:82:FC:62:4E:27:0B:D4:7D:FF:BA:74:74:A3"
+      ]
+    }
+  }
+]

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Join a class on ClassHub</title>
+  <meta name="description" content="You have been invited to a class on ClassHub.">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <div class="logo">
+    <svg viewBox="0 0 108 108" aria-hidden="true"><rect width="108" height="108" fill="#0f766e"/><path fill="#fff" d="M37,32h9a5,5 0 0,1 5,5v9a5,5 0 0,1 -5,5h-9a5,5 0 0,1 -5,-5v-9a5,5 0 0,1 5,-5z M62,32h9a5,5 0 0,1 5,5v9a5,5 0 0,1 -5,5h-9a5,5 0 0,1 -5,-5v-9a5,5 0 0,1 5,-5z M37,57h9a5,5 0 0,1 5,5v9a5,5 0 0,1 -5,5h-9a5,5 0 0,1 -5,-5v-9a5,5 0 0,1 5,-5z"/><circle cx="66.5" cy="66.5" r="9.5" fill="#99f6e4"/></svg>
+    ClassHub
+  </div>
+
+  <div class="card" id="invite">
+    <h1>You are invited to a class</h1>
+    <p>Your invite code is</p>
+    <div class="code" id="code">------</div>
+    <a class="btn solid" id="open" href="#">Open in ClassHub</a>
+    <p class="small">If ClassHub is installed, this opens it on the Join screen with the code filled in.</p>
+  </div>
+
+  <div class="card hidden" id="bad">
+    <h1>This invite link is not complete</h1>
+    <p>Ask your Class Mayor to share the invite link or code again.</p>
+  </div>
+
+  <div class="card">
+    <h1>Do not have ClassHub yet?</h1>
+    <a class="btn outline" href="/download">Download ClassHub for Android</a>
+    <ol>
+      <li>Open the downloaded file.</li>
+      <li>If your phone asks, allow installing apps from this source, then tap Install.</li>
+      <li>If Play Protect shows a warning, tap More details, then Install anyway. ClassHub is a class project and is not on the Play Store.</li>
+      <li>Open ClassHub, create your account, then come back here and tap Open in ClassHub.</li>
+    </ol>
+    <p class="small">You can also open ClassHub, tap Add a class, then Join with a code, and type the code above.</p>
+  </div>
+</main>
+<script>
+  // The code is the part after /join/ in the address, for example /join/K7M4QX.
+  var parts = location.pathname.split('/').filter(Boolean);
+  var code = (parts[1] || '').toUpperCase().replace(/[\s-]/g, '');
+  if (parts[0] && parts[0].toLowerCase() === 'join' && /^[A-HJ-NP-Z2-9]{6}$/.test(code)) {
+    document.getElementById('code').textContent = code;
+    document.getElementById('open').href = 'classhub://join/' + code;
+  } else {
+    document.getElementById('invite').classList.add('hidden');
+    document.getElementById('bad').classList.remove('hidden');
+  }
+</script>
+</body>
+</html>

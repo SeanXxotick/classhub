@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -97,8 +99,20 @@ fun CreateClassScreen(state: ClassActionState, onCreate: (name: String, descript
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun JoinClassScreen(state: ClassActionState, onJoin: (String) -> Unit, onBack: () -> Unit, onClearError: () -> Unit) {
-    var code by rememberSaveable { mutableStateOf("") }
+fun JoinClassScreen(
+    state: ClassActionState,
+    initialCode: String,
+    preview: ClassesViewModel.InvitePreview?,
+    onLookup: (String) -> Unit,
+    onJoin: (String) -> Unit,
+    onBack: () -> Unit,
+    onClearError: () -> Unit,
+) {
+    var code by rememberSaveable { mutableStateOf(initialCode) }
+    // Look the class up as soon as a full code is there (typed, or from an invite link).
+    LaunchedEffect(code) { if (code.length == InviteCode.LENGTH) onLookup(code) }
+    val className = preview?.takeIf { it.code == code }?.className
+    val noMatch = preview != null && preview.code == code && preview.className == null
 
     Scaffold(
         topBar = {
@@ -132,13 +146,24 @@ fun JoinClassScreen(state: ClassActionState, onJoin: (String) -> Unit, onBack: (
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
                 modifier = Modifier.fillMaxWidth(),
             )
+            if (className != null) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("You are invited to", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(className, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    }
+                }
+            } else if (noMatch) {
+                Text("That code does not match any class. Check it with your Class Mayor.", color = MaterialTheme.colorScheme.error)
+            }
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Button(
                 onClick = { onJoin(code) },
                 enabled = !state.busy && code.length == InviteCode.LENGTH,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
             ) {
-                if (state.busy) CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.height(20.dp)) else Text("Join class")
+                if (state.busy) CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.height(20.dp))
+                else Text(className?.let { "Join $it" } ?: "Join class")
             }
             Text(
                 "You will join as a Member. The Mayor can give you an officer role afterward.",

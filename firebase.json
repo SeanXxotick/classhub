@@ -2,6 +2,22 @@
   "firestore": {
     "rules": "firestore.rules"
   },
+  "hosting": {
+    "public": "hosting",
+    "ignore": ["firebase.json", "**/node_modules/**"],
+    "redirects": [
+      { "source": "/download", "destination": "/download-soon.html", "type": 302 }
+    ],
+    "rewrites": [
+      { "source": "/join/**", "destination": "/join.html" }
+    ],
+    "headers": [
+      {
+        "source": "/.well-known/assetlinks.json",
+        "headers": [{ "key": "Content-Type", "value": "application/json" }]
+      }
+    ]
+  },
   "emulators": {
     "firestore": {
       "host": "127.0.0.1",

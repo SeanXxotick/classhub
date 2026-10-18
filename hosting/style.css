@@ -1,0 +1,59 @@
+/* ClassHub web pages: the same teal and calm look as the app. */
+:root {
+  --brand: #0f766e;
+  --brand-dark: #0b4f4a;
+  --ink: #172033;
+  --muted: #6b768a;
+  --line: #e4e8f0;
+  --bg: #f6f8fb;
+  --card: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e7ecf3;
+    --muted: #a7b1c2;
+    --line: #2a3442;
+    --bg: #0f141c;
+    --card: #161d27;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 24px 16px 48px;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+}
+main { max-width: 440px; margin: 0 auto; }
+.logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; color: var(--brand); margin-bottom: 20px; }
+.logo svg { width: 36px; height: 36px; border-radius: 10px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px; margin-bottom: 14px; }
+h1 { font-size: 22px; margin: 0 0 6px; }
+p { margin: 6px 0; color: var(--muted); }
+.code {
+  font: 700 34px/1.2 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.22em;
+  color: var(--brand);
+  text-align: center;
+  padding: 14px 0 6px;
+}
+.btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 14px;
+  border-radius: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  margin-top: 10px;
+  border: 0;
+  cursor: pointer;
+  font-size: 16px;
+}
+.btn.solid { background: var(--brand); color: #ffffff; }
+.btn.outline { background: transparent; color: var(--brand); border: 1.5px solid var(--brand); }
+ol { padding-left: 20px; margin: 8px 0 0; color: var(--muted); }
+li { margin: 4px 0; }
+.small { font-size: 13px; color: var(--muted); }
+.hidden { display: none; }

@@ -47,6 +47,21 @@ class ClassesViewModel(
         .flatMapLatest { ids -> photos.observeClassPhotos(ids) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
+    /** What an invite code points to, for the Join screen: the code and its class name (null when no class matches). */
+    data class InvitePreview(val code: String, val className: String?)
+
+    private val _invitePreview = MutableStateFlow<InvitePreview?>(null)
+    val invitePreview: StateFlow<InvitePreview?> = _invitePreview.asStateFlow()
+
+    fun previewInvite(rawCode: String) {
+        val code = InviteCode.normalize(rawCode)
+        if (!InviteCode.isValid(code) || _invitePreview.value?.code == code) return
+        viewModelScope.launch {
+            val name = runCatching { repo.lookupInvite(code) }.getOrNull()
+            _invitePreview.value = InvitePreview(code, name)
+        }
+    }
+
     fun createClass(name: String, description: String, accent: String, ownerName: String, onCreated: (String) -> Unit) {
         val trimmed = name.trim()
         when {

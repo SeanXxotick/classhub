@@ -3,6 +3,7 @@ package com.seanxxotick.classhub.ui
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import com.seanxxotick.classhub.settings.AppSettings
 import com.seanxxotick.classhub.settings.ThemeMode
 import com.seanxxotick.classhub.ui.account.AccountScreen
@@ -51,7 +52,11 @@ import com.seanxxotick.classhub.ui.theme.ClassHubTheme
 
 /** Root of the app: shows sign-in when signed out, otherwise the class navigation. */
 @Composable
-fun ClassHubApp(authVm: AuthViewModel = viewModel()) {
+fun ClassHubApp(
+    pendingJoinCode: String? = null,
+    onJoinCodeHandled: () -> Unit = {},
+    authVm: AuthViewModel = viewModel(),
+) {
     val session by authVm.session.collectAsState()
     val dark = when (AppSettings.themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
@@ -69,7 +74,7 @@ fun ClassHubApp(authVm: AuthViewModel = viewModel()) {
                         val ui by authVm.ui.collectAsState()
                         AuthScreen(ui, authVm::signIn, authVm::signUp, authVm::clearError)
                     }
-                    is Session.SignedIn -> SignedInApp(s.user, onSignOut = authVm::signOut)
+                    is Session.SignedIn -> SignedInApp(s.user, onSignOut = authVm::signOut, pendingJoinCode, onJoinCodeHandled)
                 }
             }
         }
@@ -80,7 +85,8 @@ private object Routes {
     const val CLASSES = "classes"
     const val ACCOUNT = "account"
     const val CREATE = "create"
-    const val JOIN = "join"
+    const val JOIN = "join?code={code}"
+    fun joinRoute(code: String = "") = if (code.isEmpty()) "join" else "join?code=$code"
     const val CLASS = "class/{classId}"
     const val MEMBER = "class/{classId}/member/{memberId}"
     const val ROLES = "class/{classId}/roles"
@@ -120,9 +126,18 @@ private fun classViewModel(nav: NavHostController, entry: NavBackStackEntry, use
 }
 
 @Composable
-private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
+private fun SignedInApp(user: AppUser, onSignOut: () -> Unit, pendingJoinCode: String?, onJoinCodeHandled: () -> Unit) {
     val nav = rememberNavController()
     val classesVm: ClassesViewModel = viewModel(key = "classes-${user.uid}") { ClassesViewModel(user.uid) }
+
+    // An invite link was opened (now, or before signing in): go to Join with the code filled in.
+    LaunchedEffect(pendingJoinCode) {
+        if (pendingJoinCode != null) {
+            classesVm.clearError()
+            nav.navigate(Routes.joinRoute(pendingJoinCode)) { popUpTo(Routes.CLASSES) }
+            onJoinCodeHandled()
+        }
+    }
 
     NavHost(navController = nav, startDestination = Routes.CLASSES) {
         composable(Routes.CLASSES) {
@@ -136,7 +151,7 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
                 error = action.error,
                 onOpenClass = { nav.navigate(Routes.classRoute(it)) },
                 onCreate = { classesVm.clearError(); nav.navigate(Routes.CREATE) },
-                onJoin = { classesVm.clearError(); nav.navigate(Routes.JOIN) },
+                onJoin = { classesVm.clearError(); nav.navigate(Routes.joinRoute()) },
                 onOpenAccount = { nav.navigate(Routes.ACCOUNT) },
             )
         }
@@ -171,10 +186,17 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
                 onClearError = classesVm::clearError,
             )
         }
-        composable(Routes.JOIN) {
+        composable(
+            Routes.JOIN,
+            arguments = listOf(navArgument("code") { type = NavType.StringType; defaultValue = "" }),
+        ) { entry ->
             val action by classesVm.action.collectAsState()
+            val preview by classesVm.invitePreview.collectAsState()
             JoinClassScreen(
                 state = action,
+                initialCode = entry.arguments?.getString("code").orEmpty(),
+                preview = preview,
+                onLookup = classesVm::previewInvite,
                 onJoin = { code ->
                     classesVm.joinClass(code, user.displayName) { classId ->
                         nav.navigate(Routes.classRoute(classId)) { popUpTo(Routes.CLASSES) }

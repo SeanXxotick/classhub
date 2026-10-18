@@ -54,6 +54,7 @@ import com.seanxxotick.classhub.data.model.LedgerRecord
 import com.seanxxotick.classhub.data.model.Member
 import com.seanxxotick.classhub.data.model.Permission
 import com.seanxxotick.classhub.data.model.RecordType
+import com.seanxxotick.classhub.domain.JoinLinks
 import com.seanxxotick.classhub.domain.LedgerEntry
 import com.seanxxotick.classhub.domain.LedgerView
 import com.seanxxotick.classhub.data.model.ScheduleItem
@@ -379,7 +380,7 @@ private fun HomeTab(
                             Button(onClick = {
                                 val send = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, "Join ${room.name} on ClassHub with the invite code ${room.inviteCode}")
+                                    putExtra(Intent.EXTRA_TEXT, JoinLinks.shareText(room.name, room.inviteCode))
                                 }
                                 context.startActivity(Intent.createChooser(send, "Share invite code"))
                             }) { Text("Share code") }
