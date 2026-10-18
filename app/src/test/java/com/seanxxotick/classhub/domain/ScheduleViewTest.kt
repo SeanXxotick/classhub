@@ -88,6 +88,28 @@ class ScheduleViewTest {
     }
 
     @Test
+    fun openKindsByDay_listsEachOpenItemsKind_mostImportantFirst() {
+        val day = LocalDate.of(2026, 10, 23)
+        val busy = listOf(
+            item("d1", ScheduleKind.DEADLINE, 23),
+            item("q1", ScheduleKind.QUIZ, 23),
+            item("e1", ScheduleKind.EXAM, 23),
+            item("f1", ScheduleKind.FCO, 23),
+            item("doneExam", ScheduleKind.EXAM, 23),
+            item("cancelled", ScheduleKind.RECITATION, 23, ScheduleStatus.CANCELLED),
+        )
+        val kinds = ScheduleView.openKindsByDay(busy, zone, doneIds = setOf("doneExam"))
+        assertEquals(listOf(ScheduleKind.EXAM, ScheduleKind.FCO, ScheduleKind.QUIZ, ScheduleKind.DEADLINE), kinds[day])
+    }
+
+    @Test
+    fun openKindsByDay_leavesOutDaysWithNothingOpen() {
+        val kinds = ScheduleView.openKindsByDay(items, zone, mine)
+        assertNull(kinds[LocalDate.of(2026, 10, 21)])
+        assertEquals(listOf(ScheduleKind.QUIZ), kinds[LocalDate.of(2026, 10, 22)])
+    }
+
+    @Test
     fun dueLabel_readsNaturally() {
         val byId = items.associateBy { it.id }
         assertEquals("Tomorrow", ScheduleView.dueLabel(byId.getValue("orMidterm"), now, zone))

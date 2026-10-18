@@ -99,6 +99,9 @@ private val Amber = Color(0xFFB45309)
 private val Red = Color(0xFFB91C1C)
 private val Grey = Color(0xFF6B768A)
 
+/** Most dots shown under a day in the week strip; more items show a "+". */
+private const val MAX_DOTS = 3
+
 private fun statusColor(item: ScheduleItem, done: Boolean, now: Long): Color = when {
     ScheduleLogic.isCancelled(item) -> Grey
     done -> Green
@@ -220,7 +223,7 @@ fun ScheduleTab(
 
     val filter = ScheduleFilter.valueOf(filterName)
     val week = ScheduleView.weekOf(LocalDate.ofEpochDay(anchorEpochDay))
-    val openByDay = remember(state.schedule, state.myDone) { ScheduleView.openByDay(state.schedule, doneIds = state.myDone) }
+    val kindsByDay = remember(state.schedule, state.myDone) { ScheduleView.openKindsByDay(state.schedule, doneIds = state.myDone) }
     val selectedDay = selectedEpochDay?.let { LocalDate.ofEpochDay(it) }
     val shown = if (selectedDay != null) ScheduleView.onDay(state.schedule, selectedDay)
     else ScheduleView.filter(state.schedule, filter, now, doneIds = state.myDone)
@@ -246,7 +249,7 @@ fun ScheduleTab(
                 week.forEach { day ->
                     val selected = day == selectedDay
                     val isToday = day == today
-                    val count = openByDay[day] ?: 0
+                    val kinds = kindsByDay[day].orEmpty()
                     Column(
                         Modifier
                             .weight(1f)
@@ -264,19 +267,25 @@ fun ScheduleTab(
                             fontWeight = if (isToday) FontWeight.ExtraBold else FontWeight.SemiBold,
                             color = if (selected) MaterialTheme.colorScheme.onPrimary else if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         )
-                        Box(
-                            Modifier
-                                .padding(top = 2.dp)
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    when {
-                                        count == 0 -> Color.Transparent
-                                        selected -> MaterialTheme.colorScheme.onPrimary
-                                        else -> Amber
-                                    },
-                                ),
-                        )
+                        // One dot per open item, colored like its type badge, most important first (up to three).
+                        Row(
+                            Modifier.padding(top = 3.dp).height(9.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            kinds.take(MAX_DOTS).forEach { kind ->
+                                Box(
+                                    Modifier
+                                        .size(if (selected) 7.dp else 6.dp)
+                                        .clip(CircleShape)
+                                        .then(if (selected) Modifier.border(1.dp, MaterialTheme.colorScheme.onPrimary, CircleShape) else Modifier)
+                                        .background(kind.color()),
+                                )
+                            }
+                            if (kinds.size > MAX_DOTS) {
+                                Text("+", fontSize = 9.sp, lineHeight = 9.sp, fontWeight = FontWeight.Bold, color = textColor)
+                            }
+                        }
                     }
                 }
             }

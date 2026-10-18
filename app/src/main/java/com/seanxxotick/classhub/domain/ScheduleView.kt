@@ -62,6 +62,18 @@ object ScheduleView {
             .groupingBy { ScheduleLogic.dateOf(it.dueMillis, zone) }
             .eachCount()
 
+    /** Which kind shows first when a day has several items: exams matter most, plain deliverables least. */
+    val KIND_PRIORITY = listOf(ScheduleKind.EXAM, ScheduleKind.FCO, ScheduleKind.QUIZ, ScheduleKind.RECITATION, ScheduleKind.DEADLINE)
+
+    /**
+     * The kinds of this student's open items on each day, most important first, one entry per item.
+     * The week strip draws a colored dot for each (up to three).
+     */
+    fun openKindsByDay(items: List<ScheduleItem>, zone: ZoneId = ZoneId.systemDefault(), doneIds: Set<String> = emptySet()): Map<LocalDate, List<ScheduleKind>> =
+        items.filter { ScheduleLogic.isOpen(it, doneIds) }
+            .groupBy { ScheduleLogic.dateOf(it.dueMillis, zone) }
+            .mapValues { (_, list) -> list.map { it.kind }.sortedBy { KIND_PRIORITY.indexOf(it) } }
+
     /** The tag shown on an item: "Cancelled", "Done", "Overdue", "Today", "Tomorrow" or "In 5 days". */
     fun dueLabel(item: ScheduleItem, nowMillis: Long, zone: ZoneId = ZoneId.systemDefault(), done: Boolean = false): String = when {
         ScheduleLogic.isCancelled(item) -> "Cancelled"
