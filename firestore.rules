@@ -69,6 +69,33 @@ service cloud.firestore {
       }
     }
 
+    // ------------------------------------------------------------ Photos
+
+    // A small square JPEG stored as Base64 text (the app makes them about 30 KB; the limit allows some room).
+    function isValidPhoto() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['photo', 'updatedAtMillis'])
+        && d.photo is string
+        && d.photo.size() > 0
+        && d.photo.size() <= 300000
+        && d.updatedAtMillis is int;
+    }
+
+    // Profile pictures: anyone signed in may see them; only the owner may change or remove theirs.
+    match /avatars/{userId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && userId == uid() && isValidPhoto();
+      allow delete: if signedIn() && userId == uid();
+    }
+
+    // Class pictures: members may see them; officers with class settings may change or remove them.
+    match /classPhotos/{classId} {
+      allow get: if isMember(classId);
+      allow list: if false;
+      allow create, update: if can(classId, 'CLASS_SETTINGS') && isValidPhoto();
+      allow delete: if can(classId, 'CLASS_SETTINGS');
+    }
+
     // ------------------------------------------------------------ Invite codes
 
     match /invites/{code} {

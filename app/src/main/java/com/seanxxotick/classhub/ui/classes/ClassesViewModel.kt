@@ -4,6 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.seanxxotick.classhub.data.model.ClassMembership
 import com.seanxxotick.classhub.data.repository.ClassRepository
+import com.seanxxotick.classhub.data.repository.PhotoRepository
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import com.seanxxotick.classhub.domain.InviteCode
 import com.seanxxotick.classhub.ui.common.friendlyMessage
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +25,7 @@ data class ClassActionState(val busy: Boolean = false, val error: String? = null
 class ClassesViewModel(
     private val uid: String,
     private val repo: ClassRepository = ClassRepository(),
+    private val photos: PhotoRepository = PhotoRepository(),
 ) : ViewModel() {
     private val _action = MutableStateFlow(ClassActionState())
     val action: StateFlow<ClassActionState> = _action.asStateFlow()
@@ -33,6 +38,14 @@ class ClassesViewModel(
             emit(emptyList())
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Class pictures for the "My classes" list, as classId to photo. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val classPhotos: StateFlow<Map<String, String>> = classes
+        .map { list -> list.orEmpty().map { it.classId }.sorted() }
+        .distinctUntilChanged()
+        .flatMapLatest { ids -> photos.observeClassPhotos(ids) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     fun createClass(name: String, description: String, accent: String, ownerName: String, onCreated: (String) -> Unit) {
         val trimmed = name.trim()

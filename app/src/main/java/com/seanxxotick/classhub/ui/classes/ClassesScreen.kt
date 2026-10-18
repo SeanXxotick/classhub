@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.seanxxotick.classhub.data.model.AppUser
 import com.seanxxotick.classhub.data.model.ClassMembership
+import com.seanxxotick.classhub.ui.common.Avatar
 import com.seanxxotick.classhub.ui.common.Initials
 import com.seanxxotick.classhub.ui.common.initialsOf
 
@@ -43,6 +44,7 @@ import com.seanxxotick.classhub.ui.common.initialsOf
 fun ClassesScreen(
     user: AppUser,
     classes: List<ClassMembership>?,
+    classPhotos: Map<String, String>,
     error: String?,
     onOpenClass: (String) -> Unit,
     onCreate: () -> Unit,
@@ -78,7 +80,7 @@ fun ClassesScreen(
                         )
                     }
                     items(classes, key = { it.classId }) { membership ->
-                        ClassRow(membership, onClick = { onOpenClass(membership.classId) })
+                        ClassRow(membership, classPhotos[membership.classId], onClick = { onOpenClass(membership.classId) })
                     }
                     item { Spacer(Modifier.height(80.dp)) }
                 }
@@ -103,10 +105,10 @@ fun ClassesScreen(
 }
 
 @Composable
-private fun ClassRow(membership: ClassMembership, onClick: () -> Unit) {
+private fun ClassRow(membership: ClassMembership, photo: String?, onClick: () -> Unit) {
     OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Initials(initialsOf(membership.className), MaterialTheme.colorScheme.primary)
+            Avatar(photo, membership.className, MaterialTheme.colorScheme.primary, circle = false)
             Spacer(Modifier.width(12.dp))
             Text(membership.className, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         }

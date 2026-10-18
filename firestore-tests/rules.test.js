@@ -317,6 +317,48 @@ async function main() {
     await assertSucceeds(deleteDoc(doc(store, `users/late/memberships/${CLASS}`)));
   });
 
+  // ---------------------------------------------------------------- Photos
+
+  const photo = (size = 30000) => ({ photo: 'A'.repeat(size), updatedAtMillis: 1 });
+
+  await test('A student sets and removes their own profile photo', async () => {
+    const store = db('student');
+    await assertSucceeds(setDoc(doc(store, 'avatars/student'), photo()));
+    await assertSucceeds(deleteDoc(doc(store, 'avatars/student')));
+    await assertSucceeds(setDoc(doc(store, 'avatars/student'), photo()));
+  });
+
+  await test('Nobody can change someone else\'s profile photo', async () => {
+    await assertFails(setDoc(doc(db('maria'), 'avatars/student'), photo()));
+    await assertFails(deleteDoc(doc(db('maria'), 'avatars/student')));
+  });
+
+  await test('Signed-in users can see profile photos; signed-out users cannot', async () => {
+    await assertSucceeds(getDoc(doc(db('maria'), 'avatars/student')));
+    await assertFails(getDoc(doc(anon(), 'avatars/student')));
+  });
+
+  await test('An oversized photo or extra fields are blocked', async () => {
+    await assertFails(setDoc(doc(db('student'), 'avatars/student'), photo(400000)));
+    await assertFails(setDoc(doc(db('student'), 'avatars/student'), { ...photo(), secret: 'x' }));
+  });
+
+  await test('The Mayor sets the class photo; members can see it', async () => {
+    await assertSucceeds(setDoc(doc(db('mayor'), `classPhotos/${CLASS}`), photo()));
+    await assertSucceeds(getDoc(doc(db('student'), `classPhotos/${CLASS}`)));
+  });
+
+  await test('A Member cannot change or remove the class photo', async () => {
+    await assertFails(setDoc(doc(db('student'), `classPhotos/${CLASS}`), photo()));
+    await assertFails(deleteDoc(doc(db('student'), `classPhotos/${CLASS}`)));
+  });
+
+  await test('An outsider cannot see the class photo', () =>
+    assertFails(getDoc(doc(db('outsider'), `classPhotos/${CLASS}`))));
+
+  await test('The Mayor removes the class photo', () =>
+    assertSucceeds(deleteDoc(doc(db('mayor'), `classPhotos/${CLASS}`))));
+
   await env.cleanup();
 
   // ---------------------------------------------------------------- Report

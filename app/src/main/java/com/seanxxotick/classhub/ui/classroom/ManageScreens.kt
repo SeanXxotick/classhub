@@ -64,6 +64,8 @@ import com.seanxxotick.classhub.ui.ledger.balanceText
 import com.seanxxotick.classhub.domain.MemberRules
 import com.seanxxotick.classhub.domain.RoleRules
 import com.seanxxotick.classhub.ui.common.AccentPicker
+import com.seanxxotick.classhub.ui.common.Avatar
+import com.seanxxotick.classhub.ui.common.rememberPhotoPicker
 import com.seanxxotick.classhub.ui.common.Initials
 import com.seanxxotick.classhub.ui.common.RoleChip
 import com.seanxxotick.classhub.ui.common.initialsOf
@@ -196,7 +198,7 @@ private fun MemberDetailContent(
     LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Initials(initialsOf(member.name), hexToColor(currentRole?.colorHex ?: "#6B768A"), circle = true)
+                Avatar(state.avatars[member.id], member.name, hexToColor(currentRole?.colorHex ?: "#6B768A"), size = 52.dp)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(if (member.id == myUid) "${member.name} (you)" else member.name, fontWeight = FontWeight.Bold)
@@ -637,6 +639,9 @@ fun ClassSettingsScreen(
     busy: Boolean,
     notice: String?,
     onSave: (ClassRoom) -> Unit,
+    onSetClassPhoto: (String) -> Unit,
+    onRemoveClassPhoto: () -> Unit,
+    onPhotoError: (String) -> Unit,
     onClearNotice: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -654,6 +659,7 @@ fun ClassSettingsScreen(
         var schedule by rememberSaveable(room.id) { mutableStateOf(room.scheduleEnabled) }
         var contents by rememberSaveable(room.id) { mutableStateOf(room.contentsEnabled) }
         val error = ClassRules.checkName(name)
+        val pickClassPhoto = rememberPhotoPicker(onPicked = onSetClassPhoto, onError = onPhotoError)
         val changed = name.trim() != room.name || description.trim() != room.description || !accent.equals(room.accentColor, ignoreCase = true) ||
             ledger != room.ledgerEnabled || schedule != room.scheduleEnabled || contents != room.contentsEnabled
 
@@ -669,10 +675,21 @@ fun ClassSettingsScreen(
                                 .background(MaterialTheme.colorScheme.primary)
                                 .padding(16.dp),
                         ) {
-                            Column {
-                                Text(name.ifBlank { "Class name" }, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                                if (description.isNotBlank()) Text(description, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f))
-                                Text("Preview", color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Avatar(state.classPhoto, name.ifBlank { "Class" }, MaterialTheme.colorScheme.primary, size = 56.dp, circle = false)
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text(name.ifBlank { "Class name" }, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                                    if (description.isNotBlank()) Text(description, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f))
+                                    Text("Preview", color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Class photo", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                            TextButton(onClick = pickClassPhoto, enabled = !busy) { Text(if (state.classPhoto == null) "Add photo" else "Change photo") }
+                            if (state.classPhoto != null) {
+                                TextButton(onClick = onRemoveClassPhoto, enabled = !busy) { Text("Remove", color = MaterialTheme.colorScheme.error) }
                             }
                         }
                         OutlinedTextField(

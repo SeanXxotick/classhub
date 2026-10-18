@@ -19,21 +19,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.seanxxotick.classhub.ui.theme.hexToColor
 
 /** Rounded letter badge used for classes and members, e.g. "3A" or "MS". */
 @Composable
-fun Initials(text: String, color: Color, modifier: Modifier = Modifier, circle: Boolean = false) {
+fun Initials(text: String, color: Color, modifier: Modifier = Modifier, circle: Boolean = false, size: Dp = 42.dp) {
     Box(
         modifier = modifier
-            .size(42.dp)
-            .clip(if (circle) CircleShape else RoundedCornerShape(14.dp))
+            .size(size)
+            .clip(if (circle) CircleShape else RoundedCornerShape(size * 0.33f))
             .background(color),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Text(text, color = Color.White, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.36f).sp)
     }
 }
 

@@ -10,6 +10,7 @@ import com.seanxxotick.classhub.data.model.ScheduleItem
 import com.seanxxotick.classhub.data.model.ScheduleStatus
 import com.seanxxotick.classhub.data.repository.ContentRepository
 import com.seanxxotick.classhub.data.model.StudentProgress
+import com.seanxxotick.classhub.data.repository.PhotoRepository
 import com.seanxxotick.classhub.data.repository.ProgressRepository
 import com.seanxxotick.classhub.data.repository.ScheduleRepository
 import com.seanxxotick.classhub.domain.ContentRules
@@ -64,6 +65,10 @@ data class ClassUiState(
     val schedule: List<ScheduleItem> = emptyList(),
     /** Schedule items the signed-in student marked done. */
     val myDone: Set<String> = emptySet(),
+    /** Profile pictures of members who set one, as uid to Base64 JPEG. */
+    val avatars: Map<String, String> = emptyMap(),
+    /** The class picture, if officers set one. */
+    val classPhoto: String? = null,
     val error: String? = null,
 ) {
     /** Current balance of every member, in centavos. */
@@ -96,8 +101,15 @@ class ClassViewModel(
     private val contentRepo: ContentRepository = ContentRepository(classId),
     private val scheduleRepo: ScheduleRepository = ScheduleRepository(classId),
     private val progressRepo: ProgressRepository = ProgressRepository(classId),
+    private val photoRepo: PhotoRepository = PhotoRepository(),
 ) : ViewModel() {
-    val state: StateFlow<ClassUiState> = combine(
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val avatarsFlow = memberRepo.observeMembers()
+        .map { members -> members.map { it.id }.sorted() }
+        .distinctUntilChanged()
+        .flatMapLatest { ids -> photoRepo.observeAvatars(ids) }
+
+    private val coreState = combine(
         combine(
             classRepo.observeClass(classId),
             memberRepo.observeMember(uid),
@@ -113,6 +125,10 @@ class ClassViewModel(
         progressRepo.observeMine(uid),
     ) { base, records, contents, schedule, myDone ->
         base.copy(records = records, contents = contents, schedule = schedule, myDone = myDone)
+    }
+
+    val state: StateFlow<ClassUiState> = combine(coreState, avatarsFlow, photoRepo.observeClassPhoto(classId)) { core, avatars, classPhoto ->
+        core.copy(avatars = avatars, classPhoto = classPhoto)
     }
         .catch { error ->
             // The security rules refuse class data to people who are not members, so a refusal here
@@ -176,6 +192,22 @@ class ClassViewModel(
             contentsEnabled = updated.contentsEnabled,
         )
         runAction("Class settings saved.", onDone) { classRepo.updateSettings(room, uid) }
+    }
+
+    fun setClassPhoto(photo: String) {
+        if (!state.value.can(Permission.CLASS_SETTINGS)) {
+            _notice.value = "You do not have permission to change the class photo."
+            return
+        }
+        runAction("Class photo updated.") { photoRepo.setClassPhoto(classId, photo) }
+    }
+
+    fun removeClassPhoto() {
+        if (!state.value.can(Permission.CLASS_SETTINGS)) {
+            _notice.value = "You do not have permission to change the class photo."
+            return
+        }
+        runAction("Class photo removed.") { photoRepo.removeClassPhoto(classId) }
     }
 
     // ---- Members ----

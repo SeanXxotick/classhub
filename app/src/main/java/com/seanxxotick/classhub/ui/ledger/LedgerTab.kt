@@ -53,6 +53,8 @@ import com.seanxxotick.classhub.domain.LedgerFilter
 import com.seanxxotick.classhub.domain.LedgerView
 import com.seanxxotick.classhub.domain.Money
 import com.seanxxotick.classhub.ui.classroom.ClassUiState
+import com.seanxxotick.classhub.ui.common.Avatar
+import androidx.compose.foundation.shape.CircleShape
 import com.seanxxotick.classhub.ui.theme.Expense
 import com.seanxxotick.classhub.ui.theme.Income
 import java.time.Instant
@@ -159,7 +161,28 @@ fun EntryRow(entry: LedgerEntry, state: ClassUiState, onClick: (() -> Unit)? = n
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TypeBadge(entry.type)
+        val photoOwner = (entry as? LedgerEntry.Single)?.record?.takeIf { it.memberId.isNotEmpty() }
+        if (photoOwner != null && state.avatars[photoOwner.memberId] != null) {
+            // The member's photo, with the record type in a small badge on its corner.
+            Box {
+                Avatar(state.avatars[photoOwner.memberId], photoOwner.memberName, entry.type.color(), size = 38.dp)
+                Box(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(1.5.dp)
+                        .clip(CircleShape)
+                        .background(entry.type.color()),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(entry.type.glyph(), color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, lineHeight = 9.sp)
+                }
+            }
+        } else {
+            TypeBadge(entry.type)
+        }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)

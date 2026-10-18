@@ -6,6 +6,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import com.seanxxotick.classhub.settings.AppSettings
 import com.seanxxotick.classhub.settings.ThemeMode
 import com.seanxxotick.classhub.ui.account.AccountScreen
+import com.seanxxotick.classhub.ui.account.AccountViewModel
 import com.seanxxotick.classhub.ui.theme.LocalDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -126,10 +127,12 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
     NavHost(navController = nav, startDestination = Routes.CLASSES) {
         composable(Routes.CLASSES) {
             val classes by classesVm.classes.collectAsState()
+            val classPhotos by classesVm.classPhotos.collectAsState()
             val action by classesVm.action.collectAsState()
             ClassesScreen(
                 user = user,
                 classes = classes,
+                classPhotos = classPhotos,
                 error = action.error,
                 onOpenClass = { nav.navigate(Routes.classRoute(it)) },
                 onCreate = { classesVm.clearError(); nav.navigate(Routes.CREATE) },
@@ -138,7 +141,22 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
             )
         }
         composable(Routes.ACCOUNT) {
-            AccountScreen(user = user, onSignOut = onSignOut, onBack = { nav.popBackStack() })
+            val accountVm: AccountViewModel = viewModel(key = "account-${user.uid}") { AccountViewModel(user.uid) }
+            val photo by accountVm.photo.collectAsState()
+            val busy by accountVm.busy.collectAsState()
+            val notice by accountVm.notice.collectAsState()
+            AccountScreen(
+                user = user,
+                photo = photo,
+                busy = busy,
+                notice = notice,
+                onSetPhoto = accountVm::setPhoto,
+                onRemovePhoto = accountVm::removePhoto,
+                onPhotoError = accountVm::showNotice,
+                onClearNotice = accountVm::clearNotice,
+                onSignOut = onSignOut,
+                onBack = { nav.popBackStack() },
+            )
         }
         composable(Routes.CREATE) {
             val action by classesVm.action.collectAsState()
@@ -346,6 +364,9 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
                 busy = busy,
                 notice = notice,
                 onSave = { room -> vm.saveSettings(room) { nav.popBackStack() } },
+                onSetClassPhoto = vm::setClassPhoto,
+                onRemoveClassPhoto = vm::removeClassPhoto,
+                onPhotoError = vm::showNotice,
                 onClearNotice = vm::clearNotice,
                 onBack = { nav.popBackStack() },
             )

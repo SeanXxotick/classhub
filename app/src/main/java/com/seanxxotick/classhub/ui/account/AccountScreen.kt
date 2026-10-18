@@ -48,12 +48,23 @@ import com.seanxxotick.classhub.reminders.ReminderNotifier
 import com.seanxxotick.classhub.reminders.ReminderScheduler
 import com.seanxxotick.classhub.settings.AppSettings
 import com.seanxxotick.classhub.settings.ThemeMode
-import com.seanxxotick.classhub.ui.common.Initials
-import com.seanxxotick.classhub.ui.common.initialsOf
+import com.seanxxotick.classhub.ui.common.Avatar
+import com.seanxxotick.classhub.ui.common.rememberPhotoPicker
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AccountScreen(user: AppUser, onSignOut: () -> Unit, onBack: () -> Unit) {
+fun AccountScreen(
+    user: AppUser,
+    photo: String?,
+    busy: Boolean,
+    notice: String?,
+    onSetPhoto: (String) -> Unit,
+    onRemovePhoto: () -> Unit,
+    onPhotoError: (String) -> Unit,
+    onClearNotice: () -> Unit,
+    onSignOut: () -> Unit,
+    onBack: () -> Unit,
+) {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     var message by remember { mutableStateOf<String?>(null) }
@@ -71,6 +82,13 @@ fun AccountScreen(user: AppUser, onSignOut: () -> Unit, onBack: () -> Unit) {
             message = null
         }
     }
+    LaunchedEffect(notice) {
+        notice?.let {
+            snackbar.showSnackbar(it)
+            onClearNotice()
+        }
+    }
+    val pickPhoto = rememberPhotoPicker(onPicked = onSetPhoto, onError = onPhotoError)
 
     Scaffold(
         topBar = {
@@ -87,13 +105,25 @@ fun AccountScreen(user: AppUser, onSignOut: () -> Unit, onBack: () -> Unit) {
         ) {
             Card(Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Initials(initialsOf(user.displayName), MaterialTheme.colorScheme.primary, circle = true)
-                    Spacer(Modifier.width(12.dp))
-                    Column {
+                    Avatar(photo, user.displayName, MaterialTheme.colorScheme.primary, size = 64.dp)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
                         Text(user.displayName, fontWeight = FontWeight.Bold)
                         Text(user.email, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(onClick = pickPhoto, enabled = !busy) { Text(if (photo == null) "Add photo" else "Change photo") }
+                            if (photo != null) {
+                                TextButton(onClick = onRemovePhoto, enabled = !busy) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+                            }
+                        }
                     }
                 }
+                Text(
+                    "Your photo shows in every class you are in: on the member list, your member page and your ledger records.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                )
             }
 
             Card(Modifier.fillMaxWidth()) {

@@ -68,6 +68,7 @@ import com.seanxxotick.classhub.ui.ledger.EntryRow
 import com.seanxxotick.classhub.ui.ledger.FundSummaryCard
 import com.seanxxotick.classhub.ui.ledger.LedgerTab
 import com.seanxxotick.classhub.ui.ledger.balanceText
+import com.seanxxotick.classhub.ui.common.Avatar
 import com.seanxxotick.classhub.ui.common.Initials
 import com.seanxxotick.classhub.ui.common.RoleChip
 import com.seanxxotick.classhub.ui.common.initialsOf
@@ -237,9 +238,17 @@ private fun HomeTab(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(Modifier.padding(18.dp)) {
-                    Text(room.name, color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    if (room.description.isNotBlank()) {
-                        Text(room.description, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (state.classPhoto != null) {
+                            Avatar(state.classPhoto, room.name, MaterialTheme.colorScheme.primary, size = 52.dp, circle = false)
+                            Spacer(Modifier.width(12.dp))
+                        }
+                        Column {
+                            Text(room.name, color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            if (room.description.isNotBlank()) {
+                                Text(room.description, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f))
+                            }
+                        }
                     }
                     Spacer(Modifier.height(10.dp))
                     Text(
@@ -443,7 +452,7 @@ private fun MemberRow(member: Member, state: ClassUiState, isMe: Boolean, onClic
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Initials(initialsOf(member.name), hexToColor(role?.colorHex ?: "#6B768A"), circle = true)
+        Avatar(state.avatars[member.id], member.name, hexToColor(role?.colorHex ?: "#6B768A"))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(if (isMe) "${member.name} (you)" else member.name, fontWeight = FontWeight.SemiBold)

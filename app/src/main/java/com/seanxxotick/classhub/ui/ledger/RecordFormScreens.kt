@@ -55,6 +55,7 @@ import com.seanxxotick.classhub.domain.LedgerView
 import com.seanxxotick.classhub.domain.Money
 import com.seanxxotick.classhub.ui.classroom.ClassUiState
 import com.seanxxotick.classhub.ui.classroom.ManageScaffold
+import com.seanxxotick.classhub.ui.common.Avatar
 import com.seanxxotick.classhub.ui.common.DateField
 import com.seanxxotick.classhub.ui.common.PickerField
 import java.time.Instant
@@ -94,6 +95,8 @@ private fun MemberPickerDialog(state: ClassUiState, onPick: (Member) -> Unit, on
                             Modifier.fillMaxWidth().clickable { onPick(member) }.padding(vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            Avatar(state.avatars[member.id], member.name, MaterialTheme.colorScheme.primary, size = 30.dp)
+                            Spacer(Modifier.width(10.dp))
                             Text(member.name, modifier = Modifier.weight(1f))
                             Text(balanceText(state.balanceOf(member.id)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -449,7 +452,8 @@ fun ChargeStudentsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Checkbox(checked = checked, onCheckedChange = { on -> selected = if (on) selected + member.id else selected - member.id })
-                    Spacer(Modifier.width(4.dp))
+                    Avatar(state.avatars[member.id], member.name, MaterialTheme.colorScheme.primary, size = 30.dp)
+                    Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(member.name)
                         if (member.id !in eligibleIds && courseName != null) {
