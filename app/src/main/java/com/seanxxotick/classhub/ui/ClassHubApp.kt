@@ -22,6 +22,7 @@ import com.seanxxotick.classhub.data.model.RecordType
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import com.seanxxotick.classhub.ui.contents.ContentFormScreen
+import com.seanxxotick.classhub.ui.schedule.ScheduleFormScreen
 import com.seanxxotick.classhub.ui.ledger.ChargeStudentsScreen
 import com.seanxxotick.classhub.ui.ledger.PayoutFormScreen
 import com.seanxxotick.classhub.ui.ledger.RecordFormScreen
@@ -72,6 +73,7 @@ private object Routes {
     const val RECORD = "class/{classId}/record/{type}?batch={batch}"
     const val CHARGE = "class/{classId}/charge"
     const val CONTENT = "class/{classId}/content/{contentId}"
+    const val SCHEDULE_ITEM = "class/{classId}/schedule/{itemId}"
     const val NEW_CONTENT = "new"
     const val NEW_ROLE = "new"
 
@@ -83,6 +85,7 @@ private object Routes {
     fun recordRoute(classId: String, type: RecordType) =
         if (type == RecordType.CHARGE) "class/$classId/charge" else "class/$classId/record/${type.name}"
     fun contentRoute(classId: String, contentId: String) = "class/$classId/content/$contentId"
+    fun scheduleItemRoute(classId: String, itemId: String) = "class/$classId/schedule/$itemId"
     fun payoutRoute(classId: String, batchId: String) = "class/$classId/record/${RecordType.EXPENSE.name}?batch=$batchId"
 }
 
@@ -148,6 +151,7 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
             val state by vm.state.collectAsState()
             val busy by vm.busy.collectAsState()
             val notice by vm.notice.collectAsState()
+            val progress by vm.allProgress.collectAsState()
             ClassScreen(
                 state = state,
                 myUid = user.uid,
@@ -163,6 +167,11 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
                 onRecordPayout = { batchId -> nav.navigate(Routes.payoutRoute(classId, batchId)) },
                 onAddContent = { nav.navigate(Routes.contentRoute(classId, Routes.NEW_CONTENT)) },
                 onEditContent = { id -> nav.navigate(Routes.contentRoute(classId, id)) },
+                onAddScheduleItem = { nav.navigate(Routes.scheduleItemRoute(classId, Routes.NEW_CONTENT)) },
+                onEditScheduleItem = { id -> nav.navigate(Routes.scheduleItemRoute(classId, id)) },
+                progress = progress,
+                onToggleDone = vm::setDone,
+                onSetCancelled = vm::setCancelled,
                 onShowNotice = vm::showNotice,
                 onClearNotice = vm::clearNotice,
                 onRemoved = { vm.forgetClass(); nav.popBackStack(Routes.CLASSES, inclusive = false) },
@@ -280,6 +289,23 @@ private fun SignedInApp(user: AppUser, onSignOut: () -> Unit) {
                 onSave = { item -> vm.saveContent(item) { nav.popBackStack() } },
                 onDelete = { item -> vm.deleteContent(item) { nav.popBackStack() } },
                 onError = vm::showNotice,
+                onClearNotice = vm::clearNotice,
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable(Routes.SCHEDULE_ITEM) { entry ->
+            val itemId = entry.arguments?.getString("itemId").orEmpty()
+            val vm = classViewModel(nav, entry, user)
+            val state by vm.state.collectAsState()
+            val busy by vm.busy.collectAsState()
+            val notice by vm.notice.collectAsState()
+            ScheduleFormScreen(
+                state = state,
+                itemId = itemId.takeUnless { it == Routes.NEW_CONTENT },
+                busy = busy,
+                notice = notice,
+                onSave = { item -> vm.saveScheduleItem(item) { nav.popBackStack() } },
+                onDelete = { item -> vm.deleteScheduleItem(item) { nav.popBackStack() } },
                 onClearNotice = vm::clearNotice,
                 onBack = { nav.popBackStack() },
             )

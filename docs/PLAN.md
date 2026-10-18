@@ -65,7 +65,11 @@ classes/{classId}/records/{id}
     dateMillis, batchId, courseId, createdByUid
 
 classes/{classId}/schedule/{id}
-    course, title, kind, dueMillis, status, createdByUid
+    courseId (empty = whole class), title, kind (DEADLINE|QUIZ|EXAM|RECITATION|FCO),
+    dueMillis (local noon on the due day), status (PENDING = active | CANCELLED), note, createdByUid
+
+classes/{classId}/progress/{uid}
+    done: { itemId: markedAtMillis }     (a student's own done marks; only they write it)
 ```
 
 ### Joining with a code (how the rules stay safe)
@@ -120,6 +124,19 @@ Modeled on the class spreadsheet, which has Payment, Charge and "Reimbursed" row
 - **Charge students** screen: amount per student, description, course. The app selects everyone who takes that course, shows a preview (for example "P6 x 29 students = P174, 3 skipped"), and lets the treasurer include or exclude individuals.
 - Saving creates **one CHARGE record per student**, all sharing a `batchId` and written in one Firestore batch (all or nothing). The ledger shows them as one grouped line; **undo** deletes the whole batch.
 - Records are history: members who join later are not charged for earlier charges, and changing someone's exclusions does not rewrite old charges.
+
+## Schedule
+
+Replaces the spreadsheet's "Submissions & Deadlines" tab (general submissions, quizzes/exams/recitations and FCOs).
+
+- Works like Microsoft Teams assignments: **deadlines are shared, but each student marks items done for themselves.** One student's mark does not affect anyone else.
+- Types: Deliverable, Quiz, Exam, Recitation, FCO. At class level an item is only **Active** or **Cancelled** (for example a quiz that was called off).
+- Personal marks are stored per student in `classes/{classId}/progress/{uid}` as `done: { itemId: markedAtMillis }`. Each student writes only their own document. Officers with `SCHEDULE_MANAGE` can read all of them to see "Marked done by X of Y" and who has not; students cannot see each other's marks.
+- Upcoming, Overdue, Done and the week-strip dots are personal: an item is overdue for a student only if they have not marked it done.
+- Week strip (Sunday to Saturday); tap a day to see only that day. Filters: Upcoming, Overdue (with a count), Quizzes and exams, Deliverables, Done, All.
+- Each row has a tick circle for marking done. Tags: "Today", "Tomorrow", "In 5 days", "Overdue", "Done", "Cancelled".
+- Home shows "Coming up" (the student's next 3 open items) and how many are overdue for them.
+- Officers with `SCHEDULE_MANAGE`: add, edit, delete, and cancel or restore an item for the whole class.
 
 ## Class contents
 

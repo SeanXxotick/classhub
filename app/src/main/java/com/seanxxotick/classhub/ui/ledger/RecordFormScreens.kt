@@ -55,62 +55,13 @@ import com.seanxxotick.classhub.domain.LedgerView
 import com.seanxxotick.classhub.domain.Money
 import com.seanxxotick.classhub.ui.classroom.ClassUiState
 import com.seanxxotick.classhub.ui.classroom.ManageScaffold
+import com.seanxxotick.classhub.ui.common.DateField
+import com.seanxxotick.classhub.ui.common.PickerField
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
-
-// ---------------------------------------------------------------- Dates
-
-/** The date picker works in UTC midnights; records store a local time on that day. */
-private fun pickerToRecordMillis(utcMidnight: Long): Long {
-    val day = Instant.ofEpochMilli(utcMidnight).atZone(ZoneOffset.UTC).toLocalDate()
-    val zone = ZoneId.systemDefault()
-    return if (day == LocalDate.now(zone)) System.currentTimeMillis()
-    else day.atTime(LocalTime.NOON).atZone(zone).toInstant().toEpochMilli()
-}
-
-private fun recordToPickerMillis(millis: Long): Long =
-    Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DateField(millis: Long, onChange: (Long) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    PickerField(label = "Date", value = fullDate(millis), onClick = { open = true })
-    if (open) {
-        val pickerState = rememberDatePickerState(initialSelectedDateMillis = recordToPickerMillis(millis))
-        DatePickerDialog(
-            onDismissRequest = { open = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { onChange(pickerToRecordMillis(it)) }
-                    open = false
-                }) { Text("OK") }
-            },
-            dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } },
-        ) { DatePicker(state = pickerState) }
-    }
-}
-
-/** A read-only field that opens a picker when tapped. */
-@Composable
-private fun PickerField(label: String, value: String, onClick: () -> Unit, supporting: String? = null) {
-    Box {
-        OutlinedTextField(
-            value = value,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            trailingIcon = { Text("▾") },
-            supportingText = supporting?.let { { Text(it) } },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        // Cover the field so a tap anywhere opens the picker.
-        Box(Modifier.matchParentSize().clickable(onClick = onClick))
-    }
-}
 
 @Composable
 private fun AmountField(text: String, onChange: (String) -> Unit, label: String) {

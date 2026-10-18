@@ -3,6 +3,8 @@ package com.seanxxotick.classhub.domain
 import com.seanxxotick.classhub.data.model.ScheduleItem
 import com.seanxxotick.classhub.data.model.ScheduleStatus
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneId
@@ -27,26 +29,44 @@ class ScheduleLogicTest {
     }
 
     @Test
-    fun upcoming_keepsOnlyPendingItemsFromTodayOn_soonestFirst() {
+    fun upcoming_skipsWhatIMarkedDone_andCancelledItems_soonestFirst() {
         val items = listOf(
             item("later", millis(2026, 10, 30)),
             item("today", millis(2026, 10, 18)),
             item("soon", millis(2026, 10, 20)),
             item("past", millis(2026, 10, 10)),
-            item("done", millis(2026, 10, 21), ScheduleStatus.SUBMITTED),
+            item("iFinished", millis(2026, 10, 21)),
             item("cancelled", millis(2026, 10, 22), ScheduleStatus.CANCELLED),
         )
-        assertEquals(listOf("today", "soon", "later"), ScheduleLogic.upcoming(items, now, zone).map { it.id })
+        assertEquals(
+            listOf("today", "soon", "later"),
+            ScheduleLogic.upcoming(items, now, zone, doneIds = setOf("iFinished")).map { it.id },
+        )
     }
 
     @Test
-    fun overdue_isPendingItemsWhoseDateHasPassed() {
+    fun overdue_isPastAndNotMarkedDoneByMe() {
         val items = listOf(
             item("past", millis(2026, 10, 10)),
             item("today", millis(2026, 10, 18)),
-            item("pastDone", millis(2026, 10, 9), ScheduleStatus.SUBMITTED),
+            item("pastButDone", millis(2026, 10, 9)),
+            item("pastCancelled", millis(2026, 10, 8), ScheduleStatus.CANCELLED),
         )
-        assertEquals(listOf("past"), ScheduleLogic.overdue(items, now, zone).map { it.id })
+        assertEquals(listOf("past"), ScheduleLogic.overdue(items, now, zone, doneIds = setOf("pastButDone")).map { it.id })
+    }
+
+    @Test
+    fun theSameItem_canBeOverdueForOneStudent_andDoneForAnother() {
+        val items = listOf(item("report", millis(2026, 10, 10)))
+        assertEquals(1, ScheduleLogic.overdue(items, now, zone, doneIds = emptySet()).size)
+        assertEquals(0, ScheduleLogic.overdue(items, now, zone, doneIds = setOf("report")).size)
+    }
+
+    @Test
+    fun anOldClassWideSubmittedStatus_countsAsActive() {
+        val old = item("old", millis(2026, 10, 20), ScheduleStatus.SUBMITTED)
+        assertTrue(ScheduleLogic.isOpen(old, emptySet()))
+        assertFalse(ScheduleLogic.isOpen(old, setOf("old")))
     }
 
     @Test

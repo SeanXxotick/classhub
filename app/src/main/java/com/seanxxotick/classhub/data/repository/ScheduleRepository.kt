@@ -22,6 +22,10 @@ class ScheduleRepository(
         items.add(item).await()
     }
 
+    suspend fun update(item: ScheduleItem) {
+        items.document(item.id).set(item).await()
+    }
+
     suspend fun setStatus(itemId: String, status: ScheduleStatus) {
         items.document(itemId).update("status", status.name).await()
     }

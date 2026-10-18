@@ -53,7 +53,13 @@ import com.seanxxotick.classhub.data.model.Permission
 import com.seanxxotick.classhub.data.model.RecordType
 import com.seanxxotick.classhub.domain.LedgerEntry
 import com.seanxxotick.classhub.domain.LedgerView
+import com.seanxxotick.classhub.data.model.ScheduleItem
+import com.seanxxotick.classhub.data.model.StudentProgress
+import com.seanxxotick.classhub.domain.ScheduleFilter
+import com.seanxxotick.classhub.domain.ScheduleView
 import com.seanxxotick.classhub.ui.contents.ContentsTab
+import com.seanxxotick.classhub.ui.schedule.ScheduleRow
+import com.seanxxotick.classhub.ui.schedule.ScheduleTab
 import com.seanxxotick.classhub.ui.ledger.AddRecordChooser
 import com.seanxxotick.classhub.ui.ledger.EntryRow
 import com.seanxxotick.classhub.ui.ledger.FundSummaryCard
@@ -90,6 +96,11 @@ fun ClassScreen(
     onRecordPayout: (String) -> Unit,
     onAddContent: () -> Unit,
     onEditContent: (String) -> Unit,
+    onAddScheduleItem: () -> Unit,
+    onEditScheduleItem: (String) -> Unit,
+    progress: List<StudentProgress>,
+    onToggleDone: (ScheduleItem, Boolean) -> Unit,
+    onSetCancelled: (ScheduleItem, Boolean) -> Unit,
     onShowNotice: (String) -> Unit,
     onClearNotice: () -> Unit,
     onRemoved: () -> Unit,
@@ -142,6 +153,9 @@ fun ClassScreen(
                 if (tab == ClassTab.LEDGER && state.can(Permission.RECORDS_MANAGE)) {
                     ExtendedFloatingActionButton(onClick = { choosingRecord = true }) { Text("+  New record") }
                 }
+                if (tab == ClassTab.SCHEDULE && state.can(Permission.SCHEDULE_MANAGE)) {
+                    ExtendedFloatingActionButton(onClick = onAddScheduleItem) { Text("+  Add") }
+                }
                 if (tab == ClassTab.CONTENTS && state.can(Permission.CONTENTS_MANAGE)) {
                     ExtendedFloatingActionButton(onClick = onAddContent) { Text("+  Add content") }
                 }
@@ -158,10 +172,21 @@ fun ClassScreen(
                     )
                     room == null || state.me == null -> Unit
                     else -> when (tab) {
-                        ClassTab.HOME -> HomeTab(state, myUid, busy, onRegenerateCode, onOpenRoles, onOpenCourses, onSeeLedger = { tabName = ClassTab.LEDGER.name })
+                        ClassTab.HOME -> HomeTab(
+                            state, myUid, busy, onRegenerateCode, onOpenRoles, onOpenCourses,
+                            onSeeLedger = { tabName = ClassTab.LEDGER.name },
+                            onSeeSchedule = { tabName = ClassTab.SCHEDULE.name },
+                            onToggleDone = onToggleDone,
+                        )
                         ClassTab.MEMBERS -> MembersTab(state, myUid, onOpenMember)
                         ClassTab.LEDGER -> LedgerTab(state, myUid, onDeleteRecord, onUndoCharge, onRecordPayout)
-                        ClassTab.SCHEDULE -> ComingSoon("Schedule", "Deadlines, quizzes and exams will appear here.")
+                        ClassTab.SCHEDULE -> ScheduleTab(
+                            state = state,
+                            progress = progress,
+                            onEdit = onEditScheduleItem,
+                            onToggleDone = onToggleDone,
+                            onSetCancelled = onSetCancelled,
+                        )
                         ClassTab.CONTENTS -> ContentsTab(state, onEdit = onEditContent, onError = onShowNotice)
                     }
                 }
@@ -186,6 +211,8 @@ private fun HomeTab(
     onOpenRoles: () -> Unit,
     onOpenCourses: () -> Unit,
     onSeeLedger: () -> Unit,
+    onSeeSchedule: () -> Unit,
+    onToggleDone: (ScheduleItem, Boolean) -> Unit,
 ) {
     val room = state.room ?: return
     val myRole = state.myRole
@@ -209,6 +236,40 @@ private fun HomeTab(
                         color = MaterialTheme.colorScheme.onPrimary,
                         fontWeight = FontWeight.SemiBold,
                     )
+                }
+            }
+        }
+
+        if (room.scheduleEnabled) {
+            item {
+                val now = System.currentTimeMillis()
+                val upcoming = ScheduleView.filter(state.schedule, ScheduleFilter.UPCOMING, now, doneIds = state.myDone).take(3)
+                val overdue = ScheduleView.filter(state.schedule, ScheduleFilter.OVERDUE, now, doneIds = state.myDone).size
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(vertical = 12.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Coming up", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                if (overdue > 0) {
+                                    Text(
+                                        "$overdue overdue item${if (overdue == 1) "" else "s"}",
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                            }
+                            TextButton(onClick = onSeeSchedule) { Text("Schedule ›") }
+                        }
+                        if (upcoming.isEmpty()) {
+                            Text(
+                                "Nothing due soon. You are all caught up.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
+                        }
+                        upcoming.forEach { ScheduleRow(it, state, now, showDate = true, onToggleDone = onToggleDone) }
+                    }
                 }
             }
         }

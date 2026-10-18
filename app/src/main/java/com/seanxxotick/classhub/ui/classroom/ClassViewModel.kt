@@ -6,8 +6,20 @@ import com.seanxxotick.classhub.data.model.ClassRoom
 import com.seanxxotick.classhub.data.model.ContentItem
 import com.seanxxotick.classhub.data.model.Course
 import com.seanxxotick.classhub.data.model.LedgerRecord
+import com.seanxxotick.classhub.data.model.ScheduleItem
+import com.seanxxotick.classhub.data.model.ScheduleStatus
 import com.seanxxotick.classhub.data.repository.ContentRepository
+import com.seanxxotick.classhub.data.model.StudentProgress
+import com.seanxxotick.classhub.data.repository.ProgressRepository
+import com.seanxxotick.classhub.data.repository.ScheduleRepository
 import com.seanxxotick.classhub.domain.ContentRules
+import com.seanxxotick.classhub.domain.ScheduleForms
+import com.seanxxotick.classhub.domain.ScheduleLogic
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import com.seanxxotick.classhub.data.model.Member
 import com.seanxxotick.classhub.data.model.Permission
 import com.seanxxotick.classhub.data.model.RecordType
@@ -47,6 +59,9 @@ data class ClassUiState(
     val courses: List<Course> = emptyList(),
     val records: List<LedgerRecord> = emptyList(),
     val contents: List<ContentItem> = emptyList(),
+    val schedule: List<ScheduleItem> = emptyList(),
+    /** Schedule items the signed-in student marked done. */
+    val myDone: Set<String> = emptySet(),
     val error: String? = null,
 ) {
     /** Current balance of every member, in centavos. */
@@ -77,6 +92,8 @@ class ClassViewModel(
     private val courseRepo: CourseRepository = CourseRepository(classId),
     private val ledgerRepo: LedgerRepository = LedgerRepository(classId),
     private val contentRepo: ContentRepository = ContentRepository(classId),
+    private val scheduleRepo: ScheduleRepository = ScheduleRepository(classId),
+    private val progressRepo: ProgressRepository = ProgressRepository(classId),
 ) : ViewModel() {
     val state: StateFlow<ClassUiState> = combine(
         combine(
@@ -90,9 +107,26 @@ class ClassViewModel(
         },
         ledgerRepo.observeRecords(),
         contentRepo.observeContents(),
-    ) { base, records, contents -> base.copy(records = records, contents = contents) }
+        scheduleRepo.observeItems(),
+        progressRepo.observeMine(uid),
+    ) { base, records, contents, schedule, myDone ->
+        base.copy(records = records, contents = contents, schedule = schedule, myDone = myDone)
+    }
         .catch { emit(ClassUiState(loading = false, error = friendlyMessage(it))) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ClassUiState())
+
+    /**
+     * Every student's done marks, loaded only while the signed-in user may manage the schedule,
+     * since students do not see each other's progress.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val allProgress: StateFlow<List<StudentProgress>> = state
+        .map { it.can(Permission.SCHEDULE_MANAGE) }
+        .distinctUntilChanged()
+        .flatMapLatest { allowed ->
+            if (allowed) progressRepo.observeAll().catch { emit(emptyList()) } else flowOf(emptyList())
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _notice = MutableStateFlow<String?>(null)
     /** One-off messages such as "Role saved" or an error from an action. */
@@ -297,6 +331,57 @@ class ClassViewModel(
         runAction("Charge \"${batch.note}\" undone for ${batch.count} student${if (batch.count == 1) "" else "s"}.") {
             ledgerRepo.deleteBatch(batch.batchId)
         }
+    }
+
+    // ---- Schedule ----
+
+    /** Adds a new item (blank id) or saves changes to an existing one. */
+    fun saveScheduleItem(item: ScheduleItem, onDone: () -> Unit = {}) {
+        if (!state.value.can(Permission.SCHEDULE_MANAGE)) {
+            _notice.value = "You do not have permission to manage the schedule."
+            return
+        }
+        ScheduleForms.check(item.title)?.let {
+            _notice.value = it
+            return
+        }
+        val clean = item.copy(title = item.title.trim(), note = item.note.trim())
+        if (clean.id.isEmpty()) {
+            runAction("Added \"${clean.title}\".", onDone) { scheduleRepo.add(clean.copy(createdByUid = uid)) }
+        } else {
+            runAction("Saved \"${clean.title}\".", onDone) { scheduleRepo.update(clean) }
+        }
+    }
+
+    /** Cancels an item for the whole class (for example a quiz that was called off), or restores it. */
+    fun setCancelled(item: ScheduleItem, cancelled: Boolean) {
+        if (!state.value.can(Permission.SCHEDULE_MANAGE)) {
+            _notice.value = "You do not have permission to manage the schedule."
+            return
+        }
+        val status = if (cancelled) ScheduleStatus.CANCELLED else ScheduleStatus.PENDING
+        val message = if (cancelled) "\"${item.title}\" is cancelled for the class." else "\"${item.title}\" is active again."
+        runAction(message) { scheduleRepo.setStatus(item.id, status) }
+    }
+
+    /** Any member marks an item done or not done for themselves only. */
+    fun setDone(item: ScheduleItem, done: Boolean) {
+        if (ScheduleLogic.isCancelled(item)) {
+            _notice.value = "This item was cancelled, so there is nothing to mark."
+            return
+        }
+        val message = if (done) "Marked \"${item.title}\" as done." else "Marked \"${item.title}\" as not done."
+        runAction(message) {
+            if (done) progressRepo.markDone(uid, item.id) else progressRepo.markNotDone(uid, item.id)
+        }
+    }
+
+    fun deleteScheduleItem(item: ScheduleItem, onDone: () -> Unit = {}) {
+        if (!state.value.can(Permission.SCHEDULE_MANAGE)) {
+            _notice.value = "You do not have permission to manage the schedule."
+            return
+        }
+        runAction("Deleted \"${item.title}\".", onDone) { scheduleRepo.delete(item.id) }
     }
 
     // ---- Class contents ----

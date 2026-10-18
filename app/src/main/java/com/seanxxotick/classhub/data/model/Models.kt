@@ -141,13 +141,31 @@ data class ContentItem(
     val createdAtMillis: Long = 0,
 )
 
-/** Firestore: classes/{classId}/schedule/{id} */
+/**
+ * Firestore: classes/{classId}/schedule/{id}
+ *
+ * A deliverable, quiz, exam, recitation or FCO. [dueMillis] is local noon on the due day.
+ * [courseId] is empty for class-wide items. [status] is class-wide: PENDING (active) or CANCELLED.
+ * Whether a student finished it is personal and lives in [StudentProgress].
+ */
 data class ScheduleItem(
     val id: String = "",
-    val course: String = "",
+    val courseId: String = "",
     val title: String = "",
     val kind: ScheduleKind = ScheduleKind.DEADLINE,
     val dueMillis: Long = 0,
     val status: ScheduleStatus = ScheduleStatus.PENDING,
+    val note: String = "",
     val createdByUid: String = "",
+)
+
+/**
+ * Firestore: classes/{classId}/progress/{uid}
+ *
+ * One student's own checklist: the schedule items they marked done, with when they marked them.
+ * Each student writes only their own document; officers who manage the schedule can read all of them.
+ */
+data class StudentProgress(
+    val id: String = "",
+    val done: Map<String, Long> = emptyMap(),
 )
