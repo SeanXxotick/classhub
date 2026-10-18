@@ -1,6 +1,10 @@
 package com.seanxxotick.classhub.ui.classroom
 
 import android.content.Intent
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import com.seanxxotick.classhub.R
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -77,12 +81,12 @@ import com.seanxxotick.classhub.ui.theme.ClassHubTheme
 import com.seanxxotick.classhub.ui.theme.heroColors
 import com.seanxxotick.classhub.ui.theme.hexToColor
 
-private enum class ClassTab(val label: String, val glyph: String) {
-    HOME("Home", "⌂"),
-    LEDGER("Ledger", "₱"),
-    SCHEDULE("Schedule", "◷"),
-    CONTENTS("Contents", "▤"),
-    MEMBERS("Members", "≡"),
+private enum class ClassTab(val label: String, val icon: Int) {
+    HOME("Home", R.drawable.ic_tab_home),
+    LEDGER("Ledger", R.drawable.ic_tab_ledger),
+    SCHEDULE("Schedule", R.drawable.ic_tab_schedule),
+    CONTENTS("Contents", R.drawable.ic_tab_contents),
+    MEMBERS("Members", R.drawable.ic_tab_members),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -151,7 +155,8 @@ fun ClassScreen(
                         NavigationBarItem(
                             selected = t == tab,
                             onClick = { tabName = t.name },
-                            icon = { Text(t.glyph, fontSize = 20.sp) },
+                            // Line icons drawn at one size, so every tab matches.
+                            icon = { Icon(painterResource(t.icon), contentDescription = null, modifier = Modifier.size(26.dp)) },
                             label = { Text(t.label) },
                         )
                     }
