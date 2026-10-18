@@ -4,6 +4,11 @@
 *.csv
 reference/
 
+# Node (rules tests)
+node_modules/
+firestore-debug.log
+ui-debug.log
+
 # Firebase / secrets
 google-services.json
 GoogleService-Info.plist

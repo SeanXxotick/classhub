@@ -1,0 +1,221 @@
+rules_version = '2';
+
+// ClassHub security rules.
+// Every permission the app shows is enforced here, so it cannot be bypassed by
+// editing data outside the app. Roles live in classes/{classId}/roles and hold a
+// list of permission names; the locked Mayor role has every permission.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ------------------------------------------------------------ Helpers
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function classPath(c) {
+      return /databases/$(database)/documents/classes/$(c);
+    }
+
+    function memberPath(c, u) {
+      return /databases/$(database)/documents/classes/$(c)/members/$(u);
+    }
+
+    function rolePath(c, r) {
+      return /databases/$(database)/documents/classes/$(c)/roles/$(r);
+    }
+
+    function invitePath(code) {
+      return /databases/$(database)/documents/invites/$(code);
+    }
+
+    function isMember(c) {
+      return signedIn() && exists(memberPath(c, uid()));
+    }
+
+    // The signed-in user's role in class c.
+    function myRole(c) {
+      return get(rolePath(c, get(memberPath(c, uid())).data.roleId)).data;
+    }
+
+    // True when the user's role in class c grants permission p.
+    function can(c, p) {
+      return isMember(c) && (myRole(c).get('locked', false) == true || p in myRole(c).permissions);
+    }
+
+    // True while the user is creating class c in this same batch.
+    function isNewClassOwner(c) {
+      return signedIn() && !exists(classPath(c)) && getAfter(classPath(c)).data.ownerUid == uid();
+    }
+
+    // True when an update changes only the listed fields.
+    function changesOnly(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    // ------------------------------------------------------------ Users
+
+    match /users/{userId} {
+      allow read, write: if signedIn() && userId == uid();
+
+      // The "My classes" list.
+      match /memberships/{classId} {
+        allow read, write: if signedIn() && userId == uid();
+      }
+    }
+
+    // ------------------------------------------------------------ Invite codes
+
+    match /invites/{code} {
+      // Anyone signed in may look up one code they were given, but nobody can list all codes.
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['classId', 'className', 'defaultRoleId'])
+        && (isNewClassOwner(request.resource.data.classId)
+            || can(request.resource.data.classId, 'MEMBERS_MANAGE'));
+
+      // Renaming the class keeps the invite's class name in step.
+      allow update: if can(resource.data.classId, 'CLASS_SETTINGS') && changesOnly(['className']);
+
+      // Making a new code deletes the old one.
+      allow delete: if can(resource.data.classId, 'MEMBERS_MANAGE');
+    }
+
+    // ------------------------------------------------------------ Classes
+
+    function isValidJoin(c) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['name', 'roleId', 'joinedAtMillis', 'excludedCourseIds', 'joinCode'])
+        && d.joinCode is string
+        && exists(invitePath(d.joinCode))
+        && get(invitePath(d.joinCode)).data.classId == c
+        && d.roleId == get(classPath(c)).data.defaultRoleId
+        && d.excludedCourseIds is list
+        && d.excludedCourseIds.size() == 0;
+    }
+
+    // A members manager gives someone else a role (never the locked Mayor role, never their own, never the owner's).
+    function isRoleChangeByManager(c, memberId) {
+      let newRole = request.resource.data.roleId;
+      return can(c, 'MEMBERS_MANAGE')
+        && changesOnly(['roleId'])
+        && memberId != uid()
+        && memberId != get(classPath(c)).data.ownerUid
+        && exists(rolePath(c, newRole))
+        && get(rolePath(c, newRole)).data.get('locked', false) != true;
+    }
+
+    function isCoursesChangeByManager(c) {
+      return can(c, 'MEMBERS_MANAGE')
+        && changesOnly(['excludedCourseIds'])
+        && request.resource.data.excludedCourseIds is list;
+    }
+
+    // Deleting a role moves its members to the default role in the same batch.
+    function isReassignAfterRoleDelete(c) {
+      return can(c, 'ROLES_MANAGE')
+        && changesOnly(['roleId'])
+        && request.resource.data.roleId == get(classPath(c)).data.defaultRoleId
+        && !existsAfter(rolePath(c, resource.data.roleId));
+    }
+
+    function isValidRecord() {
+      let d = request.resource.data;
+      return d.createdByUid == uid()
+        && d.amountCentavos is int
+        && d.amountCentavos > 0
+        && d.amountCentavos <= 100000000
+        && d.type in ['PAYMENT', 'CHARGE', 'WITHDRAWAL', 'EXPENSE']
+        && (d.type != 'CHARGE' || (d.batchId is string && d.batchId.size() > 0))
+        && (d.type != 'EXPENSE' || (d.settlesBatchId is string && d.settlesBatchId.size() > 0));
+    }
+
+    match /classes/{classId} {
+      allow get: if isMember(classId);
+      allow list: if false;
+
+      // The creator becomes the owner and joins as Mayor in the same batch.
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == uid()
+        && request.resource.data.defaultRoleId == 'member'
+        && getAfter(memberPath(classId, uid())).data.roleId == 'mayor';
+
+      allow update: if request.resource.data.ownerUid == resource.data.ownerUid
+        && ((can(classId, 'CLASS_SETTINGS')
+              && changesOnly(['name', 'description', 'accentColor', 'ledgerEnabled', 'scheduleEnabled', 'contentsEnabled']))
+            || (can(classId, 'MEMBERS_MANAGE') && changesOnly(['inviteCode'])));
+
+      allow delete: if false;
+
+      match /roles/{roleId} {
+        allow read: if isMember(classId);
+        allow create: if isNewClassOwner(classId)
+          || (can(classId, 'ROLES_MANAGE') && request.resource.data.get('locked', false) != true);
+        allow update: if can(classId, 'ROLES_MANAGE')
+          && resource.data.get('locked', false) != true
+          && request.resource.data.get('locked', false) != true;
+        allow delete: if can(classId, 'ROLES_MANAGE')
+          && resource.data.get('locked', false) != true
+          && roleId != get(classPath(classId)).data.defaultRoleId;
+      }
+
+      match /members/{memberId} {
+        // A user may always check their own membership, so the app can tell when they were removed.
+        allow get: if (signedIn() && memberId == uid()) || isMember(classId);
+        allow list: if isMember(classId);
+
+        allow create: if signedIn() && memberId == uid()
+          && ((isNewClassOwner(classId) && request.resource.data.roleId == 'mayor')
+              || isValidJoin(classId));
+
+        allow update: if isRoleChangeByManager(classId, memberId)
+          || isCoursesChangeByManager(classId)
+          || isReassignAfterRoleDelete(classId);
+
+        allow delete: if can(classId, 'MEMBERS_MANAGE')
+          && memberId != uid()
+          && memberId != get(classPath(classId)).data.ownerUid;
+      }
+
+      match /courses/{courseId} {
+        allow read: if isMember(classId);
+        allow write: if can(classId, 'CLASS_SETTINGS');
+      }
+
+      match /records/{recordId} {
+        allow read: if isMember(classId);
+        allow create: if can(classId, 'RECORDS_MANAGE') && isValidRecord();
+        // Records are history: they are added or deleted, never edited.
+        allow update: if false;
+        allow delete: if can(classId, 'RECORDS_MANAGE');
+      }
+
+      match /schedule/{itemId} {
+        allow read: if isMember(classId);
+        allow write: if can(classId, 'SCHEDULE_MANAGE');
+      }
+
+      match /contents/{contentId} {
+        allow read: if isMember(classId);
+        allow write: if can(classId, 'CONTENTS_MANAGE');
+      }
+
+      // Each student's own done marks. Only they write it; schedule officers may read everyone's.
+      match /progress/{studentId} {
+        allow get: if (signedIn() && studentId == uid()) || can(classId, 'SCHEDULE_MANAGE');
+        allow list: if can(classId, 'SCHEDULE_MANAGE');
+        allow create, update: if signedIn() && studentId == uid() && isMember(classId)
+          && request.resource.data.keys().hasOnly(['done'])
+          && request.resource.data.done is map;
+        allow delete: if false;
+      }
+    }
+  }
+}

@@ -15,6 +15,7 @@ import com.seanxxotick.classhub.data.repository.ScheduleRepository
 import com.seanxxotick.classhub.domain.ContentRules
 import com.seanxxotick.classhub.domain.ScheduleForms
 import com.seanxxotick.classhub.domain.ScheduleLogic
+import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -112,7 +113,15 @@ class ClassViewModel(
     ) { base, records, contents, schedule, myDone ->
         base.copy(records = records, contents = contents, schedule = schedule, myDone = myDone)
     }
-        .catch { emit(ClassUiState(loading = false, error = friendlyMessage(it))) }
+        .catch { error ->
+            // The security rules refuse class data to people who are not members, so a refusal here
+            // means the user was removed (or the class is gone): treat it as removed, not as an error.
+            if (error is FirebaseFirestoreException && error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+                emit(ClassUiState(loading = false))
+            } else {
+                emit(ClassUiState(loading = false, error = friendlyMessage(error)))
+            }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ClassUiState())
 
     /**
