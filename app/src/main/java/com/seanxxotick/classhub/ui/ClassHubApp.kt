@@ -1,5 +1,7 @@
 package com.seanxxotick.classhub.ui
 
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.CompositionLocalProvider
@@ -47,6 +49,7 @@ import com.seanxxotick.classhub.ui.classroom.ClassSettingsScreen
 import com.seanxxotick.classhub.ui.classroom.ClassViewModel
 import com.seanxxotick.classhub.ui.classroom.CoursesScreen
 import com.seanxxotick.classhub.ui.classroom.MemberDetailScreen
+import com.seanxxotick.classhub.ui.classroom.MySettingsScreen
 import com.seanxxotick.classhub.ui.classroom.RoleEditorScreen
 import com.seanxxotick.classhub.ui.classroom.RolesScreen
 import com.seanxxotick.classhub.ui.theme.ClassHubTheme
@@ -108,6 +111,7 @@ private object Routes {
     const val ROLE = "class/{classId}/roles/{roleId}"
     const val COURSES = "class/{classId}/courses"
     const val SETTINGS = "class/{classId}/settings"
+    const val MY_SETTINGS = "class/{classId}/mine"
     const val RECORD = "class/{classId}/record/{type}?batch={batch}"
     const val CHARGE = "class/{classId}/charge"
     const val CONTENT = "class/{classId}/content/{contentId}"
@@ -121,6 +125,7 @@ private object Routes {
     fun roleRoute(classId: String, roleId: String) = "class/$classId/roles/$roleId"
     fun coursesRoute(classId: String) = "class/$classId/courses"
     fun settingsRoute(classId: String) = "class/$classId/settings"
+    fun mySettingsRoute(classId: String) = "class/$classId/mine"
     fun recordRoute(classId: String, type: RecordType) =
         if (type == RecordType.CHARGE) "class/$classId/charge" else "class/$classId/record/${type.name}"
     fun contentRoute(classId: String, contentId: String) = "class/$classId/content/$contentId"
@@ -181,6 +186,7 @@ private fun SignedInApp(
             val photo by accountVm.photo.collectAsState()
             val busy by accountVm.busy.collectAsState()
             val notice by accountVm.notice.collectAsState()
+            val deleteStep by accountVm.deleteStep.collectAsState()
             AccountScreen(
                 user = user,
                 photo = photo,
@@ -190,6 +196,11 @@ private fun SignedInApp(
                 onRemovePhoto = accountVm::removePhoto,
                 onPhotoError = accountVm::showNotice,
                 onClearNotice = accountVm::clearNotice,
+                onSaveName = accountVm::saveName,
+                deleteStep = deleteStep,
+                onStartDelete = accountVm::startDelete,
+                onCancelDelete = accountVm::cancelDelete,
+                onDeleteAccount = accountVm::deleteAccount,
                 onSignOut = onSignOut,
                 onChangePassword = { authVm.clearError(); nav.navigate(Routes.PASSWORD) },
                 onBack = { nav.popBackStack() },
@@ -247,6 +258,7 @@ private fun SignedInApp(
             val notice by vm.notice.collectAsState()
             val progress by vm.allProgress.collectAsState()
             ClassScreen(
+                classId = classId,
                 state = state,
                 myUid = user.uid,
                 busy = busy,
@@ -256,6 +268,7 @@ private fun SignedInApp(
                 onOpenRoles = { nav.navigate(Routes.rolesRoute(classId)) },
                 onOpenCourses = { nav.navigate(Routes.coursesRoute(classId)) },
                 onOpenSettings = { nav.navigate(Routes.settingsRoute(classId)) },
+                onOpenMySettings = { nav.navigate(Routes.mySettingsRoute(classId)) },
                 onAddRecord = { type -> nav.navigate(Routes.recordRoute(classId, type)) },
                 onDeleteRecord = vm::deleteRecord,
                 onUndoCharge = vm::undoCharge,
@@ -406,6 +419,31 @@ private fun SignedInApp(
                 onSave = { item -> vm.saveScheduleItem(item) { nav.popBackStack() } },
                 onDelete = { item -> vm.deleteScheduleItem(item) { nav.popBackStack() } },
                 onClearNotice = vm::clearNotice,
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable(Routes.MY_SETTINGS) { entry ->
+            val classId = entry.arguments?.getString("classId").orEmpty()
+            val vm = classViewModel(nav, entry, user)
+            val state by vm.state.collectAsState()
+            val busy by vm.busy.collectAsState()
+            val notice by vm.notice.collectAsState()
+            val context = LocalContext.current
+            MySettingsScreen(
+                state = state,
+                classId = classId,
+                myUid = user.uid,
+                busy = busy,
+                notice = notice,
+                onClearNotice = vm::clearNotice,
+                onLeave = { newMayorUid ->
+                    val className = state.room?.name.orEmpty()
+                    vm.leaveClass(newMayorUid) {
+                        AppSettings.setPinned(classId, false)
+                        Toast.makeText(context, "You left $className.", Toast.LENGTH_SHORT).show()
+                        nav.popBackStack(Routes.CLASSES, inclusive = false)
+                    }
+                },
                 onBack = { nav.popBackStack() },
             )
         }

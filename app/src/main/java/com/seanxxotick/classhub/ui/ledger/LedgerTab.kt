@@ -175,7 +175,7 @@ fun EntryRow(entry: LedgerEntry, state: ClassUiState, onClick: (() -> Unit)? = n
     }
 }
 
-/** The three fund numbers: Cash on hand, Collected, Charged to members. */
+/** The class fund: Cash on hand, Net collected, Charged to members, what is waiting to be paid out, and the books check. */
 @Composable
 fun FundSummaryCard(records: List<LedgerRecord>, title: String? = null) {
     val hero = heroColors()
@@ -189,8 +189,17 @@ fun FundSummaryCard(records: List<LedgerRecord>, title: String? = null) {
             Text(Money.format(Ledger.cashOnHand(records)), color = hero.content, fontSize = 30.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SummaryTile("Collected", Ledger.total(records, RecordType.PAYMENT), Modifier.weight(1f), hero.content)
+                SummaryTile("Net collected", Ledger.netCollected(records), Modifier.weight(1f), hero.content)
                 SummaryTile("Charged to members", Ledger.total(records, RecordType.CHARGE), Modifier.weight(1f), hero.content)
+            }
+            val withdrawn = Ledger.total(records, RecordType.WITHDRAWAL)
+            if (withdrawn > 0) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "${Money.format(Ledger.total(records, RecordType.PAYMENT))} paid in, ${Money.format(withdrawn)} withdrawn.",
+                    color = hero.content.copy(alpha = 0.85f),
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -275,6 +284,16 @@ fun balanceText(centavos: Long): String = when {
     else -> "Settled"
 }
 
+/** The signed-in officer's own balance in one line, such as "Your balance: ₱776.00" or "You owe ₱50.00". */
+fun myBalanceLine(centavos: Long): String = when {
+    centavos < 0 -> "You owe " + Money.format(-centavos)
+    centavos > 0 -> "Your balance: " + Money.format(centavos)
+    else -> "Your balance: settled"
+}
+
+/** The amount under a "Your balance" label: a plain amount when positive, otherwise "Owes ..." or "Settled". */
+fun myBalanceValue(centavos: Long): String = if (centavos > 0) Money.format(centavos) else balanceText(centavos)
+
 // ---------------------------------------------------------------- Ledger tab
 
 @Composable
@@ -297,7 +316,7 @@ fun LedgerTab(
                 if (state.can(Permission.RECORDS_MANAGE)) {
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "Your balance: ${balanceText(state.balanceOf(myUid))}",
+                        myBalanceLine(state.balanceOf(myUid)),
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

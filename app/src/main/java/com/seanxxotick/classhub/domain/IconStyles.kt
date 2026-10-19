@@ -45,7 +45,7 @@ object ScheduleIcons {
     )
 
     val DEFAULT_COLORS: Map<ScheduleKind, String> = mapOf(
-        ScheduleKind.DEADLINE to "#3730A3",
+        ScheduleKind.DEADLINE to "#2563EB",
         ScheduleKind.QUIZ to "#B45309",
         ScheduleKind.EXAM to "#B91C1C",
         ScheduleKind.RECITATION to "#0F766E",

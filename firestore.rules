@@ -158,6 +158,41 @@ service cloud.firestore {
         && !existsAfter(rolePath(c, resource.data.roleId));
     }
 
+    // Leaving: the Mayor (owner) hands the class to another member and leaves, all in one batch.
+    // The class's new owner must hold the Mayor role after the batch, and the old owner must be gone.
+    function isMayorHandover(c) {
+      let newOwner = request.resource.data.ownerUid;
+      return signedIn()
+        && resource.data.ownerUid == uid()
+        && newOwner != uid()
+        && changesOnly(['ownerUid'])
+        && exists(memberPath(c, newOwner))
+        && getAfter(memberPath(c, newOwner)).data.roleId == 'mayor'
+        && !existsAfter(memberPath(c, uid()));
+    }
+
+    // The member who receives the Mayor role in that same batch.
+    function isNewMayorInHandover(c, memberId) {
+      return signedIn()
+        && get(classPath(c)).data.ownerUid == uid()
+        && getAfter(classPath(c)).data.ownerUid == memberId
+        && memberId != uid()
+        && changesOnly(['roleId'])
+        && request.resource.data.roleId == 'mayor';
+    }
+
+    // A member changes their own name (from Account). Every class they are in is updated in one batch.
+    function isOwnRename(memberId) {
+      let name = request.resource.data.name;
+      return signedIn()
+        && memberId == uid()
+        && changesOnly(['name'])
+        && name != resource.data.name
+        && name is string
+        && name.size() > 0
+        && name.size() <= 90;
+    }
+
     function isValidRecord() {
       let d = request.resource.data;
       return d.createdByUid == uid()
@@ -179,13 +214,14 @@ service cloud.firestore {
         && request.resource.data.defaultRoleId == 'member'
         && getAfter(memberPath(classId, uid())).data.roleId == 'mayor';
 
-      allow update: if request.resource.data.ownerUid == resource.data.ownerUid
+      allow update: if (request.resource.data.ownerUid == resource.data.ownerUid
         && ((can(classId, 'CLASS_SETTINGS')
               && changesOnly(['name', 'description', 'accentColor', 'ledgerEnabled', 'scheduleEnabled', 'contentsEnabled',
                               'scheduleIcons', 'scheduleColors', 'contentIcons', 'contentColors'])
               && isSmallMap('scheduleIcons') && isSmallMap('scheduleColors')
               && isSmallMap('contentIcons') && isSmallMap('contentColors'))
-            || (can(classId, 'MEMBERS_MANAGE') && changesOnly(['inviteCode'])));
+            || (can(classId, 'MEMBERS_MANAGE') && changesOnly(['inviteCode']))))
+        || isMayorHandover(classId);
 
       allow delete: if false;
 
@@ -212,11 +248,16 @@ service cloud.firestore {
 
         allow update: if isRoleChangeByManager(classId, memberId)
           || isCoursesChangeByManager(classId)
-          || isReassignAfterRoleDelete(classId);
+          || isReassignAfterRoleDelete(classId)
+          || isNewMayorInHandover(classId, memberId)
+          || isOwnRename(memberId);
 
-        allow delete: if can(classId, 'MEMBERS_MANAGE')
-          && memberId != uid()
-          && memberId != get(classPath(classId)).data.ownerUid;
+        // A members manager removes someone else, or a member leaves on their own.
+        // The owner can only leave in the batch that hands the class to a new Mayor.
+        allow delete: if (can(classId, 'MEMBERS_MANAGE')
+            && memberId != uid()
+            && memberId != get(classPath(classId)).data.ownerUid)
+          || (signedIn() && memberId == uid() && getAfter(classPath(classId)).data.ownerUid != uid());
       }
 
       match /courses/{courseId} {
@@ -249,7 +290,8 @@ service cloud.firestore {
         allow create, update: if signedIn() && studentId == uid() && isMember(classId)
           && request.resource.data.keys().hasOnly(['done'])
           && request.resource.data.done is map;
-        allow delete: if false;
+        // Removed with the account when a student deletes it.
+        allow delete: if signedIn() && studentId == uid();
       }
     }
   }

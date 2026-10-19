@@ -3,6 +3,9 @@ package com.seanxxotick.classhub.ui.classroom
 import android.content.Intent
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import com.seanxxotick.classhub.data.model.ClassRoom
+import com.seanxxotick.classhub.settings.AppSettings
 import androidx.compose.ui.res.painterResource
 import com.seanxxotick.classhub.R
 import java.time.LocalDate
@@ -73,6 +76,7 @@ import com.seanxxotick.classhub.ui.ledger.EntryRow
 import com.seanxxotick.classhub.ui.ledger.LedgerSummaryCard
 import com.seanxxotick.classhub.ui.ledger.LedgerTab
 import com.seanxxotick.classhub.ui.ledger.balanceText
+import com.seanxxotick.classhub.ui.ledger.myBalanceValue
 import com.seanxxotick.classhub.ui.common.Avatar
 import com.seanxxotick.classhub.ui.common.Initials
 import com.seanxxotick.classhub.ui.common.RoleChip
@@ -81,17 +85,27 @@ import com.seanxxotick.classhub.ui.theme.ClassHubTheme
 import com.seanxxotick.classhub.ui.theme.heroColors
 import com.seanxxotick.classhub.ui.theme.hexToColor
 
-private enum class ClassTab(val label: String, val icon: Int) {
+internal enum class ClassTab(val label: String, val icon: Int) {
     HOME("Home", R.drawable.ic_tab_home),
     LEDGER("Ledger", R.drawable.ic_tab_ledger),
     SCHEDULE("Schedule", R.drawable.ic_tab_schedule),
     CONTENTS("Contents", R.drawable.ic_tab_contents),
     MEMBERS("Members", R.drawable.ic_tab_members),
+    ;
+
+    /** Officers can turn the Ledger, Schedule and Contents tabs off in Class settings. */
+    fun shownIn(room: ClassRoom?): Boolean = when (this) {
+        LEDGER -> room?.ledgerEnabled != false
+        SCHEDULE -> room?.scheduleEnabled != false
+        CONTENTS -> room?.contentsEnabled != false
+        else -> true
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClassScreen(
+    classId: String,
     state: ClassUiState,
     myUid: String,
     busy: Boolean,
@@ -101,6 +115,7 @@ fun ClassScreen(
     onOpenRoles: () -> Unit,
     onOpenCourses: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenMySettings: () -> Unit,
     onAddRecord: (RecordType) -> Unit,
     onDeleteRecord: (LedgerRecord) -> Unit,
     onUndoCharge: (LedgerEntry.ChargeBatch) -> Unit,
@@ -121,17 +136,11 @@ fun ClassScreen(
 
     val room = state.room
     ClassHubTheme(accentHex = room?.accentColor) {
-        var tabName by rememberSaveable { mutableStateOf(ClassTab.HOME.name) }
+        // Opens on the tab chosen in My settings (Home if none, or if that tab was turned off).
+        var tabName by rememberSaveable { mutableStateOf(AppSettings.startTab(classId) ?: ClassTab.HOME.name) }
         // The day tapped in the schedule's week strip; adding a schedule item starts on it.
         var scheduleDay by rememberSaveable { mutableStateOf<Long?>(null) }
-        val tabs = ClassTab.entries.filter {
-            when (it) {
-                ClassTab.LEDGER -> room?.ledgerEnabled != false
-                ClassTab.SCHEDULE -> room?.scheduleEnabled != false
-                ClassTab.CONTENTS -> room?.contentsEnabled != false
-                else -> true
-            }
-        }
+        val tabs = ClassTab.entries.filter { it.shownIn(room) }
         val tab = tabs.firstOrNull { it.name == tabName } ?: ClassTab.HOME
         val snackbar = remember { SnackbarHostState() }
         var choosingRecord by remember { mutableStateOf(false) }
@@ -147,6 +156,13 @@ fun ClassScreen(
                 TopAppBar(
                     title = { Text(room?.name ?: "", fontWeight = FontWeight.Bold) },
                     navigationIcon = { TextButton(onClick = onBack) { Text("‹ Classes") } },
+                    actions = {
+                        if (room != null) {
+                            IconButton(onClick = onOpenMySettings) {
+                                Icon(painterResource(R.drawable.ic_my_settings), contentDescription = "My settings for this class")
+                            }
+                        }
+                    },
                 )
             },
             bottomBar = {
@@ -338,7 +354,7 @@ private fun HomeTab(
                                 if (ledgerOfficer) {
                                     // Officers see the class fund above, so their own balance goes here.
                                     Text("Your balance", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(balanceText(state.balanceOf(myUid)), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                    Text(myBalanceValue(state.balanceOf(myUid)), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                                 } else {
                                     Text("Class ledger", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                                 }
@@ -458,7 +474,9 @@ private fun MembersTab(state: ClassUiState, myUid: String, onOpenMember: (String
 @Composable
 private fun MemberRow(member: Member, state: ClassUiState, isMe: Boolean, onClick: (() -> Unit)?) {
     val role = state.roleOf(member)
-    val skipped = state.courses.count { it.id in member.excludedCourseIds }
+    // Only officers who set courses or charge by course see who skips a course; classmates do not.
+    val showCourses = state.can(Permission.MEMBERS_MANAGE) || state.can(Permission.RECORDS_MANAGE)
+    val skipped = if (showCourses) state.courses.count { it.id in member.excludedCourseIds } else 0
     Row(
         Modifier
             .fillMaxWidth()

@@ -43,6 +43,10 @@ data class AppUser(
     val uid: String = "",
     val email: String = "",
     val displayName: String = "",
+    /** The parts of [displayName], once the student has edited their name. Empty for older accounts. */
+    val firstName: String = "",
+    val middleInitial: String = "",
+    val lastName: String = "",
     /** Set for accounts the class created with a temporary password; cleared once the user picks their own. */
     val mustChangePassword: Boolean = false,
 )

@@ -6,6 +6,7 @@ import com.seanxxotick.classhub.data.model.ScheduleKind
 import com.seanxxotick.classhub.data.model.StudentProgress
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.temporal.TemporalAdjusters
 
@@ -54,6 +55,16 @@ object ScheduleView {
     fun weekOf(day: LocalDate): List<LocalDate> {
         val sunday = day.with(TemporalAdjusters.previousOrSame(DayOfWeek.SUNDAY))
         return (0L..6L).map { sunday.plusDays(it) }
+    }
+
+    /**
+     * The days of [month] laid out Sunday to Saturday, for the month calendar. Cells before the 1st
+     * and after the last day are null, so the list splits evenly into weeks of 7.
+     */
+    fun monthGrid(month: YearMonth): List<LocalDate?> {
+        val lead = month.atDay(1).dayOfWeek.value % 7 // Sunday is 0
+        val cells: List<LocalDate?> = List(lead) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
+        return cells + List((7 - cells.size % 7) % 7) { null }
     }
 
     /** How many items this student still has open on each day, for the dots on the week strip. */

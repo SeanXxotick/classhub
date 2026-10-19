@@ -27,6 +27,10 @@ object Ledger {
     fun total(records: List<LedgerRecord>, type: RecordType): Long =
         records.filter { it.type == type }.sumOf { it.amountCentavos }
 
+    /** Payments minus what members withdrew back out. Charges and expenses do not count. */
+    fun netCollected(records: List<LedgerRecord>): Long =
+        total(records, RecordType.PAYMENT) - total(records, RecordType.WITHDRAWAL)
+
     /** Balance per member id. Members with no records are included at zero. */
     fun memberBalances(members: List<Member>, records: List<LedgerRecord>): Map<String, Long> {
         val byMember = records
@@ -57,6 +61,19 @@ object Ledger {
     fun booksDifference(records: List<LedgerRecord>): Long {
         val allBalances = records.filter { it.memberId.isNotEmpty() }.sumOf { memberDelta(it) }
         return cashOnHand(records) - allBalances - awaitingPayout(records)
+    }
+
+    /**
+     * Records keep the member's name from the day they were saved. This shows each one under the
+     * member's current name, so a renamed student's history follows them. Records of people who
+     * left keep their saved name.
+     */
+    fun withCurrentNames(records: List<LedgerRecord>, members: List<Member>): List<LedgerRecord> {
+        val names = members.associate { it.id to it.name }
+        return records.map { r ->
+            val current = names[r.memberId]
+            if (current.isNullOrBlank() || current == r.memberName) r else r.copy(memberName = current)
+        }
     }
 
     fun status(balanceCentavos: Long): BalanceStatus = when {

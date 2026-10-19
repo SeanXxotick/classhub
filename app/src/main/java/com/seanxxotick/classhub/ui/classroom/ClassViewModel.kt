@@ -126,7 +126,7 @@ class ClassViewModel(
         scheduleRepo.observeItems(),
         progressRepo.observeMine(uid),
     ) { base, records, contents, schedule, myDone ->
-        base.copy(records = records, contents = contents, schedule = schedule, myDone = myDone)
+        base.copy(records = Ledger.withCurrentNames(records, base.members), contents = contents, schedule = schedule, myDone = myDone)
     }
 
     val state: StateFlow<ClassUiState> = combine(coreState, avatarsFlow, photoRepo.observeClassPhoto(classId)) { core, avatars, classPhoto ->
@@ -246,6 +246,22 @@ class ClassViewModel(
             !s.can(Permission.MEMBERS_MANAGE) -> _notice.value = "You do not have permission to remove members."
             !MemberRules.canRemove(uid, member, s.room?.ownerUid.orEmpty()) -> _notice.value = "This member cannot be removed."
             else -> runAction("${member.name} was removed from the class.", onDone) { memberRepo.remove(member.id) }
+        }
+    }
+
+    /**
+     * Leaves the class. The Mayor must name [newMayorUid], who becomes the Mayor in the same step;
+     * everyone else leaves without one. [onDone] runs once they are out.
+     */
+    fun leaveClass(newMayorUid: String?, onDone: () -> Unit) {
+        val s = state.value
+        val handOver = MemberRules.mustHandOver(uid, s.room?.ownerUid.orEmpty())
+        when {
+            !handOver -> runAction(null, onDone) { classRepo.leaveClass(classId, uid) }
+            newMayorUid == null -> _notice.value = "Choose the new Mayor before you leave."
+            MemberRules.mayorCandidates(uid, s.members).none { it.id == newMayorUid } ->
+                _notice.value = "Choose someone who is still in the class."
+            else -> runAction(null, onDone) { classRepo.handOverAndLeave(classId, uid, newMayorUid) }
         }
     }
 

@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.seanxxotick.classhub.data.model.AppUser
 import com.seanxxotick.classhub.data.repository.AuthRepository
+import com.seanxxotick.classhub.domain.NameRules
 import com.seanxxotick.classhub.domain.PasswordRules
+import com.seanxxotick.classhub.domain.PersonName
 import com.seanxxotick.classhub.ui.common.friendlyMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -40,9 +42,10 @@ class AuthViewModel(private val repo: AuthRepository = AuthRepository()) : ViewM
         launchAction { repo.signIn(email, password) }
     }
 
-    fun signUp(name: String, email: String, password: String) {
+    fun signUp(name: PersonName, email: String, password: String) {
+        val nameProblem = NameRules.check(name)
         when {
-            name.isBlank() -> _ui.value = AuthUiState(error = "Enter your name so classmates can recognize you.")
+            nameProblem != null -> _ui.value = AuthUiState(error = nameProblem)
             email.isBlank() -> _ui.value = AuthUiState(error = "Enter your email.")
             else -> PasswordRules.strength(password, email)?.let { _ui.value = AuthUiState(error = it) }
                 ?: launchAction { repo.signUp(name, email, password) }

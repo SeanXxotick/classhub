@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.seanxxotick.classhub.data.model.AppUser
 import com.seanxxotick.classhub.data.model.ClassMembership
+import com.seanxxotick.classhub.settings.AppSettings
 import com.seanxxotick.classhub.ui.common.Avatar
 import com.seanxxotick.classhub.ui.common.Initials
 import com.seanxxotick.classhub.ui.common.initialsOf
@@ -79,8 +80,10 @@ fun ClassesScreen(
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
-                    items(classes, key = { it.classId }) { membership ->
-                        ClassRow(membership, classPhotos[membership.classId], onClick = { onOpenClass(membership.classId) })
+                    // Pinned classes first (set in each class's My settings); the order is otherwise unchanged.
+                    val pinned = AppSettings.pinnedClasses
+                    items(classes.sortedByDescending { it.classId in pinned }, key = { it.classId }) { membership ->
+                        ClassRow(membership, classPhotos[membership.classId], membership.classId in pinned, onClick = { onOpenClass(membership.classId) })
                     }
                     item { Spacer(Modifier.height(80.dp)) }
                 }
@@ -105,12 +108,15 @@ fun ClassesScreen(
 }
 
 @Composable
-private fun ClassRow(membership: ClassMembership, photo: String?, onClick: () -> Unit) {
+private fun ClassRow(membership: ClassMembership, photo: String?, pinned: Boolean, onClick: () -> Unit) {
     OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Avatar(photo, membership.className, MaterialTheme.colorScheme.primary, circle = false)
             Spacer(Modifier.width(12.dp))
-            Text(membership.className, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Column {
+                Text(membership.className, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                if (pinned) Text("Pinned", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
         }
     }
 }

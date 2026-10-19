@@ -83,4 +83,36 @@ class ContentRulesTest {
         )
         assertEquals(listOf("a", "b"), ContentRules.grouped(items, emptyList()).single().second.map { it.id })
     }
+
+    @Test
+    fun naturalCompare_ordersNumbersByValue_ignoringCase() {
+        val titles = listOf("Module 10", "module 2", "Module 1", "Activity", "Module 02b", "Module 2a")
+        assertEquals(
+            listOf("Activity", "Module 1", "module 2", "Module 2a", "Module 02b", "Module 10"),
+            titles.sortedWith { a, b -> ContentRules.naturalCompare(a, b) },
+        )
+        assertEquals(0, ContentRules.naturalCompare("Syllabus", "  syllabus "))
+    }
+
+    private val sample = listOf(
+        ContentItem(id = "m10", title = "Module 10", createdAtMillis = 30),
+        ContentItem(id = "m2", title = "Module 2", createdAtMillis = 10),
+        ContentItem(id = "syl", title = "Syllabus", createdAtMillis = 20),
+        ContentItem(id = "act", title = "Activity", createdAtMillis = 20),
+    )
+
+    @Test
+    fun comparator_eachSortOrder() {
+        fun order(sort: ContentSort) = sample.sortedWith(ContentRules.comparator(sort)).map { it.id }
+        assertEquals(listOf("m2", "act", "syl", "m10"), order(ContentSort.OLDEST))
+        assertEquals(listOf("m10", "act", "syl", "m2"), order(ContentSort.NEWEST))
+        assertEquals(listOf("act", "m2", "m10", "syl"), order(ContentSort.A_Z))
+        assertEquals(listOf("syl", "m10", "m2", "act"), order(ContentSort.Z_A))
+    }
+
+    @Test
+    fun grouped_followsTheChosenSort() {
+        val groups = ContentRules.grouped(sample, emptyList(), ContentSort.NEWEST)
+        assertEquals(listOf("m10", "act", "syl", "m2"), groups.single().second.map { it.id })
+    }
 }

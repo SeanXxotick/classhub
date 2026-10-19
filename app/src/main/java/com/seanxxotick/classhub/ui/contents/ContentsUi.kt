@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,7 +28,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -55,9 +57,11 @@ import androidx.compose.ui.unit.sp
 import com.seanxxotick.classhub.data.model.ClassRoom
 import com.seanxxotick.classhub.data.model.ContentItem
 import com.seanxxotick.classhub.data.model.ContentKind
+import com.seanxxotick.classhub.data.model.Course
 import com.seanxxotick.classhub.data.model.Permission
 import com.seanxxotick.classhub.domain.ContentIcons
 import com.seanxxotick.classhub.domain.ContentRules
+import com.seanxxotick.classhub.domain.ContentSort
 import com.seanxxotick.classhub.ui.common.StyledIcon
 import com.seanxxotick.classhub.ui.classroom.ClassUiState
 import com.seanxxotick.classhub.ui.classroom.ManageScaffold
@@ -69,6 +73,12 @@ private fun ContentKind.label(): String = when (this) {
     ContentKind.FILE -> "File"
     ContentKind.VIDEO -> "Video"
     ContentKind.WEBSITE -> "Website"
+}
+
+private fun ContentKind.pluralLabel(): String = when (this) {
+    ContentKind.FILE -> "Files"
+    ContentKind.VIDEO -> "Videos"
+    ContentKind.WEBSITE -> "Websites"
 }
 
 /** "drive.google.com" from a full link, for the subtitle. */
@@ -95,6 +105,25 @@ fun openLink(context: android.content.Context, url: String, onError: (String) ->
 
 // ---------------------------------------------------------------- Contents tab
 
+/** A dropdown chip's text: long text ends in "…" but the ▾ always shows. */
+@Composable
+private fun ChipLabel(text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        Text("  ▾")
+    }
+}
+
+/** One choice in a sort or filter menu; the current choice is bold. */
+@Composable
+private fun MenuOption(text: String, chosen: Boolean, leading: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(text, fontWeight = if (chosen) FontWeight.Bold else null) },
+        leadingIcon = leading,
+        onClick = onClick,
+    )
+}
+
 private const val ALL = "*all*"
 private const val GENERAL = ""
 
@@ -103,17 +132,28 @@ fun ContentsTab(state: ClassUiState, onEdit: (String) -> Unit, onError: (String)
     val context = LocalContext.current
     var query by rememberSaveable { mutableStateOf("") }
     var courseFilter by rememberSaveable { mutableStateOf(ALL) }
+    var sortName by rememberSaveable { mutableStateOf(ContentSort.OLDEST.name) }
+    var typeFilter by rememberSaveable { mutableStateOf(ALL) }
+    var groupByCourse by rememberSaveable { mutableStateOf(true) }
+    var sortMenuOpen by remember { mutableStateOf(false) }
+    var typeMenuOpen by remember { mutableStateOf(false) }
+    var courseMenuOpen by remember { mutableStateOf(false) }
     val canManage = state.can(Permission.CONTENTS_MANAGE)
+    val sort = ContentSort.valueOf(sortName)
 
     val knownCourses = state.courses.map { it.id }.toSet()
     val shown = state.contents.filter { item ->
-        ContentRules.matches(item, query) && when (courseFilter) {
-            ALL -> true
-            GENERAL -> item.courseId.isEmpty() || item.courseId !in knownCourses
-            else -> item.courseId == courseFilter
-        }
+        ContentRules.matches(item, query) &&
+            (typeFilter == ALL || item.kind.name == typeFilter) &&
+            when (courseFilter) {
+                ALL -> true
+                GENERAL -> item.courseId.isEmpty() || item.courseId !in knownCourses
+                else -> item.courseId == courseFilter
+            }
     }
-    val groups = ContentRules.grouped(shown, state.courses)
+    // Without grouping, everything is one list under no heading.
+    val groups = if (groupByCourse) ContentRules.grouped(shown, state.courses, sort)
+    else listOf<Pair<Course?, List<ContentItem>>>(null to shown.sortedWith(ContentRules.comparator(sort))).filter { it.second.isNotEmpty() }
 
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
         item {
@@ -126,11 +166,65 @@ fun ContentsTab(state: ClassUiState, onEdit: (String) -> Unit, onError: (String)
             )
         }
         item {
-            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                item { FilterChip(selected = courseFilter == ALL, onClick = { courseFilter = ALL }, label = { Text("All") }) }
-                item { FilterChip(selected = courseFilter == GENERAL, onClick = { courseFilter = GENERAL }, label = { Text("General") }) }
-                items(state.courses, key = { it.id }) { course ->
-                    FilterChip(selected = courseFilter == course.id, onClick = { courseFilter = course.id }, label = { Text(course.name) })
+            // Each chip shows its current choice; the course chip takes the room left and shortens long names.
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box {
+                    FilterChip(
+                        selected = sort != ContentSort.OLDEST,
+                        onClick = { sortMenuOpen = true },
+                        label = { ChipLabel(sort.label) },
+                    )
+                    DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
+                        ContentSort.entries.forEach { option ->
+                            MenuOption(option.label, option == sort) { sortName = option.name; sortMenuOpen = false }
+                        }
+                    }
+                }
+                Box {
+                    FilterChip(
+                        selected = typeFilter != ALL,
+                        onClick = { typeMenuOpen = true },
+                        label = { ChipLabel(if (typeFilter == ALL) "Type" else ContentKind.valueOf(typeFilter).pluralLabel()) },
+                    )
+                    DropdownMenu(expanded = typeMenuOpen, onDismissRequest = { typeMenuOpen = false }) {
+                        MenuOption("All types", typeFilter == ALL) { typeFilter = ALL; typeMenuOpen = false }
+                        ContentKind.entries.forEach { kind ->
+                            MenuOption(kind.pluralLabel(), typeFilter == kind.name, leading = { KindBadge(kind, state.room) }) {
+                                typeFilter = kind.name
+                                typeMenuOpen = false
+                            }
+                        }
+                    }
+                }
+                // All courses (grouped under headings or as one list), general material only, or one course.
+                fun pickCourse(filter: String, group: Boolean = groupByCourse) {
+                    courseFilter = filter
+                    groupByCourse = group
+                    courseMenuOpen = false
+                }
+                Box(Modifier.weight(1f, fill = false)) {
+                    FilterChip(
+                        selected = !(courseFilter == ALL && groupByCourse),
+                        onClick = { courseMenuOpen = true },
+                        label = {
+                            ChipLabel(
+                                when (courseFilter) {
+                                    ALL -> if (groupByCourse) "Course" else "One list"
+                                    GENERAL -> "General"
+                                    else -> state.courses.firstOrNull { it.id == courseFilter }?.name ?: "Course"
+                                },
+                            )
+                        },
+                    )
+                    DropdownMenu(expanded = courseMenuOpen, onDismissRequest = { courseMenuOpen = false }) {
+                        MenuOption("All courses, grouped", courseFilter == ALL && groupByCourse) { pickCourse(ALL, group = true) }
+                        MenuOption("All courses, one list", courseFilter == ALL && !groupByCourse) { pickCourse(ALL, group = false) }
+                        HorizontalDivider()
+                        MenuOption("General", courseFilter == GENERAL) { pickCourse(GENERAL) }
+                        state.courses.forEach { course ->
+                            MenuOption(course.name, courseFilter == course.id) { pickCourse(course.id) }
+                        }
+                    }
                 }
             }
         }
@@ -140,7 +234,7 @@ fun ContentsTab(state: ClassUiState, onEdit: (String) -> Unit, onError: (String)
                     when {
                         state.contents.isEmpty() && canManage -> "No class contents yet. Tap \"+ Add content\" to share a Google Drive file, a recorded discussion or a website."
                         state.contents.isEmpty() -> "No class contents yet. Officers who manage class contents can add links here."
-                        else -> "Nothing matches your search."
+                        else -> "Nothing matches your search and filters."
                     },
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -151,7 +245,8 @@ fun ContentsTab(state: ClassUiState, onEdit: (String) -> Unit, onError: (String)
         groups.forEach { (course, items) ->
             item(key = "h:" + (course?.id ?: "general")) {
                 Text(
-                    "${(course?.name ?: "General").uppercase()}  ·  ${items.size}",
+                    if (groupByCourse) "${(course?.name ?: "General").uppercase()}  ·  ${items.size}"
+                    else "${items.size} ${if (items.size == 1) "ITEM" else "ITEMS"}",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -171,7 +266,13 @@ fun ContentsTab(state: ClassUiState, onEdit: (String) -> Unit, onError: (String)
                     Column(Modifier.weight(1f)) {
                         Text(item.title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(
-                            listOf(item.kind.label(), hostOf(item.url), item.note).filter { it.isNotBlank() }.joinToString("  ·  "),
+                            // Without course headings, the course goes in the subtitle instead.
+                            listOf(
+                                if (groupByCourse) "" else state.courses.firstOrNull { it.id == item.courseId }?.name ?: "General",
+                                item.kind.label(),
+                                hostOf(item.url),
+                                item.note,
+                            ).filter { it.isNotBlank() }.joinToString("  ·  "),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,

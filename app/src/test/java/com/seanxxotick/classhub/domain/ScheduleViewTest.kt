@@ -13,6 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 
 class ScheduleViewTest {
@@ -78,6 +79,25 @@ class ScheduleViewTest {
         assertEquals(DayOfWeek.SUNDAY, week.first().dayOfWeek)
         assertEquals(LocalDate.of(2026, 10, 24), week.last())
         assertEquals(LocalDate.of(2026, 10, 18), ScheduleView.weekOf(LocalDate.of(2026, 10, 18)).first())
+    }
+
+    @Test
+    fun monthGrid_startsOnSunday_andFillsWholeWeeks() {
+        // October 2026 starts on a Thursday: four blank cells, then the 1st to the 31st, 35 cells in all.
+        val october = ScheduleView.monthGrid(YearMonth.of(2026, 10))
+        assertEquals(35, october.size)
+        assertEquals(listOf(null, null, null, null, LocalDate.of(2026, 10, 1)), october.take(5))
+        assertEquals(LocalDate.of(2026, 10, 31), october.last())
+        // February 2026 starts on a Sunday and has 28 days: exactly four full weeks, no blanks.
+        val february = ScheduleView.monthGrid(YearMonth.of(2026, 2))
+        assertEquals(28, february.size)
+        assertEquals(LocalDate.of(2026, 2, 1), february.first())
+        assertTrue(february.all { it != null })
+        // November 2026 starts on a Sunday and has 30 days: blanks only at the end.
+        val november = ScheduleView.monthGrid(YearMonth.of(2026, 11))
+        assertEquals(35, november.size)
+        assertEquals(LocalDate.of(2026, 11, 30), november[29])
+        assertNull(november.last())
     }
 
     @Test

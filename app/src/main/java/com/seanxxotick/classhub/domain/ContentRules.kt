@@ -5,6 +5,13 @@ import com.seanxxotick.classhub.data.model.ContentKind
 import com.seanxxotick.classhub.data.model.Course
 import java.net.URI
 
+enum class ContentSort(val label: String) {
+    OLDEST("Oldest first"),
+    NEWEST("Newest first"),
+    A_Z("Title A to Z"),
+    Z_A("Title Z to A"),
+}
+
 object ContentRules {
     const val MAX_TITLE = 80
 
@@ -50,17 +57,61 @@ object ContentRules {
     }
 
     /**
-     * Groups items under their course, in the class's course order, with general material (no course) first.
-     * Inside each group, items are in the order they were added (oldest first), like a class's running list.
-     * Items whose course was deleted also go under general. Courses with no items are left out.
+     * How items are ordered. Items added at the same moment fall back to title order, and titles
+     * that tie fall back to the order they were added.
      */
-    fun grouped(items: List<ContentItem>, courses: List<Course>): List<Pair<Course?, List<ContentItem>>> {
+    fun comparator(sort: ContentSort): Comparator<ContentItem> {
+        val byTitle = Comparator<ContentItem> { a, b -> naturalCompare(a.title, b.title) }
+        return when (sort) {
+            ContentSort.OLDEST -> compareBy<ContentItem> { it.createdAtMillis }.then(byTitle)
+            ContentSort.NEWEST -> compareByDescending<ContentItem> { it.createdAtMillis }.then(byTitle)
+            ContentSort.A_Z -> byTitle.thenBy { it.createdAtMillis }
+            ContentSort.Z_A -> byTitle.reversed().thenBy { it.createdAtMillis }
+        }
+    }
+
+    /**
+     * Compares titles ignoring case, with runs of digits compared by value,
+     * so "Module 2" comes before "Module 10".
+     */
+    fun naturalCompare(a: String, b: String): Int {
+        val x = a.trim().lowercase()
+        val y = b.trim().lowercase()
+        var i = 0
+        var j = 0
+        while (i < x.length && j < y.length) {
+            if (x[i].isDigit() && y[j].isDigit()) {
+                val startX = i
+                val startY = j
+                while (i < x.length && x[i].isDigit()) i++
+                while (j < y.length && y[j].isDigit()) j++
+                val numX = x.substring(startX, i).trimStart('0')
+                val numY = y.substring(startY, j).trimStart('0')
+                if (numX.length != numY.length) return numX.length - numY.length
+                val c = numX.compareTo(numY)
+                if (c != 0) return c
+            } else {
+                if (x[i] != y[j]) return x[i] - y[j]
+                i++
+                j++
+            }
+        }
+        return (x.length - i) - (y.length - j)
+    }
+
+    /**
+     * Groups items under their course, in the class's course order, with general material (no course) first.
+     * Inside each group, items follow [sort]; the default is the order they were added (oldest first),
+     * like a class's running list. Items whose course was deleted also go under general.
+     * Courses with no items are left out.
+     */
+    fun grouped(items: List<ContentItem>, courses: List<Course>, sort: ContentSort = ContentSort.OLDEST): List<Pair<Course?, List<ContentItem>>> {
         val known = courses.map { it.id }.toSet()
         val general = items.filter { it.courseId.isEmpty() || it.courseId !in known }
         val byCourse = courses.map { course -> course to items.filter { it.courseId == course.id } }
         return (listOf<Pair<Course?, List<ContentItem>>>(null to general) + byCourse)
             .filter { (_, list) -> list.isNotEmpty() }
-            .map { (course, list) -> course to list.sortedWith(compareBy({ it.createdAtMillis }, { it.title.lowercase() })) }
+            .map { (course, list) -> course to list.sortedWith(comparator(sort)) }
     }
 
     private val FILE_EXTENSIONS = listOf(".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".zip")

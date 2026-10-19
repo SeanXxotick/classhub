@@ -44,6 +44,17 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.seanxxotick.classhub.data.model.AppUser
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import com.seanxxotick.classhub.domain.NameRules
+import com.seanxxotick.classhub.domain.PersonName
 import com.seanxxotick.classhub.reminders.ReminderNotifier
 import com.seanxxotick.classhub.reminders.ReminderScheduler
 import com.seanxxotick.classhub.settings.AppSettings
@@ -62,6 +73,11 @@ fun AccountScreen(
     onRemovePhoto: () -> Unit,
     onPhotoError: (String) -> Unit,
     onClearNotice: () -> Unit,
+    onSaveName: (PersonName, onSaved: () -> Unit) -> Unit,
+    deleteStep: DeleteStep?,
+    onStartDelete: () -> Unit,
+    onCancelDelete: () -> Unit,
+    onDeleteAccount: (password: String) -> Unit,
     onSignOut: () -> Unit,
     onChangePassword: () -> Unit,
     onBack: () -> Unit,
@@ -126,6 +142,8 @@ fun AccountScreen(
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                 )
             }
+
+            NameCard(user, busy, onSaveName)
 
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -192,8 +210,17 @@ fun AccountScreen(
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Sign out") }
+
+            TextButton(
+                onClick = onStartDelete,
+                enabled = !busy,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Delete account") }
         }
     }
+
+    deleteStep?.let { DeleteAccountDialog(it, busy, onDeleteAccount, onCancelDelete) }
 
     if (confirmSignOut) {
         AlertDialog(
@@ -203,6 +230,139 @@ fun AccountScreen(
             confirmButton = { TextButton(onClick = { confirmSignOut = false; onSignOut() }) { Text("Sign out") } },
             dismissButton = { TextButton(onClick = { confirmSignOut = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/** First name, middle initial and last name. Saving updates the name in every class the student is in. */
+@Composable
+private fun NameCard(user: AppUser, busy: Boolean, onSave: (PersonName, onSaved: () -> Unit) -> Unit) {
+    // Older accounts only have one line; split it as a starting point the student can correct.
+    val saved = remember(user) {
+        if (user.firstName.isNotBlank() || user.lastName.isNotBlank()) PersonName(user.firstName, user.middleInitial, user.lastName)
+        else NameRules.split(user.displayName)
+    }
+    var first by rememberSaveable(saved) { mutableStateOf(saved.first) }
+    var initial by rememberSaveable(saved) { mutableStateOf(saved.middleInitial) }
+    var last by rememberSaveable(saved) { mutableStateOf(saved.last) }
+    val edited = PersonName(first, initial, last)
+    val changed = NameRules.cleaned(edited) != NameRules.cleaned(saved)
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Your name", fontWeight = FontWeight.Bold)
+            Text(
+                "This is how your classmates and officers see you in every class.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = first,
+                onValueChange = { first = it.take(NameRules.MAX_PART_LENGTH) },
+                label = { Text("First name") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = initial,
+                    onValueChange = { initial = NameRules.cleanInitial(it) },
+                    label = { Text("M.I.") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Next),
+                    modifier = Modifier.width(84.dp),
+                )
+                OutlinedTextField(
+                    value = last,
+                    onValueChange = { last = it.take(NameRules.MAX_PART_LENGTH) },
+                    label = { Text("Last name") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (changed) {
+                Text(
+                    "Shown as: ${NameRules.display(edited)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                    TextButton(onClick = { first = saved.first; initial = saved.middleInitial; last = saved.last }, enabled = !busy) { Text("Undo") }
+                    Button(onClick = { onSave(edited) {} }, enabled = !busy) { Text("Save name") }
+                }
+            }
+        }
+    }
+}
+
+/** Checks for classes to hand over, then asks for the password before deleting everything. */
+@Composable
+private fun DeleteAccountDialog(step: DeleteStep, busy: Boolean, onDelete: (String) -> Unit, onCancel: () -> Unit) {
+    when (step) {
+        DeleteStep.Checking -> AlertDialog(
+            onDismissRequest = onCancel,
+            title = { Text("Delete account") },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Checking your classes.")
+                }
+            },
+            confirmButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
+        )
+        is DeleteStep.MustHandOver -> AlertDialog(
+            onDismissRequest = onCancel,
+            title = { Text("Choose a new Mayor first") },
+            text = {
+                Text(
+                    "You are the Mayor of ${step.classNames.joinToString(", ")}. A class always needs a Mayor, so open " +
+                        (if (step.classNames.size == 1) "that class" else "each class") +
+                        ", tap My settings at the top, and leave the class by making someone else the Mayor. Then come back here.",
+                )
+            },
+            confirmButton = { TextButton(onClick = onCancel) { Text("OK") } },
+        )
+        is DeleteStep.Confirm -> {
+            var password by rememberSaveable { mutableStateOf("") }
+            AlertDialog(
+                onDismissRequest = onCancel,
+                title = { Text("Delete your account?") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "This cannot be undone. You will leave all your classes, and your name, photo and done marks will be erased. " +
+                                "Ledger records with your name stay in each class, because they are part of the class fund's history.",
+                        )
+                        Text(
+                            "If you still have money left in a class fund, or still owe money, settle it with your class officers first.",
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        OutlinedTextField(
+                            value = password,
+                            onValueChange = { password = it },
+                            label = { Text("Your password") },
+                            singleLine = true,
+                            enabled = !busy,
+                            isError = step.error != null,
+                            supportingText = step.error?.let { { Text(it) } },
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = { onDelete(password) },
+                        enabled = !busy,
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    ) { Text(if (busy) "Deleting" else "Delete account") }
+                },
+                dismissButton = { TextButton(onClick = onCancel, enabled = !busy) { Text("Cancel") } },
+            )
+        }
     }
 }
 

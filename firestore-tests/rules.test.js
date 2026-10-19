@@ -376,6 +376,113 @@ async function main() {
   await test('The Mayor removes the class photo', () =>
     assertSucceeds(deleteDoc(doc(db('mayor'), `classPhotos/${CLASS}`))));
 
+  // ---------------------------------------------------------------- Leaving the class
+
+  /** Exactly the batch ClassRepository.leaveClass writes. */
+  function leaveBatch(store, uid, classId = CLASS) {
+    const b = writeBatch(store);
+    b.delete(doc(store, `classes/${classId}/members/${uid}`));
+    b.delete(doc(store, `users/${uid}/memberships/${classId}`));
+    return b;
+  }
+
+  /** Exactly the batch ClassRepository.handOverAndLeave writes. */
+  function handOverBatch(store, uid, newMayor, classId = CLASS) {
+    const b = leaveBatch(store, uid, classId);
+    b.update(doc(store, `classes/${classId}`), { ownerUid: newMayor });
+    b.update(doc(store, `classes/${classId}/members/${newMayor}`), { roleId: 'mayor' });
+    return b;
+  }
+
+  await test('Two more students join (with the current code)', async () => {
+    await assertSucceeds(joinBatch(db('pedro'), 'pedro', { code: 'NEW234' }).commit());
+    await assertSucceeds(joinBatch(db('ana'), 'ana', { code: 'NEW234' }).commit());
+  });
+
+  await test('A student leaves the class on their own and loses access', async () => {
+    await assertSucceeds(leaveBatch(db('pedro'), 'pedro').commit());
+    await assertFails(getDoc(doc(db('pedro'), `classes/${CLASS}`)));
+  });
+
+  await test('A student cannot make a classmate leave', () =>
+    assertFails(leaveBatch(db('ana'), 'maria').commit()));
+
+  await test('The Mayor cannot leave without handing over', () =>
+    assertFails(leaveBatch(db('mayor'), 'mayor').commit()));
+
+  await test('The Mayor cannot hand over and stay in the class', async () => {
+    const store = db('mayor');
+    const b = writeBatch(store);
+    b.update(doc(store, `classes/${CLASS}`), { ownerUid: 'maria' });
+    b.update(doc(store, `classes/${CLASS}/members/maria`), { roleId: 'mayor' });
+    await assertFails(b.commit());
+  });
+
+  await test('The Mayor cannot hand over to someone outside the class', () =>
+    assertFails(handOverBatch(db('mayor'), 'mayor', 'outsider').commit()));
+
+  await test('Someone who is not the Mayor cannot hand the class over', () =>
+    assertFails(handOverBatch(db('maria'), 'maria', 'ana').commit()));
+
+  await test('A handover must also change the class owner', async () => {
+    const store = db('mayor');
+    const b = leaveBatch(store, 'mayor');
+    b.update(doc(store, `classes/${CLASS}/members/maria`), { roleId: 'mayor' });
+    await assertFails(b.commit());
+  });
+
+  await test('The Mayor makes Maria the new Mayor and leaves in one batch', async () => {
+    await assertSucceeds(handOverBatch(db('mayor'), 'mayor', 'maria').commit());
+    await assertFails(getDoc(doc(db('mayor'), `classes/${CLASS}`)));
+  });
+
+  await test('The new Mayor has every permission, and the old one has none', async () => {
+    await assertSucceeds(updateDoc(doc(db('maria'), `classes/${CLASS}`), { description: 'Run by Maria now' }));
+    await assertFails(updateDoc(doc(db('mayor'), `classes/${CLASS}`), { description: 'Still mine?' }));
+  });
+
+  // ---------------------------------------------------------------- Account: name and deletion
+
+  await test('A student changes their name on their profile and in the class in one batch', async () => {
+    const store = db('ana');
+    const b = writeBatch(store);
+    b.set(doc(store, 'users/ana'), { displayName: 'Ana B. Reyes', firstName: 'Ana', middleInitial: 'B', lastName: 'Reyes' }, { merge: true });
+    b.update(doc(store, `classes/${CLASS}/members/ana`), { name: 'Ana B. Reyes' });
+    await assertSucceeds(b.commit());
+  });
+
+  await test('A student cannot rename a classmate', () =>
+    assertFails(updateDoc(doc(db('ana'), `classes/${CLASS}/members/maria`), { name: 'Someone Else' })));
+
+  await test('A rename cannot sneak in a role change or an empty name', async () => {
+    await assertFails(updateDoc(doc(db('ana'), `classes/${CLASS}/members/ana`), { name: 'Ana Reyes', roleId: 'treasurer' }));
+    await assertFails(updateDoc(doc(db('ana'), `classes/${CLASS}/members/ana`), { name: '' }));
+  });
+
+  await test('A student cannot delete a classmate\'s done marks', () =>
+    assertFails(deleteDoc(doc(db('ana'), `classes/${CLASS}/progress/maria`))));
+
+  await test('A student deletes their account data in one batch', async () => {
+    const store = db('ana');
+    await assertSucceeds(setDoc(doc(store, `classes/${CLASS}/progress/ana`), { done: { midterm: 1 } }));
+    const b = writeBatch(store);
+    b.delete(doc(store, `classes/${CLASS}/members/ana`));
+    b.delete(doc(store, `classes/${CLASS}/progress/ana`));
+    b.delete(doc(store, `users/ana/memberships/${CLASS}`));
+    b.delete(doc(store, 'avatars/ana'));
+    b.delete(doc(store, 'users/ana'));
+    await assertSucceeds(b.commit());
+    await assertFails(getDoc(doc(store, `classes/${CLASS}`)));
+  });
+
+  await test('The Mayor cannot delete their account data without handing over', async () => {
+    const store = db('maria');
+    const b = writeBatch(store);
+    b.delete(doc(store, `classes/${CLASS}/members/maria`));
+    b.delete(doc(store, `users/maria/memberships/${CLASS}`));
+    await assertFails(b.commit());
+  });
+
   await env.cleanup();
 
   // ---------------------------------------------------------------- Report

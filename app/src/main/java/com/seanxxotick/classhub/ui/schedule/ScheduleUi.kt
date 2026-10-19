@@ -72,6 +72,7 @@ import com.seanxxotick.classhub.ui.common.StyledIcon
 import com.seanxxotick.classhub.ui.theme.hexToColor
 import com.seanxxotick.classhub.ui.common.noonOf
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -215,6 +216,7 @@ fun ScheduleTab(
     var anchorEpochDay by rememberSaveable { mutableStateOf(today.toEpochDay()) }
     var filterName by rememberSaveable { mutableStateOf(ScheduleFilter.UPCOMING.name) }
     var openedId by remember { mutableStateOf<String?>(null) }
+    var showMonth by rememberSaveable { mutableStateOf(false) }
 
     val filter = ScheduleFilter.valueOf(filterName)
     val week = ScheduleView.weekOf(LocalDate.ofEpochDay(anchorEpochDay))
@@ -231,10 +233,10 @@ fun ScheduleTab(
                 TextButton(onClick = { anchorEpochDay -= 7 }) { Text("‹") }
                 Text(
                     "${week.first().format(DateTimeFormatter.ofPattern("MMM d", Locale.getDefault()))} – " +
-                        week.last().format(DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())),
+                        week.last().format(DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())) + "  ▾",
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f).clickable { anchorEpochDay = today.toEpochDay(); onSelectDay(null) },
+                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { showMonth = true }.padding(vertical = 6.dp),
                 )
                 TextButton(onClick = { anchorEpochDay += 7 }) { Text("›") }
             }
@@ -262,25 +264,7 @@ fun ScheduleTab(
                             fontWeight = if (isToday) FontWeight.ExtraBold else FontWeight.SemiBold,
                             color = if (selected) MaterialTheme.colorScheme.onPrimary else if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         )
-                        // One dot per open item, colored like its type badge, most important first (up to three).
-                        Row(
-                            Modifier.padding(top = 3.dp).height(9.dp),
-                            horizontalArrangement = Arrangement.spacedBy(2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            kinds.take(MAX_DOTS).forEach { kind ->
-                                Box(
-                                    Modifier
-                                        .size(if (selected) 7.dp else 6.dp)
-                                        .clip(CircleShape)
-                                        .then(if (selected) Modifier.border(1.dp, MaterialTheme.colorScheme.onPrimary, CircleShape) else Modifier)
-                                        .background(hexToColor(ScheduleIcons.colorFor(kind, state.room?.scheduleColors.orEmpty()))),
-                                )
-                            }
-                            if (kinds.size > MAX_DOTS) {
-                                Text("+", fontSize = 9.sp, lineHeight = 9.sp, fontWeight = FontWeight.Bold, color = textColor)
-                            }
-                        }
+                        DayDots(kinds, state.room, selected, textColor)
                     }
                 }
             }
@@ -353,6 +337,27 @@ fun ScheduleTab(
         }
     }
 
+    if (showMonth) {
+        MonthCalendarDialog(
+            startMonth = YearMonth.from(selectedDay ?: LocalDate.ofEpochDay(anchorEpochDay)),
+            today = today,
+            selectedDay = selectedDay,
+            kindsByDay = kindsByDay,
+            room = state.room,
+            onPickDay = { day ->
+                showMonth = false
+                anchorEpochDay = day.toEpochDay()
+                onSelectDay(day.toEpochDay())
+            },
+            onToday = {
+                showMonth = false
+                anchorEpochDay = today.toEpochDay()
+                onSelectDay(null)
+            },
+            onDismiss = { showMonth = false },
+        )
+    }
+
     // Show the live copy so a change is reflected while the dialog is open.
     val opened = openedId?.let { id -> state.schedule.firstOrNull { it.id == id } }
     if (opened != null) {
@@ -367,6 +372,118 @@ fun ScheduleTab(
             onSetCancelled = { cancelled -> openedId = null; onSetCancelled(opened, cancelled) },
         )
     }
+}
+
+/** One dot per open item, colored like its type badge, most important first (up to three, then a "+"). */
+@Composable
+private fun DayDots(kinds: List<ScheduleKind>, room: ClassRoom?, selected: Boolean, plusColor: Color) {
+    Row(
+        Modifier.padding(top = 3.dp).height(9.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        kinds.take(MAX_DOTS).forEach { kind ->
+            Box(
+                Modifier
+                    .size(if (selected) 7.dp else 6.dp)
+                    .clip(CircleShape)
+                    .then(if (selected) Modifier.border(1.dp, MaterialTheme.colorScheme.onPrimary, CircleShape) else Modifier)
+                    .background(hexToColor(ScheduleIcons.colorFor(kind, room?.scheduleColors.orEmpty()))),
+            )
+        }
+        if (kinds.size > MAX_DOTS) {
+            Text("+", fontSize = 9.sp, lineHeight = 9.sp, fontWeight = FontWeight.Bold, color = plusColor)
+        }
+    }
+}
+
+/**
+ * The whole month with the same dots as the week strip. Tapping a day shows that day's week
+ * with the day chosen; Today goes back to this week.
+ */
+@Composable
+private fun MonthCalendarDialog(
+    startMonth: YearMonth,
+    today: LocalDate,
+    selectedDay: LocalDate?,
+    kindsByDay: Map<LocalDate, List<ScheduleKind>>,
+    room: ClassRoom?,
+    onPickDay: (LocalDate) -> Unit,
+    onToday: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Kept as text so it survives rotation.
+    var monthText by rememberSaveable { mutableStateOf(startMonth.toString()) }
+    val month = YearMonth.parse(monthText)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { monthText = month.minusMonths(1).toString() }) { Text("‹") }
+                Text(
+                    month.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { monthText = month.plusMonths(1).toString() }) { Text("›") }
+            }
+        },
+        text = {
+            Column {
+                Row(Modifier.fillMaxWidth()) {
+                    ScheduleView.weekOf(today).forEach { day ->
+                        Text(
+                            day.format(DateTimeFormatter.ofPattern("EEE", Locale.getDefault())),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                ScheduleView.monthGrid(month).chunked(7).forEach { week ->
+                    Row(Modifier.fillMaxWidth()) {
+                        week.forEach { day ->
+                            if (day == null) {
+                                Spacer(Modifier.weight(1f))
+                            } else {
+                                val selected = day == selectedDay
+                                val isToday = day == today
+                                Column(
+                                    Modifier
+                                        .weight(1f)
+                                        .padding(1.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                        .clickable { onPickDay(day) }
+                                        .padding(vertical = 5.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        day.dayOfMonth.toString(),
+                                        fontWeight = if (isToday) FontWeight.ExtraBold else FontWeight.Normal,
+                                        color = when {
+                                            selected -> MaterialTheme.colorScheme.onPrimary
+                                            isToday -> MaterialTheme.colorScheme.primary
+                                            else -> MaterialTheme.colorScheme.onSurface
+                                        },
+                                    )
+                                    val plusColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    DayDots(kindsByDay[day].orEmpty(), room, selected, plusColor)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = { TextButton(onClick = onToday) { Text("Today") } },
+    )
 }
 
 @Composable

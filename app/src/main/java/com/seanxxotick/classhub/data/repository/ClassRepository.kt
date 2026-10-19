@@ -157,6 +157,31 @@ class ClassRepository(private val db: FirebaseFirestore = FirebaseFirestore.getI
         memberships(uid).document(classId).delete().await()
     }
 
+    /**
+     * The member leaves on their own: their membership and their "My classes" entry go together.
+     * Their ledger records stay, since they are the class's history.
+     */
+    suspend fun leaveClass(classId: String, uid: String) {
+        val batch = db.batch()
+        batch.delete(classes.document(classId).collection("members").document(uid))
+        batch.delete(memberships(uid).document(classId))
+        batch.commit().await()
+    }
+
+    /**
+     * The Mayor leaves: [newMayorUid] becomes the owner and Mayor in the same batch,
+     * so the class always has a Mayor.
+     */
+    suspend fun handOverAndLeave(classId: String, uid: String, newMayorUid: String) {
+        val classRef = classes.document(classId)
+        val batch = db.batch()
+        batch.delete(classRef.collection("members").document(uid))
+        batch.delete(memberships(uid).document(classId))
+        batch.update(classRef, "ownerUid", newMayorUid)
+        batch.update(classRef.collection("members").document(newMayorUid), "roleId", ROLE_MAYOR)
+        batch.commit().await()
+    }
+
     private fun inviteData(classId: String, className: String, defaultRoleId: String) = mapOf(
         "classId" to classId,
         "className" to className,

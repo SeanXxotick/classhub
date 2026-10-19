@@ -40,6 +40,19 @@ class ClassRulesTest {
     }
 
     @Test
+    fun onlyTheMayor_mustHandOverBeforeLeaving() {
+        assertTrue(MemberRules.mustHandOver("owner", "owner"))
+        assertFalse(MemberRules.mustHandOver("officer", "owner"))
+        assertFalse(MemberRules.mustHandOver("student", "owner"))
+    }
+
+    @Test
+    fun mayorCandidates_areEveryoneElse_byName() {
+        assertEquals(listOf("student", "officer"), MemberRules.mayorCandidates("owner", listOf(owner, officer, student)).map { it.id })
+        assertTrue(MemberRules.mayorCandidates("owner", listOf(owner)).isEmpty())
+    }
+
+    @Test
     fun owner_cannotBeRemoved_andNobodyRemovesThemselves() {
         assertFalse(MemberRules.canRemove("officer", owner, "owner"))
         assertFalse(MemberRules.canRemove("student", student, "owner"))

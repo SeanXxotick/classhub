@@ -73,6 +73,13 @@ class LedgerTest {
     }
 
     @Test
+    fun netCollected_isPaymentsMinusWithdrawals_chargesAndExpensesIgnored() {
+        val records = listOf(payment("ana", 100), payment("lito", 50), withdrawal("ana", 40), charge("lito", 6), expense(30))
+        assertEquals(11_000L, Ledger.netCollected(records))
+        assertEquals(0L, Ledger.netCollected(emptyList()))
+    }
+
+    @Test
     fun memberBalances_combinePaymentsChargesAndWithdrawals() {
         val records = listOf(
             payment("ana", 100), charge("ana", 6), charge("ana", 6), withdrawal("ana", 30),
@@ -112,5 +119,15 @@ class LedgerTest {
     fun amountsStayExact_withManySmallPayments() {
         val records = List(1_000) { LedgerRecord(type = RecordType.PAYMENT, amountCentavos = 10) }
         assertEquals(10_000L, Ledger.cashOnHand(records))
+    }
+
+    @Test
+    fun withCurrentNames_usesTheRenamedName_andKeepsNamesOfPeopleWhoLeft() {
+        val records = listOf(
+            LedgerRecord(type = RecordType.PAYMENT, amountCentavos = 100, memberId = "a", memberName = "Old Name"),
+            LedgerRecord(type = RecordType.PAYMENT, amountCentavos = 100, memberId = "gone", memberName = "Left Early"),
+        )
+        val shown = Ledger.withCurrentNames(records, listOf(Member(id = "a", name = "New Name")))
+        assertEquals(listOf("New Name", "Left Early"), shown.map { it.memberName })
     }
 }

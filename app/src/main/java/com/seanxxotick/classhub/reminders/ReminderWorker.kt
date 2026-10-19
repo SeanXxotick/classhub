@@ -18,6 +18,7 @@ import com.seanxxotick.classhub.domain.ReminderText
 import com.seanxxotick.classhub.domain.Reminders
 import com.seanxxotick.classhub.domain.can
 import com.seanxxotick.classhub.settings.AppSettings
+import com.seanxxotick.classhub.settings.ReminderKind
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -72,7 +73,7 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
         }
 
         // Due tomorrow, skipping what this student already marked done.
-        if (room.scheduleEnabled && AppSettings.remindDueTomorrow) {
+        if (room.scheduleEnabled && AppSettings.shouldRemind(classId, ReminderKind.DUE)) {
             val items = classRef.collection("schedule").get().await().documents
                 .mapNotNull { d -> d.toObject(ScheduleItem::class.java)?.copy(id = d.id) }
             val done = classRef.collection("progress").document(uid).get().await()
@@ -82,7 +83,7 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
         }
 
         // New class materials since the last check (a test looks back one day).
-        if (room.contentsEnabled && AppSettings.remindNewContents) {
+        if (room.contentsEnabled && AppSettings.shouldRemind(classId, ReminderKind.CONTENTS)) {
             val saved = AppSettings.lastContentCheck(classId)
             val since = if (isTest && saved == 0L) now - DAY_MILLIS else saved
             if (since > 0L) {
@@ -96,7 +97,7 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
 
         if (room.ledgerEnabled) {
             // The student's own balance.
-            if (AppSettings.remindOwing) {
+            if (AppSettings.shouldRemind(classId, ReminderKind.OWING)) {
                 val mine = classRef.collection("records").whereEqualTo("memberId", uid).get().await().documents
                     .mapNotNull { d -> d.toObject(LedgerRecord::class.java) }
                 val balance = mine.sumOf { Ledger.memberDelta(it) }
@@ -111,7 +112,7 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
             }
 
             // Weekly summary for officers who manage the ledger.
-            if (AppSettings.remindOwingSummary && role.can(Permission.RECORDS_MANAGE) &&
+            if (AppSettings.shouldRemind(classId, ReminderKind.SUMMARY) && role.can(Permission.RECORDS_MANAGE) &&
                 (isTest || Reminders.shouldSendWeeklySummary(AppSettings.lastOwingSummary(classId), now))
             ) {
                 val records = classRef.collection("records").get().await().documents

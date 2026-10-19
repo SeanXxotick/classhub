@@ -31,6 +31,13 @@ object MemberRules {
     /** The locked Mayor role belongs to the owner only, so it is never offered when assigning roles. */
     fun assignableRoles(roles: List<Role>): List<Role> = roles.filterNot { it.locked }
 
+    /** Anyone may leave, except that the owner (the Mayor) must first hand the class to someone else. */
+    fun mustHandOver(uid: String, ownerUid: String): Boolean = uid == ownerUid
+
+    /** Who the leaving Mayor can hand the class to: every other member, by name. */
+    fun mayorCandidates(uid: String, members: List<Member>): List<Member> =
+        members.filter { it.id != uid }.sortedBy { it.name.lowercase() }
+
     /** How many members currently hold [role]. */
     fun holders(role: Role, members: List<Member>): Int = members.count { it.roleId == role.id }
 }
