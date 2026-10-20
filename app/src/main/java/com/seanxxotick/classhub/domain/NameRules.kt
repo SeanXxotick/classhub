@@ -25,10 +25,11 @@ object NameRules {
      */
     fun split(displayName: String): PersonName {
         val words = tidy(displayName).split(' ').filter { it.isNotEmpty() }
-        val initialAt = words.indexOfFirst { INITIAL.matches(it) }
+        // The first word is never the initial, so a first name like "Ma." is not mistaken for one.
+        val initialAt = (1 until words.lastIndex).firstOrNull { INITIAL.matches(words[it]) }
         return when {
             words.isEmpty() -> PersonName()
-            initialAt in 1 until words.lastIndex -> PersonName(
+            initialAt != null -> PersonName(
                 first = words.take(initialAt).joinToString(" "),
                 middleInitial = cleanInitial(words[initialAt]),
                 last = words.drop(initialAt + 1).joinToString(" "),

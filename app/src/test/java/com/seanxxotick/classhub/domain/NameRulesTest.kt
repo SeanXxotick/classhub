@@ -60,6 +60,11 @@ class NameRulesTest {
     }
 
     @Test
+    fun split_aFirstNameLikeMa_isNotTakenAsTheInitial() {
+        assertEquals(PersonName("Ma. Lhira", "M", "De Leon"), NameRules.split("Ma. Lhira M. De Leon"))
+    }
+
+    @Test
     fun cleanInitial_keepsAtMostTwoLetters() {
         assertEquals("DC", NameRules.cleanInitial("d.c.x"))
     }
