@@ -176,7 +176,7 @@ data class ScheduleItem(
  * Firestore: classes/{classId}/progress/{uid}
  *
  * One student's own checklist: the schedule items they marked done, with when they marked them.
- * Each student writes only their own document; officers who manage the schedule can read all of them.
+ * Each student writes only their own document; every class member can read all of them.
  */
 data class StudentProgress(
     val id: String = "",
