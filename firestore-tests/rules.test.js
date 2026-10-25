@@ -99,6 +99,17 @@ async function main() {
   await test('Nobody can list all invite codes', () =>
     assertFails(getDocs(collection(db('student'), 'invites'))));
 
+  await test('Anyone signed in can read the newest app version', () =>
+    assertSucceeds(getDoc(doc(db('student'), 'appConfig/latest'))));
+
+  await test('Someone not signed in cannot read the newest app version', () =>
+    assertFails(getDoc(doc(anon(), 'appConfig/latest'))));
+
+  await test('Nobody can publish an app version from the app', async () => {
+    await assertFails(setDoc(doc(db('mayor'), 'appConfig/latest'), { versionCode: 99 }));
+    await assertFails(deleteDoc(doc(db('mayor'), 'appConfig/latest')));
+  });
+
   // ---------------------------------------------------------------- Joining
 
   await test('Joining with a wrong code is blocked', () =>
@@ -279,8 +290,11 @@ async function main() {
   await test('A student cannot mark items for someone else', () =>
     assertFails(setDoc(doc(db('student'), `classes/${CLASS}/progress/maria`), { done: { midterm: 1 } }, { merge: true })));
 
-  await test('A student cannot see a classmate\'s marks', () =>
-    assertFails(getDoc(doc(db('student'), `classes/${CLASS}/progress/maria`))));
+  await test('A student can see a classmate\'s marks', () =>
+    assertSucceeds(getDoc(doc(db('student'), `classes/${CLASS}/progress/maria`))));
+
+  await test('An outsider cannot see anyone\'s marks', () =>
+    assertFails(getDocs(collection(db('outsider'), `classes/${CLASS}/progress`))));
 
   await test('A student can read their own marks', () =>
     assertSucceeds(getDoc(doc(db('student'), `classes/${CLASS}/progress/student`))));
@@ -288,8 +302,8 @@ async function main() {
   await test('The Mayor (manages schedule) can see everyone\'s marks', () =>
     assertSucceeds(getDocs(collection(db('mayor'), `classes/${CLASS}/progress`))));
 
-  await test('A student cannot list everyone\'s marks', () =>
-    assertFails(getDocs(collection(db('student'), `classes/${CLASS}/progress`))));
+  await test('A student can list everyone\'s marks', () =>
+    assertSucceeds(getDocs(collection(db('student'), `classes/${CLASS}/progress`))));
 
   await test('Extra fields in the marks document are blocked', () =>
     assertFails(setDoc(doc(db('maria'), `classes/${CLASS}/progress/maria`), { done: {}, grade: 100 })));

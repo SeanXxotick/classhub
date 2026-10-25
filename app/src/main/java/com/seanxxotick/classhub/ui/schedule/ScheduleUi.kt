@@ -528,32 +528,31 @@ private fun ScheduleDetailsDialog(
                         Button(onClick = { onToggleDone(true) }, modifier = Modifier.fillMaxWidth()) { Text("Mark as done") }
                     }
                     Text(
-                        "Only you can see and change your own mark.",
+                        "Only you can change your own mark. Everyone in the class can see who has marked it done.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                    val summary = ScheduleView.completion(item.id, state.members, progress)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Marked done by ${summary.done.size} of ${summary.total}", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { showWho = !showWho }) { Text(if (showWho) "Hide" else "See who") }
+                    }
+                    if (showWho) {
+                        if (summary.done.isNotEmpty()) {
+                            Text("Done", color = Green, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                            summary.done.forEach { Text("• ${it.name}", style = MaterialTheme.typography.bodySmall) }
+                        }
+                        if (summary.notDone.isNotEmpty()) {
+                            Text("Not yet", color = Amber, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                            summary.notDone.forEach { Text("• ${it.name}", style = MaterialTheme.typography.bodySmall) }
+                        }
+                    }
                 }
 
                 if (canManage) {
                     HorizontalDivider(Modifier.padding(vertical = 6.dp))
                     Text("FOR OFFICERS", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (!cancelled) {
-                        val summary = ScheduleView.completion(item.id, state.members, progress)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Marked done by ${summary.done.size} of ${summary.total}", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { showWho = !showWho }) { Text(if (showWho) "Hide" else "See who") }
-                        }
-                        if (showWho) {
-                            if (summary.done.isNotEmpty()) {
-                                Text("Done", color = Green, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                                summary.done.forEach { Text("• ${it.name}", style = MaterialTheme.typography.bodySmall) }
-                            }
-                            if (summary.notDone.isNotEmpty()) {
-                                Text("Not yet", color = Amber, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                                summary.notDone.forEach { Text("• ${it.name}", style = MaterialTheme.typography.bodySmall) }
-                            }
-                        }
-                    }
                     OutlinedButton(onClick = { onSetCancelled(!cancelled) }, modifier = Modifier.fillMaxWidth()) {
                         Text(if (cancelled) "Restore for the class" else "Cancel for the whole class")
                     }

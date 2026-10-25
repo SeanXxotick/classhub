@@ -143,13 +143,10 @@ class ClassViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ClassUiState())
 
-    /**
-     * Every student's done marks, loaded only while the signed-in user may manage the schedule,
-     * since students do not see each other's progress.
-     */
+    /** Every student's done marks, loaded once the signed-in user is a member of the class. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val allProgress: StateFlow<List<StudentProgress>> = state
-        .map { it.can(Permission.SCHEDULE_MANAGE) }
+        .map { it.room != null }
         .distinctUntilChanged()
         .flatMapLatest { allowed ->
             if (allowed) progressRepo.observeAll().catch { emit(emptyList()) } else flowOf(emptyList())

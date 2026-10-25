@@ -40,12 +40,15 @@ Default roles created with every class:
 
 ```
 users/{uid}
-    displayName, email                   (theme and start tab are stored on the device)
+    displayName, firstName, middleInitial, lastName, email   (theme and start tab are stored on the device)
 users/{uid}/memberships/{classId}
     className, joinedAtMillis            (the "My classes" list; a person's role is read from the class itself)
 
 invites/{code}
     classId, className, defaultRoleId    (readable by any signed-in user, one doc at a time)
+
+appConfig/latest
+    versionCode, versionName, notes, downloadUrl, minVersionCode   (newest published app build; signed-in users read it, nobody writes it from the app)
 
 classes/{classId}
     name, description, ownerUid, accentColor, inviteCode, defaultRoleId,
@@ -69,7 +72,7 @@ classes/{classId}/schedule/{id}
     dueMillis (local noon on the due day), status (PENDING = active | CANCELLED), note, createdByUid
 
 classes/{classId}/progress/{uid}
-    done: { itemId: markedAtMillis }     (a student's own done marks; only they write it)
+    done: { itemId: markedAtMillis }     (a student's own done marks; only they write it, every class member can read it)
 ```
 
 ### Joining with a code (how the rules stay safe)
@@ -131,12 +134,29 @@ Replaces the spreadsheet's "Submissions & Deadlines" tab (general submissions, q
 
 - Works like Microsoft Teams assignments: **deadlines are shared, but each student marks items done for themselves.** One student's mark does not affect anyone else.
 - Types: Deliverable, Quiz, Exam, Recitation, FCO. At class level an item is only **Active** or **Cancelled** (for example a quiz that was called off).
-- Personal marks are stored per student in `classes/{classId}/progress/{uid}` as `done: { itemId: markedAtMillis }`. Each student writes only their own document. Officers with `SCHEDULE_MANAGE` can read all of them to see "Marked done by X of Y" and who has not; students cannot see each other's marks.
+- Personal marks are stored per student in `classes/{classId}/progress/{uid}` as `done: { itemId: markedAtMillis }`. Each student writes only their own document. Every class member can read all of them, so anyone can open an item and see "Marked done by X of Y" with the names of who is done and who is not yet (this was officers only before version 1.3.2). Outsiders cannot read them.
 - Upcoming, Overdue, Done and the week-strip dots are personal: an item is overdue for a student only if they have not marked it done.
 - Week strip (Sunday to Saturday); tap a day to see only that day. Filters: Upcoming, Overdue (with a count), Quizzes and exams, Deliverables, Done, All.
 - Each row has a tick circle for marking done. Tags: "Today", "Tomorrow", "In 5 days", "Overdue", "Done", "Cancelled".
 - Home shows "Coming up" (the student's next 3 open items) and how many are overdue for them.
 - Officers with `SCHEDULE_MANAGE`: add, edit, delete, and cancel or restore an item for the whole class.
+
+## Accounts
+
+- A name is stored as first name, middle initial (up to two letters, shown with a period after each, for example "D.C.") and last name, and shown as "First M. Last". Changing it in Account settings also updates the member entry in every class the student is in.
+- A student can delete their own account (after confirming the password). It removes their member entries, done marks, profile and photo, then the sign-in. A Mayor must hand the class over first. Ledger records stay, because they are the fund's history.
+- Premade accounts: a class can be imported with one account per student on their school email and a temporary password that must be changed at first sign-in. If a student made their own account instead, an admin script moves their ledger records, courses and done marks to it and deletes the premade one, with a backup first and a check that the class totals do not change.
+
+## App updates
+
+The app is shared as an APK, not through a store, so it checks for new builds itself.
+
+- On every launch a signed-in student's app reads `appConfig/latest` and compares `versionCode` with the installed build.
+- Older build: a dialog "Update available" with the version, what is new, and **Update** (opens the download link) or **Later** (hidden until the next launch).
+- Below `minVersionCode`: "Update required"; the dialog cannot be dismissed. This protects students on a build that no longer matches the security rules.
+- A failed check (offline, no document) shows nothing. A link that does not start with `https://` is ignored.
+- Publishing a release: build the APK, upload it to the shared Drive file (replacing its contents keeps the link), then update `appConfig/latest` with an admin script. The app itself never writes this document.
+- Android does not allow silent installs outside a store, so the student still taps through the installer.
 
 ## Reminders (phone notifications)
 
@@ -208,6 +228,9 @@ Files: `app/src/main/res/drawable/ic_launcher_background.xml`, `ic_launcher_fore
 
 ### Later
 - Email invites and push notifications (need Cloud Functions and a paid plan)
+- **Share to ClassHub (class contents).** An officer who sees a link in Messenger, Microsoft Teams or a browser taps Share, picks ClassHub, and the Add content form opens with the link already filled in. They choose the course and save. This keeps an officer approving every item, and needs no access to anyone's chats or accounts.
+  - **Why not an automatic daily import:** Messenger has no official way for a program to read chats, and scraping it breaks Meta's rules and exposes classmates' private messages. Reading Teams through Microsoft Graph needs permission from the school's IT admin, which students cannot normally get. Links from chats are also untrusted, so publishing them to a whole class without a check could spread a bad link.
+  - **Where it fits:** a share target on the Android add-content screen (a small change); the same "add from a link" flow would carry over to the website.
 
 ## Architecture
 

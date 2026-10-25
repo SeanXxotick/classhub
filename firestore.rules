@@ -101,6 +101,14 @@ service cloud.firestore {
       allow delete: if can(classId, 'CLASS_SETTINGS');
     }
 
+    // ------------------------------------------------------------ App updates
+
+    // The newest published version. Signed-in users read it; only the admin scripts write it.
+    match /appConfig/{docId} {
+      allow get: if signedIn();
+      allow list, write: if false;
+    }
+
     // ------------------------------------------------------------ Invite codes
 
     match /invites/{code} {
@@ -283,10 +291,9 @@ service cloud.firestore {
         allow write: if can(classId, 'CONTENTS_MANAGE');
       }
 
-      // Each student's own done marks. Only they write it; schedule officers may read everyone's.
+      // Each student's own done marks. Only they write it; every class member may read everyone's.
       match /progress/{studentId} {
-        allow get: if (signedIn() && studentId == uid()) || can(classId, 'SCHEDULE_MANAGE');
-        allow list: if can(classId, 'SCHEDULE_MANAGE');
+        allow get, list: if isMember(classId);
         allow create, update: if signedIn() && studentId == uid() && isMember(classId)
           && request.resource.data.keys().hasOnly(['done'])
           && request.resource.data.done is map;

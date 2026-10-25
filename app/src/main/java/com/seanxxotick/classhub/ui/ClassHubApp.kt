@@ -185,6 +185,8 @@ private fun SignedInApp(
         }
     }
 
+    UpdatePrompt()
+
     NavHost(navController = nav, startDestination = Routes.CLASSES) {
         composable(Routes.CLASSES) { entry ->
             val classes by classesVm.classes.collectAsState()
