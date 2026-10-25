@@ -46,13 +46,3 @@ Final Course Output (FCO) for Software Engineering, BSM CS 3A.
 3. Upload the APK to the shared Drive file, replacing the old one so the link stays the same.
 4. Use the direct download form of the Drive link, `https://drive.usercontent.google.com/download?id=FILE_ID&export=download&confirm=t`. The normal share link opens a "virus scan warning" web page for APK files instead of downloading.
 5. Update the `appConfig/latest` document with `tools/publish_release.js` (version, notes, link; it uses your Firebase CLI login and shows a dry run until you add `--apply`). Students then see "Update available" the next time they open the app.
-
-## Working in the group
-
-- Do not commit directly to `main`. Make a branch (for example `yourname/schedule-screen`), push it and open a pull request.
-- Do not commit real student data, `google-services.json`, keystores or APKs. They are listed in `.gitignore`.
-- Use fake sample data when testing.
-
-## Status
-
-Version 1.3.2. The FCO documentation, demo and presentation are due Tuesday, October 27, 2026.
