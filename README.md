@@ -26,13 +26,9 @@ Final Course Output (FCO) for Software Engineering, BSM CS 3A.
 | Path | Contents |
 |---|---|
 | `app/` | Android project |
-| `docs/` | Project documentation (`PLAN.md` has the design, data structure and rules; `DEVELOPMENT.md` has the build, test and release steps) |
+| `docs/` | Project documentation (`PLAN.md` has the design, data structure and rules) |
 | `design/` | Screen mockups (`mockup.html`) |
 | `firestore.rules` | Firestore security rules |
 | `firestore-tests/` | Tests for the security rules (run on the Firestore emulator) |
 | `tools/` | Admin script that publishes a new app version for the update notice |
 | `release/` | Built APKs (not committed) |
-
-## For developers
-
-How to build, test and release the app: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
