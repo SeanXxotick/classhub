@@ -140,7 +140,7 @@ export function TopBar({ title, back, backLabel = 'Back', actions }: { title: Re
     <header className="topbar">
       <div className="topbar-inner">
         {back && (
-          <button className="btn text" onClick={back}>
+          <button type="button" className="btn text" onClick={back}>
             ‹ {backLabel}
           </button>
         )}
@@ -269,8 +269,11 @@ export { dayKey };
 export function Dialog({ title, children, actions, onClose }: { title: ReactNode; children?: ReactNode; actions: ReactNode; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  // Escape uses the latest onClose, so a dialog that refuses to close while busy still refuses.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeRef.current();
     window.addEventListener('keydown', onKey);
     const first = ref.current?.querySelector<HTMLElement>('input, select, textarea, button');
     first?.focus();
@@ -310,10 +313,11 @@ export function ConfirmDialog({
       onClose={onClose}
       actions={
         <>
-          <button className="btn text" onClick={onClose}>
+          <button type="button" className="btn text" onClick={onClose}>
             Cancel
           </button>
           <button
+            type="button"
             className={'btn text' + (danger ? ' danger' : '')}
             onClick={() => {
               onClose();
@@ -349,7 +353,7 @@ export function NoticeProvider({ children }: { children: ReactNode }) {
       {message && (
         <div className="snackbar" role="status" aria-live="polite">
           <span className="grow">{message}</span>
-          <button className="btn text small" onClick={() => setMessage(null)}>
+          <button type="button" className="btn text small" onClick={() => setMessage(null)}>
             OK
           </button>
         </div>

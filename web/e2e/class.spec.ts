@@ -268,6 +268,26 @@ test.describe.serial('a class from start to finish', () => {
     await k.screenshot({ path: shots('phone-dark-home'), fullPage: true });
   });
 
+  test('a removed student can rejoin with the invite code', async () => {
+    // Kim is on another page, so the class stays in Kim's own list after the removal.
+    const k = kim.page;
+    await k.goto('/account');
+    const { page } = maya;
+    await openTab(page, 'Members');
+    await page.getByRole('button', { name: /Kim Lee/ }).click();
+    await page.getByRole('button', { name: 'Remove from class' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Remove' }).click();
+    await expectNotice(page, 'Kim Lee was removed from the class.');
+    await openTab(page, 'Home');
+    await expect(page.getByText('2 members')).toBeVisible();
+
+    const code = (await page.locator('.invite-code').textContent())!.trim();
+    await k.goto(`/join/${code}`);
+    await k.getByRole('button', { name: 'Join Test Class' }).click();
+    await expect(k.getByText('3 members')).toBeVisible();
+    await expect(page.getByText('3 members')).toBeVisible();
+  });
+
   test('class settings: rename and turn a module off', async () => {
     const { page } = maya;
     await page.getByRole('button', { name: 'Class settings' }).click();

@@ -108,11 +108,11 @@ export async function updateName(name: PersonName): Promise<void> {
   const batch = writeBatch(db);
   batch.set(userDoc(uid), { displayName: display, firstName: parts.first, middleInitial: parts.middleInitial, lastName: parts.last }, { merge: true });
   // Only entries that still exist and show a different name: classes the user was removed from are skipped.
-  for (const m of memberships.docs) {
-    const entry = doc(db, 'classes', m.id, 'members', uid);
-    const current = await getDoc(entry).catch(() => null);
-    if (current?.exists() && current.get('name') !== display) batch.update(entry, { name: display });
-  }
+  const entries = memberships.docs.map((m) => doc(db, 'classes', m.id, 'members', uid));
+  const current = await Promise.all(entries.map((entry) => getDoc(entry).catch(() => null)));
+  entries.forEach((entry, i) => {
+    if (current[i]?.exists() && current[i]!.get('name') !== display) batch.update(entry, { name: display });
+  });
   await batch.commit();
 }
 
@@ -120,13 +120,10 @@ export async function updateName(name: PersonName): Promise<void> {
 export async function classesIOwn(): Promise<string[]> {
   const uid = auth.currentUser?.uid;
   if (!uid) return [];
-  const names: string[] = [];
-  for (const m of (await getDocs(membershipsOf(uid))).docs) {
-    // A class the user was removed from can no longer be read; they do not own it.
-    const room = await getDoc(classDoc(m.id)).catch(() => null);
-    if (room?.get('ownerUid') === uid) names.push(room.get('name') ?? m.get('className'));
-  }
-  return names;
+  const memberships = (await getDocs(membershipsOf(uid))).docs;
+  // A class the user was removed from can no longer be read; they do not own it.
+  const rooms = await Promise.all(memberships.map((m) => getDoc(classDoc(m.id)).catch(() => null)));
+  return memberships.flatMap((m, i) => (rooms[i]?.get('ownerUid') === uid ? [rooms[i]!.get('name') ?? m.get('className')] : []));
 }
 
 /**
@@ -142,16 +139,16 @@ export async function deleteAccount(password: string): Promise<void> {
   if ((await classesIOwn()).length > 0) throw new Error('You are still the Mayor of a class. Make someone else the Mayor first.');
 
   const batch = writeBatch(db);
-  for (const m of (await getDocs(membershipsOf(uid))).docs) {
-    const member = doc(db, 'classes', m.id, 'members', uid);
-    // Skip classes the user was already removed from; deleting there would be refused.
-    const exists = await getDoc(member).then((s) => s.exists()).catch(() => false);
-    if (exists) {
-      batch.delete(member);
+  const memberships = (await getDocs(membershipsOf(uid))).docs;
+  // Skip classes the user was already removed from; deleting there would be refused.
+  const stillIn = await Promise.all(memberships.map((m) => getDoc(doc(db, 'classes', m.id, 'members', uid)).then((s) => s.exists()).catch(() => false)));
+  memberships.forEach((m, i) => {
+    if (stillIn[i]) {
+      batch.delete(doc(db, 'classes', m.id, 'members', uid));
       batch.delete(doc(db, 'classes', m.id, 'progress', uid));
     }
     batch.delete(m.ref);
-  }
+  });
   batch.delete(doc(db, 'avatars', uid));
   batch.delete(userDoc(uid));
   await batch.commit();

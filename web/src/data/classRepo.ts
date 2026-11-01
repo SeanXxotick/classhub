@@ -76,7 +76,11 @@ export async function joinClass(rawCode: string, uid: string, displayName: strin
   const classId: string = invite.get('classId') ?? '';
   const className: string = invite.get('className') ?? '';
   const roleId: string = (invite.get('defaultRoleId') as string | undefined)?.trim() || ROLE_MEMBER;
-  if ((await getDoc(doc(membershipsOf(uid), classId))).exists()) throw new Error(`You are already in ${className}.`);
+  // An officer can remove a student but cannot delete the student's own list entry, so an entry
+  // alone does not mean the student is still in the class: check the member document too.
+  if ((await getDoc(doc(membershipsOf(uid), classId))).exists() && (await getDoc(doc(membersOf(classId), uid))).exists()) {
+    throw new Error(`You are already in ${className}.`);
+  }
 
   const now = Date.now();
   const batch = writeBatch(db);

@@ -55,7 +55,12 @@ export function useDocValue<T>(key: string, ref: DocumentReference<DocumentData>
     setState((s) => (s.key === key ? s : { key, data: undefined, error: null }));
     return onSnapshot(
       ref,
-      (snap) => setState({ key, data: snap.exists() ? map(snap) : null, error: null }),
+      (snap) => {
+        // A missing document seen only in the offline cache is not proof it is gone (for example a class
+        // never opened on this device), so keep waiting for the server instead of treating it as removed.
+        if (!snap.exists() && snap.metadata.fromCache) return;
+        setState({ key, data: snap.exists() ? map(snap) : null, error: null });
+      },
       (error) => setState({ key, data: null, error }),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
