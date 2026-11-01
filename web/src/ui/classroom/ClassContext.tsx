@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
-import { doc } from 'firebase/firestore';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../../data/firebase';
 import { fromDoc, useDocValue, useQueryList } from '../../data/live';
 import { friendlyMessage, isPermissionDenied } from '../../data/errors';
@@ -125,7 +125,16 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
   const classPhoto = useDocValue(`classPhoto/${classId}/${allowed}`, allowed ? doc(db, 'classPhotos', classId) : null, (d) =>
     typeof d.get('photo') === 'string' ? (d.get('photo') as string) : null,
   );
+  const membership = useDocValue(`membership/${uid}/${classId}`, doc(classRepo.membershipsOf(uid), classId), (d) => (d.get('className') as string | undefined) ?? '');
   const memberIds = useMemo(() => (members.data ?? []).map((m) => m.id), [members.data]);
+
+  // My classes keeps the name from when the student joined; bring it up to date after an officer renames the class.
+  const liveName = me.data ? room.data?.name : undefined;
+  useEffect(() => {
+    if (liveName && typeof membership.data === 'string' && membership.data !== liveName) {
+      setDoc(doc(classRepo.membershipsOf(uid), classId), { className: liveName }, { merge: true }).catch(() => {});
+    }
+  }, [liveName, membership.data, uid, classId]);
   const avatars = photoRepo.useAvatars(memberIds);
 
   const state = useMemo<ClassState>(() => {

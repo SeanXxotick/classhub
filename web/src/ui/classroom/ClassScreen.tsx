@@ -40,8 +40,18 @@ function ClassFrame() {
     navigate('/', { replace: true });
   }, [state.removed, state.classId, actions, navigate]);
 
+  // The browser tab shows the class's name.
+  const roomName = state.room?.name;
+  useEffect(() => {
+    if (!roomName) return;
+    document.title = `${roomName} · ClassHub`;
+    return () => {
+      document.title = 'ClassHub';
+    };
+  }, [roomName]);
+
   return (
-    <div className="accented class-frame" style={{ '--primary': hexColor(state.room?.accentColor) } as CSSProperties}>
+    <div className="accented class-frame" style={{ '--accent': hexColor(state.room?.accentColor) } as CSSProperties}>
       <Routes>
         <Route index element={<ClassScreen />} />
         <Route path="member/:memberId" element={<MemberDetailScreen />} />
@@ -228,7 +238,7 @@ function HomeTab({
       <div className="stack">
         <div className="card hero">
           <div className="row">
-            {state.classPhoto && <Avatar photo={state.classPhoto} name={room.name} color="var(--primary)" size={52} circle={false} />}
+            {state.classPhoto && <Avatar photo={state.classPhoto} name={room.name} color="var(--accent, #0F766E)" size={52} circle={false} />}
             <span>
               <span style={{ display: 'block', fontSize: 24, fontWeight: 700 }}>{room.name}</span>
               {room.description.trim() && <span className="soft">{room.description}</span>}
@@ -286,18 +296,6 @@ function HomeTab({
             ))}
           </div>
         )}
-
-        <div className="card">
-          <div className="bold">What you can do</div>
-          <div style={{ marginTop: 6 }}>
-            <PermissionLine label="Manage ledger records" allowed={state.can('RECORDS_MANAGE')} />
-            <PermissionLine label="Manage schedule" allowed={state.can('SCHEDULE_MANAGE')} />
-            <PermissionLine label="Manage members" allowed={state.can('MEMBERS_MANAGE')} />
-            <PermissionLine label="Manage roles" allowed={state.can('ROLES_MANAGE')} />
-            <PermissionLine label="Change class settings" allowed={state.can('CLASS_SETTINGS')} />
-            <PermissionLine label="Manage class contents" allowed={state.can('CONTENTS_MANAGE')} />
-          </div>
-        </div>
       </div>
 
       <div className="stack">
@@ -350,6 +348,18 @@ function HomeTab({
             </div>
           </div>
         )}
+
+        <div className="card">
+          <div className="bold">What you can do</div>
+          <div style={{ marginTop: 6 }}>
+            <PermissionLine label="Manage ledger records" allowed={state.can('RECORDS_MANAGE')} />
+            <PermissionLine label="Manage schedule" allowed={state.can('SCHEDULE_MANAGE')} />
+            <PermissionLine label="Manage members" allowed={state.can('MEMBERS_MANAGE')} />
+            <PermissionLine label="Manage roles" allowed={state.can('ROLES_MANAGE')} />
+            <PermissionLine label="Change class settings" allowed={state.can('CLASS_SETTINGS')} />
+            <PermissionLine label="Manage class contents" allowed={state.can('CONTENTS_MANAGE')} />
+          </div>
+        </div>
       </div>
 
       {confirmNewCode && (

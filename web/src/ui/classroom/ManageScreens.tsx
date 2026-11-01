@@ -533,11 +533,11 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
 
   // Preview the chosen accent on this screen before saving.
   return (
-    <div className="stack accented" style={{ '--primary': hexColor(accent) } as CSSProperties}>
+    <div className="stack accented" style={{ '--accent': hexColor(accent) } as CSSProperties}>
       {photoInput}
       <div className="card stack">
         <div className="hero preview-hero row">
-          <Avatar photo={state.classPhoto} name={name.trim() || 'Class'} color="var(--primary)" size={56} circle={false} />
+          <Avatar photo={state.classPhoto} name={name.trim() || 'Class'} color="var(--accent, #0F766E)" size={56} circle={false} />
           <span className="grow">
             <span className="bold" style={{ display: 'block', fontSize: 20 }}>{name.trim() || 'Class name'}</span>
             {description.trim() && <span className="soft" style={{ display: 'block' }}>{description}</span>}

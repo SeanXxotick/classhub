@@ -49,16 +49,20 @@
   color-scheme: dark;
 }
 
-/* A class's own accent (set as --primary on the element) recolors everything inside it, like the Android ClassHubTheme. */
+/* A class's own accent (set as --accent on the element) recolors everything inside it, like the Android ClassHubTheme. */
 .accented {
+  --primary: var(--accent);
   --on-primary: #ffffff;
-  --primary-container: color-mix(in srgb, var(--primary) 14%, var(--surface));
-  --hero: var(--primary);
+  --primary-container: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  --hero: var(--accent);
 }
 
+/* On a dark background the accent is lightened so text and buttons in it stay readable. */
 :root[data-theme='dark'] .accented {
-  --primary-container: color-mix(in srgb, var(--primary) 35%, var(--surface));
-  --hero: color-mix(in srgb, var(--primary) 30%, var(--surface));
+  --primary: color-mix(in srgb, var(--accent) 55%, #ffffff);
+  --on-primary: #0f141c;
+  --primary-container: color-mix(in srgb, var(--accent) 35%, var(--surface));
+  --hero: color-mix(in srgb, var(--accent) 30%, var(--surface));
 }
 
 * {
@@ -1454,8 +1458,3 @@ a.list-row:hover {
   }
 }
 
-@media (max-width: 480px) {
-  .tiles {
-    grid-template-columns: 1fr;
-  }
-}

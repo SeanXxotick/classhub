@@ -298,7 +298,7 @@ export function ChargeStudentsScreen() {
             return (
               <label key={m.id} className="list-row" style={{ cursor: 'pointer' }}>
                 <input type="checkbox" className="check" checked={checked} onChange={(e) => toggle(m.id, e.target.checked)} />
-                <Avatar photo={state.avatars.get(m.id)} name={m.name} color="var(--primary)" size={30} />
+                <Avatar photo={state.avatars.get(m.id)} name={m.name} color="var(--accent, #0F766E)" size={30} />
                 <span className="grow">
                   <span style={{ display: 'block' }}>{m.name}</span>
                   {!eligibleIds.has(m.id) && courseName && <span className="sub">Does not take {courseName}</span>}

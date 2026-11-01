@@ -473,7 +473,7 @@ export function MemberPickerDialog({ state, onPick, onDismiss }: { state: ClassS
       <div className="scroll-list">
         {shown.map((m) => (
           <button key={m.id} type="button" className="list-row" onClick={() => onPick(m)}>
-            <Avatar photo={state.avatars.get(m.id)} name={m.name} color="var(--primary)" size={30} />
+            <Avatar photo={state.avatars.get(m.id)} name={m.name} color="var(--accent, #0F766E)" size={30} />
             <span className="grow">{m.name}</span>
             <span className="small muted">{balanceText(state.balanceOf(m.id))}</span>
           </button>

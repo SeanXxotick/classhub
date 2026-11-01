@@ -208,7 +208,7 @@ export function PickerField({ label, value, onClick, supporting, placeholder }: 
   return (
     <div className="field">
       <span>{label}</span>
-      <button type="button" className={'input picker' + (value ? '' : ' placeholder')} onClick={onClick}>
+      <button type="button" className={'input picker' + (value ? '' : ' placeholder')} aria-label={`${label}: ${value ?? placeholder ?? 'Tap to choose'}`} onClick={onClick}>
         <span className="grow">{value ?? placeholder ?? 'Tap to choose'}</span>
         <span aria-hidden>▾</span>
       </button>
@@ -268,6 +268,7 @@ export { dayKey };
 
 export function Dialog({ title, children, actions, onClose }: { title: ReactNode; children?: ReactNode; actions: ReactNode; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
@@ -279,8 +280,8 @@ export function Dialog({ title, children, actions, onClose }: { title: ReactNode
   }, []);
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog" role="dialog" aria-modal="true" ref={ref}>
-        <h2>{title}</h2>
+      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={ref}>
+        <h2 id={titleId}>{title}</h2>
         {children}
         <div className="dialog-actions">{actions}</div>
       </div>

@@ -59,6 +59,7 @@ export function AccountScreen({ user }: { user: AppUser }) {
     try {
       await authRepo.deleteAccount(password);
       setDeleteStep(null);
+      navigate('/', { replace: true });
     } catch (e) {
       setDeleteStep({ kind: 'confirm', error: friendlyMessage(e).replace('The email or password is incorrect.', 'That password is incorrect.') });
     } finally {
@@ -80,7 +81,7 @@ export function AccountScreen({ user }: { user: AppUser }) {
         <div className="stack">
           <div className="card">
             <div className="row" style={{ gap: 14 }}>
-              <Avatar photo={photo} name={user.displayName} color="var(--primary)" size={64} />
+              <Avatar photo={photo} name={user.displayName} color="var(--accent, #0F766E)" size={64} />
               <span className="grow">
                 <span className="bold" style={{ display: 'block' }}>{user.displayName}</span>
                 <span className="small muted" style={{ display: 'block' }}>{user.email}</span>
@@ -147,7 +148,7 @@ export function AccountScreen({ user }: { user: AppUser }) {
               <button className="btn text" onClick={() => setConfirmSignOut(false)}>
                 Cancel
               </button>
-              <button className="btn text" onClick={() => (setConfirmSignOut(false), void authRepo.signOut())}>
+              <button className="btn text" onClick={() => (setConfirmSignOut(false), navigate('/', { replace: true }), void authRepo.signOut())}>
                 Sign out
               </button>
             </>
