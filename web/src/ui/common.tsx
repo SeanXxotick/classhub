@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ICONS } from './iconData';
 import { photoSrc } from '../data/photoRepo';
@@ -185,15 +185,21 @@ export function Switch({ label, sub, checked, onChange, disabled }: { label: Rea
 
 export function PasswordInput({ value, onChange, autoComplete, label = 'Password', help }: { value: string; onChange: (v: string) => void; autoComplete: string; label?: string; help?: string }) {
   const [show, setShow] = useState(false);
+  const id = useId();
+  // Not wrapped in a label, so the Show button stays out of the field's name.
   return (
-    <Field label={label} help={help}>
+    <div className="field">
+      <label className="field-label" htmlFor={id}>
+        {label}
+      </label>
       <span className="with-suffix">
-        <input type={show ? 'text' : 'password'} value={value} autoComplete={autoComplete} onChange={(e) => onChange(e.target.value)} />
-        <button type="button" className="btn text small suffix" onClick={() => setShow(!show)}>
+        <input id={id} type={show ? 'text' : 'password'} value={value} autoComplete={autoComplete} onChange={(e) => onChange(e.target.value)} />
+        <button type="button" className="btn text small suffix" aria-label={show ? 'Hide password' : 'Show password'} onClick={() => setShow(!show)}>
           {show ? 'Hide' : 'Show'}
         </button>
       </span>
-    </Field>
+      {help && <span className="help">{help}</span>}
+    </div>
   );
 }
 

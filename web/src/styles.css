@@ -576,7 +576,8 @@ a.list-row:hover {
   min-width: 0;
 }
 
-.field > span {
+.field > span:first-child,
+.field > .field-label {
   font-size: 13px;
   font-weight: 600;
   color: var(--muted);
