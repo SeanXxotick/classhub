@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>ClassHub</title>
+    <meta name="description" content="Your class's fund, deadlines and shared files in one place." />
+    <meta name="theme-color" content="#0F766E" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <script>
+      // Apply the saved theme before the first paint, so dark mode never flashes white.
+      try {
+        var t = localStorage.getItem('classhub.theme');
+        if (t === 'DARK' || (t !== 'LIGHT' && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.dataset.theme = 'dark';
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

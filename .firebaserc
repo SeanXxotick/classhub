@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "classhub-975eb"
-  }
+  },
+  "targets": {
+    "classhub-975eb": {
+      "hosting": {
+        "main": [
+          "classhub-975eb"
+        ],
+        "web": [
+          "classhub-web"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

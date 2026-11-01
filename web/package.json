@@ -1,0 +1,29 @@
+{
+  "name": "classhub-web",
+  "private": true,
+  "version": "1.3.2",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:emu": "vite --mode emulator",
+    "build": "tsc --noEmit -p . && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "firebase": "^12.19.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.1",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.5.2",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^3.2.4"
+  }
+}

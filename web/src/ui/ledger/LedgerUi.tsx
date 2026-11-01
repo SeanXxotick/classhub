@@ -1,0 +1,484 @@
+import { useMemo, useState } from 'react';
+import type { LedgerRecord, Member, RecordType } from '../../data/models';
+import { Ledger } from '../../domain/ledger';
+import { LEDGER_FILTERS, LedgerView, type ChargeBatch, type LedgerEntry, type LedgerFilter } from '../../domain/ledgerView';
+import { formatMoney } from '../../domain/money';
+import { dayOf, monthShort, parseDay, plusDays, today, weekday, weekdayShort } from '../../domain/dates';
+import { Avatar, DetailLine, Dialog, hexColor } from '../common';
+import type { ClassState } from '../classroom/ClassContext';
+
+// ---------------------------------------------------------------- Labels, colors and dates
+
+export const CHARGE_COLOR = '#B91C1C';
+const PAYOUT_COLOR = '#CA8A04';
+const WITHDRAW_COLOR = '#0369A1';
+
+/** What the user sees for each record type. */
+export function recordLabel(type: RecordType): string {
+  switch (type) {
+    case 'PAYMENT':
+      return 'Payment';
+    case 'CHARGE':
+      return 'Charge students';
+    case 'WITHDRAWAL':
+      return 'Withdrawal';
+    case 'EXPENSE':
+      return 'Pay out from fund';
+  }
+}
+
+function recordColor(type: RecordType): string {
+  switch (type) {
+    case 'PAYMENT':
+      return 'var(--income)';
+    case 'CHARGE':
+      return CHARGE_COLOR;
+    case 'WITHDRAWAL':
+      return WITHDRAW_COLOR;
+    case 'EXPENSE':
+      return PAYOUT_COLOR;
+  }
+}
+
+/** "Today", "Yesterday" or "Fri, Oct 16". */
+export function dayHeader(millis: number): string {
+  const day = dayOf(millis);
+  const now = today();
+  if (day === now) return 'Today';
+  if (day === plusDays(now, -1)) return 'Yesterday';
+  const { month, day: d } = parseDay(day);
+  return `${weekdayShort(weekday(day))}, ${monthShort(month)} ${d}`;
+}
+
+/** "Oct 18, 2026" */
+export function fullDate(millis: number): string {
+  const { year, month, day } = parseDay(dayOf(millis));
+  return `${monthShort(month)} ${day}, ${year}`;
+}
+
+/** Signed money text: "+₱100.00" or "−₱6.00". */
+export function signedMoney(centavos: number): string {
+  return centavos >= 0 ? '+' + formatMoney(centavos) : '−' + formatMoney(-centavos);
+}
+
+/** "Balance ₱26.00", "Owes ₱8.00" or "Settled". */
+export function balanceText(centavos: number): string {
+  if (centavos > 0) return 'Balance ' + formatMoney(centavos);
+  if (centavos < 0) return 'Owes ' + formatMoney(-centavos);
+  return 'Settled';
+}
+
+/** The signed-in officer's own balance in one line, such as "Your balance: ₱776.00" or "You owe ₱50.00". */
+export function myBalanceLine(centavos: number): string {
+  if (centavos < 0) return 'You owe ' + formatMoney(-centavos);
+  if (centavos > 0) return 'Your balance: ' + formatMoney(centavos);
+  return 'Your balance: settled';
+}
+
+/** The amount under a "Your balance" label: a plain amount when positive, otherwise "Owes ..." or "Settled". */
+export function myBalanceValue(centavos: number): string {
+  return centavos > 0 ? formatMoney(centavos) : balanceText(centavos);
+}
+
+const s = (n: number) => (n === 1 ? '' : 's');
+
+// ---------------------------------------------------------------- Building blocks
+
+export function TypeBar({ type }: { type: RecordType }) {
+  // A slim bar in the record type's color marks the row; the type itself is written in the subtitle.
+  return <span className="type-bar" style={{ background: recordColor(type) }} />;
+}
+
+export function Tag({ text, color }: { text: string; color: string }) {
+  return (
+    <span className="tag" style={{ color, background: `color-mix(in srgb, ${color} 14%, transparent)` }}>
+      {text}
+    </span>
+  );
+}
+
+/** One ledger line. Used on the Ledger tab and in "Recent" on Home. */
+export function EntryRow({ entry, state, onClick }: { entry: LedgerEntry; state: ClassState; onClick?: () => void }) {
+  const paidOut = useMemo(() => Ledger.paidOutBatchIds(state.records), [state.records]);
+  let title: string;
+  let subtitle: string;
+  if (entry.kind === 'batch') {
+    const each = entry.perMemberCentavos !== null ? ' × ' + formatMoney(entry.perMemberCentavos) : '';
+    const course = state.courses.find((c) => c.id === entry.courseId)?.name;
+    title = entry.note;
+    subtitle = `Charge · ${entry.count} student${s(entry.count)}${each}` + (course ? ` · ${course}` : '');
+  } else {
+    const r = entry.record;
+    const withNote = (text: string) => text + (r.note.trim() ? ` · ${r.note}` : '');
+    switch (r.type) {
+      case 'PAYMENT':
+        [title, subtitle] = [r.memberName, withNote('Payment')];
+        break;
+      case 'WITHDRAWAL':
+        [title, subtitle] = [r.memberName, withNote('Withdrawal from balance')];
+        break;
+      case 'EXPENSE':
+        [title, subtitle] = [r.note.trim() || 'Pay-out', 'Paid out from fund' + (r.paidTo.trim() ? ` to ${r.paidTo}` : '')];
+        break;
+      default:
+        [title, subtitle] = [r.note.trim() || 'Charge', `Charge · ${r.memberName}`];
+    }
+  }
+  const amount = LedgerView.displayAmount(entry);
+  const photoOwner = entry.kind === 'single' && entry.record.memberId ? entry.record : null;
+  const role = photoOwner ? state.roleOf(state.members.find((m) => m.id === photoOwner.memberId)) : null;
+  const content = (
+    <>
+      <TypeBar type={entry.type} />
+      {photoOwner && <Avatar photo={state.avatars.get(photoOwner.memberId)} name={photoOwner.memberName} color={hexColor(role?.colorHex, '#6B768A')} size={36} />}
+      <span className="grow ellipsis-box">
+        <span className="title ellipsis">{title}</span>
+        <span className="sub ellipsis">{subtitle}</span>
+      </span>
+      <span className="end-col">
+        <span className={'bold ' + (amount >= 0 ? 'income' : 'expense')}>{signedMoney(amount)}</span>
+        {entry.kind === 'batch' &&
+          (paidOut.has(entry.batchId) ? <Tag text="Paid out" color="var(--income)" /> : <Tag text="Not yet paid out" color="var(--pending)" />)}
+      </span>
+    </>
+  );
+  return onClick ? (
+    <button type="button" className="list-row" onClick={onClick}>
+      {content}
+    </button>
+  ) : (
+    <div className="list-row">{content}</div>
+  );
+}
+
+function SummaryTile({ label, centavos }: { label: string; centavos: number }) {
+  return (
+    <div className="summary-tile">
+      <span className="small soft ellipsis">{label}</span>
+      <span className="bold">{formatMoney(centavos)}</span>
+    </div>
+  );
+}
+
+/** The class fund: Cash on hand, Net collected, Charged to members, what is waiting to be paid out, and the books check. */
+export function FundSummaryCard({ records, title }: { records: LedgerRecord[]; title?: string }) {
+  const withdrawn = Ledger.total(records, 'WITHDRAWAL');
+  const difference = Ledger.booksDifference(records);
+  return (
+    <div className="card hero">
+      {title && <div className="bold" style={{ fontSize: 17, marginBottom: 6 }}>{title}</div>}
+      <div className="soft">Cash on hand</div>
+      <div className="money-big">{formatMoney(Ledger.cashOnHand(records))}</div>
+      <div className="tiles">
+        <SummaryTile label="Net collected" centavos={Ledger.netCollected(records)} />
+        <SummaryTile label="Charged to members" centavos={Ledger.total(records, 'CHARGE')} />
+      </div>
+      {withdrawn > 0 && (
+        <div className="small soft" style={{ marginTop: 6 }}>
+          {formatMoney(Ledger.total(records, 'PAYMENT'))} paid in, {formatMoney(withdrawn)} withdrawn.
+        </div>
+      )}
+      <div className="tiles">
+        <SummaryTile label="Waiting to be paid out" centavos={Ledger.awaitingPayout(records)} />
+        <SummaryTile label="Available cash" centavos={Ledger.availableCash(records)} />
+      </div>
+      <div className="small semibold" style={{ marginTop: 10 }}>
+        {difference === 0
+          ? '✓ Books balanced'
+          : `⚠ Books off by ${formatMoney(Math.abs(difference))}. A record may be missing or entered wrong.`}
+      </div>
+    </div>
+  );
+}
+
+/** A member's own balance as the headline, with what they paid in and were charged. */
+export function MyBalanceCard({ records, balanceCentavos, myUid }: { records: LedgerRecord[]; balanceCentavos: number; myUid: string }) {
+  const mine = records.filter((r) => r.memberId === myUid);
+  const owes = balanceCentavos < 0;
+  const withdrawn = Ledger.total(mine, 'WITHDRAWAL');
+  return (
+    <div className={'card hero' + (owes ? ' hero-error' : '')}>
+      <div className="soft">{owes ? 'You owe' : 'Your balance'}</div>
+      <div className="money-big">{formatMoney(owes ? -balanceCentavos : balanceCentavos)}</div>
+      <div className="small semibold">
+        {owes ? 'Please settle it with your class officers.' : balanceCentavos > 0 ? 'Credit that will cover your next class charges.' : 'You are all settled.'}
+      </div>
+      <div className="tiles">
+        <SummaryTile label="You paid in" centavos={Ledger.total(mine, 'PAYMENT')} />
+        <SummaryTile label="Charged to you" centavos={Ledger.total(mine, 'CHARGE')} />
+      </div>
+      {withdrawn > 0 && (
+        <div className="small soft" style={{ marginTop: 6 }}>
+          You withdrew {formatMoney(withdrawn)} in total.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The ledger card at the top of Home and Ledger. Officers who manage the ledger see the class fund;
+ * everyone else sees what matters to them: their own balance, or what they owe.
+ */
+export function LedgerSummaryCard({ state }: { state: ClassState }) {
+  return state.can('RECORDS_MANAGE') ? (
+    <FundSummaryCard records={state.records} />
+  ) : (
+    <MyBalanceCard records={state.records} balanceCentavos={state.balanceOf(state.myUid)} myUid={state.myUid} />
+  );
+}
+
+// ---------------------------------------------------------------- Ledger tab
+
+export function LedgerTab({
+  state,
+  onDeleteRecord,
+  onUndoCharge,
+  onRecordPayout,
+}: {
+  state: ClassState;
+  onDeleteRecord: (record: LedgerRecord) => void;
+  onUndoCharge: (batch: ChargeBatch) => void;
+  onRecordPayout: (batchId: string) => void;
+}) {
+  const [filter, setFilter] = useState<LedgerFilter>('ALL');
+  const [selected, setSelected] = useState<LedgerEntry | null>(null);
+  const entries = useMemo(() => LedgerView.filter(state.records, filter, state.myUid), [state.records, filter, state.myUid]);
+  let lastHeader = '';
+
+  return (
+    <div className="ledger-tab">
+      <div className="split">
+        <div className="stack">
+          <LedgerSummaryCard state={state} />
+          {state.can('RECORDS_MANAGE') && <div className="semibold muted">{myBalanceLine(state.balanceOf(state.myUid))}</div>}
+        </div>
+        <div className="stack">
+          <div className="chips" role="tablist" aria-label="Filter records">
+            {LEDGER_FILTERS.map((f) => (
+              <button key={f.id} type="button" role="tab" aria-selected={f.id === filter} className={'chip' + (f.id === filter ? ' selected' : '')} onClick={() => setFilter(f.id)}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <div className="card flush">
+            {entries.length === 0 && (
+              <p className="empty">
+                {state.records.length === 0 ? 'No records yet. Officers with the ledger permission can add one with the + button.' : 'Nothing here for this filter.'}
+              </p>
+            )}
+            {entries.map((entry) => {
+              const header = dayHeader(entry.dateMillis);
+              const showHeader = header !== lastHeader;
+              lastHeader = header;
+              return (
+                <div key={entry.key}>
+                  {showHeader && <div className="section-label">{header}</div>}
+                  <EntryRow entry={entry} state={state} onClick={() => setSelected(entry)} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {selected && (
+        <EntryDetailsDialog
+          entry={selected}
+          state={state}
+          canManage={state.can('RECORDS_MANAGE')}
+          onDismiss={() => setSelected(null)}
+          onDelete={(record) => (setSelected(null), onDeleteRecord(record))}
+          onUndo={(batch) => (setSelected(null), onUndoCharge(batch))}
+          onRecordPayout={(batchId) => (setSelected(null), onRecordPayout(batchId))}
+        />
+      )}
+    </div>
+  );
+}
+
+function EntryDetailsDialog({
+  entry,
+  state,
+  canManage,
+  onDismiss,
+  onDelete,
+  onUndo,
+  onRecordPayout,
+}: {
+  entry: LedgerEntry;
+  state: ClassState;
+  canManage: boolean;
+  onDismiss: () => void;
+  onDelete: (record: LedgerRecord) => void;
+  onUndo: (batch: ChargeBatch) => void;
+  onRecordPayout: (batchId: string) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const createdBy = (uid: string) => state.members.find((m) => m.id === uid)?.name ?? 'a former member';
+  const payout = entry.kind === 'batch' ? LedgerView.payoutFor(entry.batchId, state.records) : null;
+  // A charge that was paid out cannot be undone, and a single student's share of a charge is not deleted on its own.
+  const removable = entry.kind === 'batch' ? payout === null : !(entry.record.type === 'CHARGE' && entry.record.batchId);
+
+  if (confirming) {
+    return (
+      <Dialog
+        title={entry.kind === 'batch' ? 'Undo this whole charge?' : 'Delete this record?'}
+        onClose={onDismiss}
+        actions={
+          <>
+            <button className="btn text" onClick={onDismiss}>
+              Cancel
+            </button>
+            <button className="btn text danger" onClick={() => (entry.kind === 'batch' ? onUndo(entry) : onDelete(entry.record))}>
+              {entry.kind === 'batch' ? 'Undo charge' : 'Delete'}
+            </button>
+          </>
+        }
+      >
+        <p style={{ margin: 0 }}>
+          {entry.kind === 'batch'
+            ? `All ${entry.count} charges of "${entry.note}" will be removed and those students' balances go back up.`
+            : 'This removes the record and updates the balances. It cannot be undone.'}
+        </p>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog
+      title={recordLabel(entry.type)}
+      onClose={onDismiss}
+      actions={
+        <>
+          {canManage && removable && (
+            <button className="btn text danger" style={{ marginRight: 'auto' }} onClick={() => setConfirming(true)}>
+              {entry.kind === 'batch' ? 'Undo charge' : 'Delete'}
+            </button>
+          )}
+          {canManage && entry.kind === 'batch' && payout === null && (
+            <button className="btn text" onClick={() => onRecordPayout(entry.batchId)}>
+              Record pay-out
+            </button>
+          )}
+          <button className="btn text" onClick={onDismiss}>
+            Close
+          </button>
+        </>
+      }
+    >
+      <div className="stack" style={{ gap: 6 }}>
+        {entry.kind === 'single' ? (
+          <SingleDetails record={entry.record} state={state} createdBy={createdBy} />
+        ) : (
+          <>
+            <DetailLine label="Description" value={entry.note} />
+            {entry.perMemberCentavos !== null && <DetailLine label="Per student" value={formatMoney(entry.perMemberCentavos)} />}
+            <DetailLine label="Students" value={String(entry.count)} />
+            <DetailLine label="Total" value={formatMoney(entry.totalCentavos)} />
+            {(() => {
+              const course = state.courses.find((c) => c.id === entry.courseId);
+              return course ? <DetailLine label="Course" value={course.name} /> : null;
+            })()}
+            <DetailLine label="Date" value={fullDate(entry.dateMillis)} />
+            {entry.records[0]?.createdByUid && <DetailLine label="Recorded by" value={createdBy(entry.records[0].createdByUid)} />}
+            <DetailLine
+              label="Status"
+              value={payout ? `Paid out ${fullDate(payout.dateMillis)}` + (payout.paidTo.trim() ? ` to ${payout.paidTo}` : '') : 'Not yet paid out'}
+            />
+            <hr className="divider" />
+            <div className="bold">Charged</div>
+            {entry.records.map((r) => (
+              <div key={r.id} className="small">
+                • {r.memberName}&nbsp;&nbsp;{formatMoney(r.amountCentavos)}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
+function SingleDetails({ record: r, state, createdBy }: { record: LedgerRecord; state: ClassState; createdBy: (uid: string) => string }) {
+  const charge = r.type === 'EXPENSE' ? LedgerView.chargeFor(r, state.records) : null;
+  return (
+    <>
+      <DetailLine label="Amount" value={formatMoney(r.amountCentavos)} />
+      {r.memberName.trim() && <DetailLine label="Member" value={r.memberName} />}
+      {r.note.trim() && <DetailLine label={r.type === 'EXPENSE' ? 'For' : 'Note'} value={r.note} />}
+      {r.paidTo.trim() && <DetailLine label="Paid to" value={r.paidTo} />}
+      {r.type === 'EXPENSE' && <DetailLine label="Settles" value={charge ? `${charge.note} (${charge.count} students)` : 'A charge that no longer exists'} />}
+      <DetailLine label="Date" value={fullDate(r.dateMillis)} />
+      {r.createdByUid.trim() && <DetailLine label="Recorded by" value={createdBy(r.createdByUid)} />}
+      {r.type === 'CHARGE' && r.batchId && (
+        <p className="small muted" style={{ margin: 0 }}>
+          This is one student's share of a charge. To remove it, undo the whole charge from the All filter.
+        </p>
+      )}
+    </>
+  );
+}
+
+/** The four kinds of record the + button offers. */
+export function AddRecordChooser({ onPick, onDismiss }: { onPick: (type: RecordType) => void; onDismiss: () => void }) {
+  const options: [RecordType, string][] = [
+    ['PAYMENT', 'A student pays money in.'],
+    ['CHARGE', 'Deduct an amount from each student, such as a quiz fee. You can charge by course.'],
+    ['WITHDRAWAL', 'A student takes part of their balance out.'],
+    ['EXPENSE', 'Pay a charge out in full, for example handing the quiz money to the professor.'],
+  ];
+  return (
+    <Dialog
+      title="New record"
+      onClose={onDismiss}
+      actions={
+        <button className="btn text" onClick={onDismiss}>
+          Cancel
+        </button>
+      }
+    >
+      {options.map(([type, description]) => (
+        <button key={type} type="button" className="option-card" onClick={() => onPick(type)}>
+          <TypeBar type={type} />
+          <span className="grow">
+            <span className="bold" style={{ display: 'block' }}>{recordLabel(type)}</span>
+            <span className="small muted">{description}</span>
+          </span>
+        </button>
+      ))}
+    </Dialog>
+  );
+}
+
+/** Searchable list of members, showing each one's balance. */
+export function MemberPickerDialog({ state, onPick, onDismiss }: { state: ClassState; onPick: (member: Member) => void; onDismiss: () => void }) {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const shown = state.members.filter((m) => !q || m.name.toLowerCase().includes(q));
+  return (
+    <Dialog
+      title="Choose a member"
+      onClose={onDismiss}
+      actions={
+        <button className="btn text" onClick={onDismiss}>
+          Cancel
+        </button>
+      }
+    >
+      <label className="field">
+        <span>Search</span>
+        <input value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" />
+      </label>
+      <div className="scroll-list">
+        {shown.map((m) => (
+          <button key={m.id} type="button" className="list-row" onClick={() => onPick(m)}>
+            <Avatar photo={state.avatars.get(m.id)} name={m.name} color="var(--primary)" size={30} />
+            <span className="grow">{m.name}</span>
+            <span className="small muted">{balanceText(state.balanceOf(m.id))}</span>
+          </button>
+        ))}
+      </div>
+    </Dialog>
+  );
+}
