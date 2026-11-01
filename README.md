@@ -14,18 +14,21 @@ Final Course Output (FCO) for Software Engineering, BSM CS 3A.
 - Class contents: links to files, videos and websites, by course
 - Daily reminders, accent colors and dark mode
 - An update notice when a newer version of the app is published
+- A web version that works in any browser: https://classhub-web.web.app
 
 ## Stack
 
 - Kotlin + Jetpack Compose
 - MVVM architecture
 - Firebase Authentication and Cloud Firestore
+- React + TypeScript (web app)
 
 ## Repository layout
 
 | Path | Contents |
 |---|---|
 | `app/` | Android project |
+| `web/` | Web app (React + TypeScript, Vite) |
 | `docs/` | Project documentation (`PLAN.md` has the design, data structure and rules) |
 | `design/` | Screen mockups (`mockup.html`) |
 | `firestore.rules` | Firestore security rules |

@@ -20,6 +20,8 @@
     <div class="code" id="code">------</div>
     <a class="btn solid" id="open" href="#">Open in ClassHub</a>
     <p class="small">If ClassHub is installed, this opens it on the Join screen with the code filled in.</p>
+    <a class="btn outline" id="web" href="https://classhub-web.web.app/join">Open in your browser</a>
+    <p class="small">No Android phone? ClassHub also works in any browser. Sign in or create your account there, and the code is filled in for you.</p>
   </div>
 
   <div class="card hidden" id="bad">
@@ -46,6 +48,7 @@
   if (parts[0] && parts[0].toLowerCase() === 'join' && /^[A-HJ-NP-Z2-9]{6}$/.test(code)) {
     document.getElementById('code').textContent = code;
     document.getElementById('open').href = 'classhub://join/' + code;
+    document.getElementById('web').href = 'https://classhub-web.web.app/join/' + code;
   } else {
     document.getElementById('invite').classList.add('hidden');
     document.getElementById('bad').classList.remove('hidden');
