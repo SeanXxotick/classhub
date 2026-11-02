@@ -3,7 +3,6 @@ import { connectAuthEmulator, getAuth } from 'firebase/auth';
 import {
   connectFirestoreEmulator,
   initializeFirestore,
-  memoryLocalCache,
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore';
@@ -25,9 +24,9 @@ const app = initializeApp({
 export const auth = getAuth(app);
 
 // Like the Android app, data is cached so the class opens quickly and works for a while offline.
-// The emulator build keeps everything in memory so test runs never see old data.
+// The emulator build uses the same cache, so the browser tests see what real users see.
 export const db = initializeFirestore(app, {
-  localCache: usingEmulators ? memoryLocalCache() : persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
 });
 
 if (usingEmulators) {

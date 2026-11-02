@@ -13,7 +13,6 @@ import {
   newRecord,
   newRole,
   newScheduleItem,
-  type ClassMembership,
   type ClassRoom,
   type ContentItem,
   type Course,
@@ -180,19 +179,22 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
 
-  // Keeps this class in My classes while the user is a member: puts it back if it went missing, and brings
-  // the name up to date after an officer renames the class. Skipped while an action (such as leaving) runs.
+  // Keeps this class in My classes while the user is a member: brings the name up to date after an officer
+  // renames the class, and (checked once with the server) puts the class back if its entry went missing.
+  // Skipped while an action (such as leaving) runs.
   const liveName = me.data ? room.data?.name : undefined;
-  const joinedAt = me.data?.joinedAtMillis ?? 0;
+  const restoreChecked = useRef(false);
   useEffect(() => {
     if (!liveName || busy) return;
-    const entry = doc(classRepo.membershipsOf(uid), classId);
-    if (membership.data === null) {
-      setDoc(entry, { classId: '', className: liveName, joinedAtMillis: joinedAt } satisfies ClassMembership).catch(() => {});
-    } else if (typeof membership.data === 'string' && membership.data !== liveName) {
-      setDoc(entry, { className: liveName }, { merge: true }).catch(() => {});
+    if (typeof membership.data === 'string') {
+      if (membership.data !== liveName) setDoc(doc(classRepo.membershipsOf(uid), classId), { className: liveName }, { merge: true }).catch(() => {});
+    } else if (!restoreChecked.current) {
+      restoreChecked.current = true;
+      classRepo.restoreMembership(uid, classId, liveName).catch(() => {
+        restoreChecked.current = false;
+      });
     }
-  }, [liveName, joinedAt, membership.data, busy, uid, classId]);
+  }, [liveName, membership.data, busy, uid, classId]);
   const stateRef = useRef(state);
   stateRef.current = state;
 

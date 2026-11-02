@@ -19,6 +19,6 @@ test('sign up, create a class and open every tab', async ({ browser }) => {
     await openTab(page, tab);
   }
   await expect(page.getByText('What you can do')).toBeVisible();
-  expect(realErrors(mayor.errors)).toEqual([]);
+  expect(realErrors(mayor.errors, mayor.failedRequests)).toEqual([]);
   await mayor.context.close();
 });

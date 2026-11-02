@@ -140,6 +140,18 @@ export async function forgetMembership(uid: string, classId: string): Promise<vo
   await deleteDoc(doc(membershipsOf(uid), classId));
 }
 
+/**
+ * Puts a class back on the user's own list when its entry is missing although they are still a member
+ * (an older version could drop it after a passing refusal). Asks the server, since the cache cannot tell.
+ */
+export async function restoreMembership(uid: string, classId: string, className: string): Promise<void> {
+  const entryRef = doc(membershipsOf(uid), classId);
+  const [entry, member] = await Promise.all([getDocFromServer(entryRef), getDocFromServer(doc(membersOf(classId), uid))]);
+  if (entry.exists() || !member.exists()) return;
+  const joinedAtMillis = (member.get('joinedAtMillis') as number | undefined) ?? Date.now();
+  await setDoc(entryRef, { classId: '', className, joinedAtMillis } satisfies ClassMembership);
+}
+
 /** The member leaves on their own. Their ledger records stay, since they are the class's history. */
 export async function leaveClass(classId: string, uid: string): Promise<void> {
   const batch = writeBatch(db);

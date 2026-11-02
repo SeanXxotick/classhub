@@ -312,7 +312,7 @@ test.describe.serial('a class from start to finish', () => {
     // Opening the class link loads the class and puts it back in the list.
     await k.goto(classUrl);
     await expect(k.getByText('3 members')).toBeVisible();
-    await k.goto('/');
+    await k.getByRole('button', { name: '‹ Classes' }).click();
     await k.locator('.grid-2').getByRole('link', { name: /Test Class/ }).click();
     await expect(k.getByText('3 members')).toBeVisible();
   });
@@ -396,12 +396,12 @@ test.describe.serial('a class from start to finish', () => {
   });
 
   test('no errors in any browser console', async () => {
-    expect(realErrors(maya.errors)).toEqual([]);
+    expect(realErrors(maya.errors, maya.failedRequests), maya.failedRequests.join(', ')).toEqual([]);
     // The one 400 is the wrong password typed on purpose before deleting the account.
-    const stuErrors = realErrors(stu.errors);
+    const stuErrors = realErrors(stu.errors, stu.failedRequests);
     const wrongPassword = stuErrors.findIndex((e) => e.includes('status of 400'));
     if (wrongPassword >= 0) stuErrors.splice(wrongPassword, 1);
-    expect(stuErrors).toEqual([]);
-    expect(realErrors(kim.errors)).toEqual([]);
+    expect(stuErrors, stu.failedRequests.join(', ')).toEqual([]);
+    expect(realErrors(kim.errors, kim.failedRequests), kim.failedRequests.join(', ')).toEqual([]);
   });
 });

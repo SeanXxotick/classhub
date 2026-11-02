@@ -53,8 +53,11 @@ export function useDocValue<T>(key: string, ref: DocumentReference<DocumentData>
       return;
     }
     setState((s) => (s.key === key ? s : { key, data: undefined, error: null }));
+    // includeMetadataChanges: the server's "still missing" answer changes only fromCache, and without
+    // this option Firestore would not report it, leaving a missing document loading forever.
     return onSnapshot(
       ref,
+      { includeMetadataChanges: true },
       (snap) => {
         // A missing document seen only in the offline cache is not proof it is gone (for example a class
         // never opened on this device), so keep waiting for the server instead of treating it as removed.

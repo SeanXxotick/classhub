@@ -17,9 +17,14 @@ export async function newUser(browser: Browser, first: string, last: string, opt
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(m.text());
   });
+  // The console only says "Failed to load resource"; this keeps which address it was, for the report.
+  const failedRequests: string[] = [];
+  page.on('response', (r) => {
+    if (r.status() >= 400) failedRequests.push(`${r.status()} ${r.request().method()} ${r.url().split('?')[0]}`);
+  });
   counter++;
   const email = `${first.toLowerCase()}.${Date.now()}.${counter}@example.test`;
-  return { context, page, errors, email, name: `${first} ${last}`, first, last };
+  return { context, page, errors, failedRequests, email, name: `${first} ${last}`, first, last };
 }
 
 export async function signUp(page: Page, first: string, last: string, email: string, path = '/') {
@@ -49,7 +54,19 @@ export async function openTab(page: Page, name: 'Home' | 'Ledger' | 'Schedule' |
   await nav.getByRole('button', { name }).click();
 }
 
-/** Console errors that matter (the emulator warning and React Router future flags are expected). */
-export function realErrors(errors: string[]) {
-  return errors.filter((e) => !/emulator|React Router Future Flag|Download the React DevTools/i.test(e));
+/**
+ * Console errors that matter. The emulator warning and React Router future flags are expected, and so is
+ * a 400 on Firestore's own streaming channel, which the library closes and reopens by itself. The console
+ * does not name the address, so one 400 is skipped for each such channel response.
+ */
+export function realErrors(errors: string[], failedRequests: string[] = []) {
+  let channel400s = failedRequests.filter((r) => /^400 \w+ \S*\/google\.firestore\.v1\.Firestore\/(Listen|Write)\/channel$/.test(r)).length;
+  return errors.filter((e) => {
+    if (/emulator|React Router Future Flag|Download the React DevTools/i.test(e)) return false;
+    if (channel400s > 0 && e.includes('status of 400')) {
+      channel400s--;
+      return false;
+    }
+    return true;
+  });
 }
