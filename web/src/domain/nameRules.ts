@@ -73,3 +73,30 @@ function tidy(text: string): string {
 
 // "D.", "D.C." or "DC."
 const INITIAL = /^(?:\p{L}\.(?:\p{L}\.)?|\p{L}{2}\.)$/u;
+
+/**
+ * What a picture shows when there is no photo. A class name's year and section comes first
+ * ("BSM CS 3A-G1" -> "3A", "BSIT 2-B" -> "2B"); otherwise a short last word ("CS 301" -> "301"),
+ * or the first letters of the first and last words ("Juan Dela Cruz" -> "JC").
+ */
+export function initialsOf(name: string): string {
+  const section = sectionOf(name);
+  if (section) return section;
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '?';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  const last = words[words.length - 1];
+  if (last.length <= 3) return last.toUpperCase();
+  return (words[0].slice(0, 1) + last.slice(0, 1)).toUpperCase();
+}
+
+/** A year and section such as "3A", written as one part ("3A") or two ("3-A", "3 A"). Ordinals such as "2nd" do not count. */
+function sectionOf(name: string): string | null {
+  const parts = name.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (/^\d{1,2}[A-Za-z]{1,2}$/.test(part) && !/^\d+(st|nd|rd|th)$/i.test(part)) return part.toUpperCase();
+    if (/^\d{1,2}$/.test(part) && /^[A-Za-z]$/.test(parts[i + 1] ?? '')) return (part + parts[i + 1]).toUpperCase();
+  }
+  return null;
+}

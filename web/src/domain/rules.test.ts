@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { PERMISSIONS, ROLE_MAYOR, ROLE_MEMBER, ROLE_SECRETARY, ROLE_TREASURER, newMember, newRole, newContentItem } from '../data/models';
+import { PERMISSIONS, ROLE_MAYOR, ROLE_MEMBER, ROLE_SECRETARY, ROLE_TREASURER, newMember, newRole, newContentItem, type ContentKind } from '../data/models';
 import { DefaultRoles, RoleRules, can } from './permissions';
 import { ClassRules, CourseRules, MemberRules } from './classRules';
-import { NameRules, personName } from './nameRules';
+import { NameRules, initialsOf, personName } from './nameRules';
 import { PasswordRules } from './passwordRules';
 import { InviteCode } from './inviteCode';
 import { JoinLinks } from './joinLinks';
@@ -114,6 +114,19 @@ describe('NameRules', () => {
     expect(NameRules.check(personName('Juan', '4', 'Cruz'))).toBe('The middle initial must be letters only.');
     expect(NameRules.cleanInitial('d.c.x')).toBe('DC');
     expect(NameRules.cleaned(personName(' Juan', 'd.', 'Cruz '))).toEqual(personName('Juan', 'D', 'Cruz'));
+  });
+
+  it('initials put the year and section first', () => {
+    expect(initialsOf('BSM CS 3A-G1')).toBe('3A');
+    expect(initialsOf('BSM CS 3A')).toBe('3A');
+    expect(initialsOf('BSIT 2-B')).toBe('2B');
+    expect(initialsOf('bscs-4c')).toBe('4C');
+    expect(initialsOf('BSM 2nd Year')).toBe('BY');
+    expect(initialsOf('CS 301')).toBe('301');
+    expect(initialsOf('Juan Dela Cruz')).toBe('JC');
+    expect(initialsOf('Advanced Calculus I')).toBe('I');
+    expect(initialsOf('Physics')).toBe('PH');
+    expect(initialsOf('  ')).toBe('?');
   });
 });
 
@@ -250,6 +263,27 @@ describe('ContentRules', () => {
     expect(order('A_Z')).toEqual(['act', 'm2', 'm10', 'syl']);
     expect(order('Z_A')).toEqual(['syl', 'm10', 'm2', 'act']);
     expect(ContentRules.grouped(sample, [], 'NEWEST')[0][1].map((i) => i.id)).toEqual(['m10', 'act', 'syl', 'm2']);
+  });
+
+  it('format and source', () => {
+    const format = (title: string, url: string, kind: ContentKind = 'FILE') => ContentRules.formatOf({ title, url, kind });
+    expect(format('Unit1 Module 1 - Adcal.pdf', 'https://drive.google.com/file/d/abc/view')).toEqual({ label: 'PDF', icon: null });
+    expect(format('Lesson 3', 'https://docs.google.com/presentation/d/abc/edit')).toEqual({ label: 'Slides', icon: 'presentation' });
+    expect(format('Grades.xlsx', 'https://docs.google.com/spreadsheets/d/abc/edit').label).toBe('Spreadsheet');
+    expect(format('Readings', 'https://drive.google.com/drive/folders/abc?usp=sharing')).toEqual({ label: 'Folder', icon: 'folder' });
+    expect(format('Discussion 1', 'https://bulsumain.sharepoint.com/:v:/s/Adcal/abc', 'VIDEO')).toEqual({ label: 'Video', icon: 'play' });
+    expect(format('Activity files', 'https://bulsumain-my.sharepoint.com/:f:/g/personal/abc', 'WEBSITE').label).toBe('Folder');
+    // The first known ending wins, and a version number such as "2.1" is not an ending.
+    expect(format('Lab 2.1 notebook.ipynb and data.csv', 'https://drive.google.com/file/d/abc/view')).toEqual({ label: 'Notebook', icon: 'code' });
+    expect(format('Notes', 'https://example.com/files/notes.PDF?dl=1').label).toBe('PDF');
+    expect(format('Module 2.1', 'https://drive.google.com/file/d/abc/view')).toEqual({ label: 'File', icon: null });
+    expect(format('Desmos', 'https://www.desmos.com/calculator', 'WEBSITE').label).toBe('Website');
+    expect(ContentRules.sourceOf('https://docs.google.com/document/d/abc')).toBe('Google Drive');
+    expect(ContentRules.sourceOf('https://bulsumain-my.sharepoint.com/:v:/g/personal/abc')).toBe('OneDrive');
+    expect(ContentRules.sourceOf('https://bulsumain.sharepoint.com/:v:/s/Adcal/abc')).toBe('SharePoint');
+    expect(ContentRules.sourceOf('https://youtu.be/abc')).toBe('YouTube');
+    expect(ContentRules.sourceOf('https://www.desmos.com/calculator')).toBe('desmos.com');
+    expect(ContentRules.sourceOf('not a link')).toBe('');
   });
 });
 

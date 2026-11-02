@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { Member, ScheduleItem } from '../../data/models';
 import { JoinLinks } from '../../domain/joinLinks';
@@ -75,6 +75,7 @@ function ClassScreen() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [choosingRecord, setChoosingRecord] = useState(false);
+  const compactFab = useScrollingDown();
   useSettingsVersion();
   const room = state.room;
   const base = `/class/${state.classId}`;
@@ -93,14 +94,14 @@ function ClassScreen() {
   const onToggleDone = (item: ScheduleItem, done: boolean) => actions.setDone(item, done);
 
   let fab: { label: string; onClick: () => void } | null = null;
-  if (tab === 'LEDGER' && state.can('RECORDS_MANAGE')) fab = { label: '+  New record', onClick: () => setChoosingRecord(true) };
+  if (tab === 'LEDGER' && state.can('RECORDS_MANAGE')) fab = { label: 'New record', onClick: () => setChoosingRecord(true) };
   if (tab === 'SCHEDULE' && state.can('SCHEDULE_MANAGE')) {
     fab = {
-      label: scheduleDay ? `+  Add on ${monthDay(scheduleDay)}` : '+  Add',
+      label: scheduleDay ? `Add on ${monthDay(scheduleDay)}` : 'Add',
       onClick: () => navigate(`${base}/schedule/new` + (scheduleDay ? `?day=${scheduleDay}` : '')),
     };
   }
-  if (tab === 'CONTENTS' && state.can('CONTENTS_MANAGE')) fab = { label: '+  Add content', onClick: () => navigate(`${base}/content/new`) };
+  if (tab === 'CONTENTS' && state.can('CONTENTS_MANAGE')) fab = { label: 'Add content', onClick: () => navigate(`${base}/content/new`) };
 
   return (
     <>
@@ -152,13 +153,16 @@ function ClassScreen() {
             onSetCancelled={actions.setCancelled}
           />
         ) : (
-          <ContentsTab state={state} onEdit={(id) => navigate(`${base}/content/${id}`)} onError={actions.showNotice} />
+          <ContentsTab state={state} onEdit={(id) => navigate(`${base}/content/${id}`)} onNotice={actions.showNotice} />
         )}
       </div>
 
       {fab && (
-        <button className="btn solid fab" onClick={fab.onClick}>
-          {fab.label}
+        <button className={'btn solid fab' + (compactFab ? ' compact' : '')} aria-label={compactFab ? fab.label : undefined} onClick={fab.onClick}>
+          <span className="fab-plus" aria-hidden>
+            +
+          </span>
+          <span className="fab-text">{fab.label}</span>
         </button>
       )}
 
@@ -186,6 +190,23 @@ function ClassScreen() {
       )}
     </>
   );
+}
+
+/** True while the page is being scrolled down, so the add button can shrink to "+" and cover less of the list. */
+function useScrollingDown(): boolean {
+  const [down, setDown] = useState(false);
+  useEffect(() => {
+    let last = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (Math.abs(y - last) < 8) return;
+      setDown(y > last && y > 80);
+      last = y;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  return down;
 }
 
 // ---------------------------------------------------------------- Home
@@ -233,125 +254,122 @@ function HomeTab({
     }
   }
 
+  // Two columns on wide screens. On a phone the sections line up in the order a student needs them
+  // (the home-order classes): the class, what is due, the money, then the officer tools.
   return (
     <div className="home-grid">
-      <div className="stack">
-        <div className="card hero">
-          <div className="row">
-            {state.classPhoto && <Avatar photo={state.classPhoto} name={room.name} color="var(--accent, #0F766E)" size={52} circle={false} />}
-            <span>
-              <span style={{ display: 'block', fontSize: 24, fontWeight: 700 }}>{room.name}</span>
-              {room.description.trim() && <span className="soft">{room.description}</span>}
+      <div className="stack home-col">
+        <section className="card class-header home-order-1" aria-label={room.name}>
+          <Avatar photo={state.classPhoto} name={room.name} color="var(--primary)" size={56} circle={false} />
+          <span className="grow ellipsis-box">
+            <span className="class-name">{room.name}</span>
+            {room.description.trim() && <span className="muted clamp-2">{room.description}</span>}
+            <span className="small semibold muted class-meta">
+              {state.members.length} member{s(state.members.length)}&nbsp;&nbsp;·&nbsp;&nbsp;You are {state.myRole?.name ?? 'a member'}
             </span>
-          </div>
-          <div className="semibold" style={{ marginTop: 10 }}>
-            {state.members.length} member{s(state.members.length)}&nbsp;&nbsp;·&nbsp;&nbsp;You are {state.myRole?.name ?? 'a member'}
-          </div>
-        </div>
+          </span>
+        </section>
+
+        {room.scheduleEnabled && (
+          <section className="home-section home-order-2">
+            <SectionHead
+              title="Coming up"
+              sub={overdue > 0 && <span className="small semibold error-text">{overdue} overdue item{s(overdue)}</span>}
+              action={
+                <button className="btn text" onClick={onSeeSchedule}>
+                  Schedule ›
+                </button>
+              }
+            />
+            <div className="card flush">
+              {upcoming.length === 0 && <p className="muted" style={{ margin: 0, padding: '6px 16px' }}>Nothing due soon. You are all caught up.</p>}
+              {upcoming.map((item) => (
+                <ScheduleRow key={item.id} item={item} state={state} now={now} showDate onToggleDone={onToggleDone} />
+              ))}
+            </div>
+          </section>
+        )}
 
         {(canRoles || canCourses) && (
-          <div className="card stack" style={{ gap: 10 }}>
-            <div>
-              <div className="bold">Manage</div>
-              <div className="small muted">Officer roles, the courses your class takes, and class settings.</div>
-            </div>
-            <div className="row wrap">
+          <section className="home-section home-order-5">
+            <SectionHead title="Manage" />
+            <div className="card manage-card">
               {canRoles && (
-                <button className="btn outline" onClick={() => navigate(`${base}/roles`)}>
+                <button className="btn outline small" onClick={() => navigate(`${base}/roles`)}>
                   Roles ({state.roles.length})
                 </button>
               )}
               {canCourses && (
-                <button className="btn outline" onClick={() => navigate(`${base}/courses`)}>
+                <button className="btn outline small" onClick={() => navigate(`${base}/courses`)}>
                   Courses ({state.courses.length})
                 </button>
               )}
+              {canCourses && (
+                <button className="btn outline small" onClick={() => navigate(`${base}/settings`)}>
+                  Class settings
+                </button>
+              )}
             </div>
-            {canCourses && (
-              <button className="btn outline block" onClick={() => navigate(`${base}/settings`)}>
-                Class settings
-              </button>
-            )}
-          </div>
-        )}
-
-        {room.scheduleEnabled && (
-          <div className="card flush">
-            <div className="row" style={{ padding: '0 8px 0 16px' }}>
-              <span className="grow">
-                <span className="bold" style={{ display: 'block', fontSize: 17 }}>Coming up</span>
-                {overdue > 0 && (
-                  <span className="small semibold error-text">
-                    {overdue} overdue item{s(overdue)}
-                  </span>
-                )}
-              </span>
-              <button className="btn text" onClick={onSeeSchedule}>
-                Schedule ›
-              </button>
-            </div>
-            {upcoming.length === 0 && <p className="muted" style={{ margin: 0, padding: '4px 16px' }}>Nothing due soon. You are all caught up.</p>}
-            {upcoming.map((item) => (
-              <ScheduleRow key={item.id} item={item} state={state} now={now} showDate onToggleDone={onToggleDone} />
-            ))}
-          </div>
+          </section>
         )}
       </div>
 
-      <div className="stack">
+      <div className="stack home-col">
         {room.ledgerEnabled && (
-          <>
+          <section className="home-section home-order-3">
             <LedgerSummaryCard state={state} />
-            <div className="card flush">
-              <div className="row" style={{ padding: '0 8px 0 16px' }}>
-                <span className="grow">
-                  {ledgerOfficer ? (
-                    <>
-                      {/* Officers see the class fund above, so their own balance goes here. */}
-                      <span className="small muted" style={{ display: 'block' }}>Your balance</span>
-                      <span className="bold" style={{ fontSize: 17 }}>{myBalanceValue(state.balanceOf(state.myUid))}</span>
-                    </>
-                  ) : (
-                    <span className="bold" style={{ fontSize: 17 }}>Class ledger</span>
-                  )}
-                </span>
+            {ledgerOfficer && (
+              // Officers see the class fund above, so their own balance goes under it.
+              <div className="card balance-strip">
+                <span className="grow muted semibold">Your balance</span>
+                <span className="bold money">{myBalanceValue(state.balanceOf(state.myUid))}</span>
+              </div>
+            )}
+          </section>
+        )}
+
+        {room.ledgerEnabled && (
+          <section className="home-section home-order-4">
+            <SectionHead
+              title="Recent"
+              action={
                 <button className="btn text" onClick={onSeeLedger}>
                   Ledger ›
                 </button>
-              </div>
-              {recent.length > 0 && (
-                <>
-                  <div className="section-label">Recent</div>
-                  {recent.map((entry) => (
-                    <EntryRow key={entry.key} entry={entry} state={state} />
-                  ))}
-                </>
-              )}
+              }
+            />
+            <div className="card flush">
+              {recent.length === 0 && <p className="muted" style={{ margin: 0, padding: '6px 16px' }}>No records yet.</p>}
+              {recent.map((entry) => (
+                <EntryRow key={entry.key} entry={entry} state={state} />
+              ))}
             </div>
-          </>
+          </section>
         )}
 
         {state.can('MEMBERS_MANAGE') && (
-          <div className="card stack center" style={{ gap: 10 }}>
-            <div className="bold" style={{ textAlign: 'left' }}>Invite students</div>
-            <div className="small muted" style={{ textAlign: 'left' }}>
-              Share this code. Students enter it under "Join with a code" and join as {defaultRoleName}.
+          <section className="home-section home-order-6">
+            <SectionHead title="Invite students" />
+            <div className="card stack center" style={{ gap: 10 }}>
+              <div className="small muted" style={{ textAlign: 'left' }}>
+                Share this code. Students enter it under "Join with a code" and join as {defaultRoleName}.
+              </div>
+              <div className="invite-code">{room.inviteCode}</div>
+              <div className="row" style={{ justifyContent: 'center' }}>
+                <button className="btn solid" onClick={shareCode}>
+                  Share code
+                </button>
+                <button className="btn outline" disabled={actions.busy} onClick={() => setConfirmNewCode(true)}>
+                  New code
+                </button>
+              </div>
             </div>
-            <div className="invite-code">{room.inviteCode}</div>
-            <div className="row" style={{ justifyContent: 'center' }}>
-              <button className="btn solid" onClick={shareCode}>
-                Share code
-              </button>
-              <button className="btn outline" disabled={actions.busy} onClick={() => setConfirmNewCode(true)}>
-                New code
-              </button>
-            </div>
-          </div>
+          </section>
         )}
 
-        <div className="card">
-          <div className="bold">What you can do</div>
-          <div style={{ marginTop: 6 }}>
+        <section className="home-section home-order-7">
+          <SectionHead title="What you can do" />
+          <div className="card">
             <PermissionLine label="Manage ledger records" allowed={state.can('RECORDS_MANAGE')} />
             <PermissionLine label="Manage schedule" allowed={state.can('SCHEDULE_MANAGE')} />
             <PermissionLine label="Manage members" allowed={state.can('MEMBERS_MANAGE')} />
@@ -359,7 +377,7 @@ function HomeTab({
             <PermissionLine label="Change class settings" allowed={state.can('CLASS_SETTINGS')} />
             <PermissionLine label="Manage class contents" allowed={state.can('CONTENTS_MANAGE')} />
           </div>
-        </div>
+        </section>
       </div>
 
       {confirmNewCode && (
@@ -371,6 +389,19 @@ function HomeTab({
           onConfirm={actions.regenerateInviteCode}
         />
       )}
+    </div>
+  );
+}
+
+/** A section title above its card, with an optional line under it and a link on the right. */
+function SectionHead({ title, sub, action }: { title: string; sub?: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="section-head">
+      <span className="grow">
+        <h2>{title}</h2>
+        {sub}
+      </span>
+      {action}
     </div>
   );
 }

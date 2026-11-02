@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ICONS } from './iconData';
 import { photoSrc } from '../data/photoRepo';
 import { ImageMath } from '../domain/imageMath';
+import { initialsOf } from '../domain/nameRules';
 import { dayKey, dayOf, monthShort, noonMillis, parseDay, weekday, weekdayShort, today } from '../domain/dates';
 
 // ------------------------------------------------------------------ Colors
@@ -54,26 +55,22 @@ function iconFile(key: string): string {
   return kinds[key] ?? `ic_sched_${key}`;
 }
 
-/** A plain line icon in its color, with no background so it stays minimal. */
-export function StyledIcon({ icon, color, label, size = 26, box = 38 }: { icon: string; color: string; label?: string; size?: number; box?: number }) {
+/** A line icon in its color. tint puts it in a soft circle of the same color, for list rows. */
+export function StyledIcon({ icon, color, label, size = 26, box = 38, tint = false }: { icon: string; color: string; label?: string; size?: number; box?: number; tint?: boolean }) {
+  const c = hexColor(color);
   return (
-    <span className="styled-icon" style={{ width: box, height: box }}>
-      <Icon name={icon} size={size} color={hexColor(color)} label={label} />
+    <span
+      className={'styled-icon' + (tint ? ' tinted' : '')}
+      style={{ width: box, height: box, background: tint ? `color-mix(in srgb, ${c} var(--tint), transparent)` : undefined }}
+    >
+      <Icon name={icon} size={tint ? Math.round(box * 0.55) : size} color={c} label={label} />
     </span>
   );
 }
 
 // ------------------------------------------------------------------ Avatars
 
-/** "BSM CS 3A" -> "3A", "Juan Dela Cruz" -> "JD". */
-export function initialsOf(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return '?';
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  const last = words[words.length - 1];
-  if (last.length <= 3) return last.toUpperCase();
-  return (words[0].slice(0, 1) + last.slice(0, 1)).toUpperCase();
-}
+export { initialsOf };
 
 /** A profile or class picture, or the colored initials. circle is false for class pictures (rounded square). */
 export function Avatar({ photo, name, color, size = 42, circle = true }: { photo?: string | null; name: string; color: string; size?: number; circle?: boolean }) {

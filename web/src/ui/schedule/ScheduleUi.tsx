@@ -59,9 +59,17 @@ function dayHeader(day: DayKey, now: DayKey): string {
   return longDay(day);
 }
 
-function KindBadge({ kind, room }: { kind: ScheduleKind; room: ClassRoom | null }) {
+function KindBadge({ kind, room, tint = false }: { kind: ScheduleKind; room: ClassRoom | null; tint?: boolean }) {
   // The class's chosen icon and color for this type (or the defaults).
-  return <StyledIcon icon={ScheduleIcons.iconFor(kind, room?.scheduleIcons ?? {})} color={ScheduleIcons.colorFor(kind, room?.scheduleColors ?? {})} label={kindLabel(kind)} />;
+  return (
+    <StyledIcon
+      icon={ScheduleIcons.iconFor(kind, room?.scheduleIcons ?? {})}
+      color={ScheduleIcons.colorFor(kind, room?.scheduleColors ?? {})}
+      label={kindLabel(kind)}
+      box={tint ? 40 : 38}
+      tint={tint}
+    />
+  );
 }
 
 /** A round tick the student clicks to mark an item done for themselves. */
@@ -105,7 +113,7 @@ export function ScheduleRow({
   return (
     <div className={'list-row' + (onClick ? ' clickable' : '')} onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined}
       onKeyDown={onClick ? (e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), onClick()) : undefined}>
-      <KindBadge kind={item.kind} room={state.room} />
+      <KindBadge kind={item.kind} room={state.room} tint />
       <span className="grow ellipsis-box">
         <span className={'title' + (cancelled ? ' struck' : '') + (cancelled || done ? ' muted' : '')} style={{ display: 'block' }}>
           {item.title}

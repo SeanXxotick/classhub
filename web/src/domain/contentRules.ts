@@ -1,14 +1,64 @@
 import type { ContentItem, ContentKind, Course } from '../data/models';
 
 export const CONTENT_SORTS = [
-  { id: 'OLDEST', label: 'Oldest first' },
   { id: 'NEWEST', label: 'Newest first' },
+  { id: 'OLDEST', label: 'Oldest first' },
   { id: 'A_Z', label: 'Title A to Z' },
   { id: 'Z_A', label: 'Title Z to A' },
 ] as const;
 export type ContentSort = (typeof CONTENT_SORTS)[number]['id'];
 
 const FILE_EXTENSIONS = ['.pdf', '.docx', '.doc', '.pptx', '.ppt', '.xlsx', '.xls', '.zip'];
+
+/** What a link holds, for its subtitle ("PDF", "Slides"...), with a matching icon key when there is one. */
+export interface ContentFormat {
+  label: string;
+  icon: string | null;
+}
+
+const PDF: ContentFormat = { label: 'PDF', icon: null };
+const SLIDES: ContentFormat = { label: 'Slides', icon: 'presentation' };
+const DOCUMENT: ContentFormat = { label: 'Document', icon: null };
+const SPREADSHEET: ContentFormat = { label: 'Spreadsheet', icon: null };
+const FOLDER: ContentFormat = { label: 'Folder', icon: 'folder' };
+const VIDEO: ContentFormat = { label: 'Video', icon: 'play' };
+
+/** Google Docs links by the part after the host. */
+const GOOGLE_FORMATS: Record<string, ContentFormat> = {
+  presentation: SLIDES,
+  document: DOCUMENT,
+  spreadsheets: SPREADSHEET,
+  forms: { label: 'Form', icon: null },
+};
+
+/** OneDrive and SharePoint share links start with a letter for the file type, as in "/:v:/" for a video. */
+const SHAREPOINT_FORMATS: Record<string, ContentFormat> = { v: VIDEO, f: FOLDER, p: SLIDES, w: DOCUMENT, x: SPREADSHEET, b: PDF };
+
+/** File name endings, as found in titles such as "Unit 1 Module 1.pdf". */
+const EXTENSION_FORMATS: Record<string, ContentFormat> = {
+  pdf: PDF,
+  ppt: SLIDES,
+  pptx: SLIDES,
+  doc: DOCUMENT,
+  docx: DOCUMENT,
+  xls: SPREADSHEET,
+  xlsx: SPREADSHEET,
+  csv: SPREADSHEET,
+  ipynb: { label: 'Notebook', icon: 'code' },
+  tex: { label: 'LaTeX', icon: 'code' },
+  zip: { label: 'ZIP', icon: 'folder' },
+  png: { label: 'Image', icon: 'image' },
+  jpg: { label: 'Image', icon: 'image' },
+  jpeg: { label: 'Image', icon: 'image' },
+  mp4: VIDEO,
+  mov: VIDEO,
+};
+
+const KIND_FORMATS: Record<ContentKind, ContentFormat> = {
+  FILE: { label: 'File', icon: null },
+  VIDEO: { label: 'Video', icon: null },
+  WEBSITE: { label: 'Website', icon: null },
+};
 
 function hostOf(url: string): string | null {
   try {
@@ -51,6 +101,41 @@ export const ContentRules = {
     const path = url.split('?')[0].toLowerCase();
     if (FILE_EXTENSIONS.some((ext) => path.endsWith(ext))) return 'FILE';
     return 'WEBSITE';
+  },
+
+  /**
+   * What the item is: from the link when it says (Google Slides, a OneDrive folder...), otherwise from the
+   * first file name ending in the title or the link, otherwise the item's kind.
+   */
+  formatOf(item: Pick<ContentItem, 'title' | 'url' | 'kind'>): ContentFormat {
+    const host = (hostOf(item.url) ?? '').toLowerCase();
+    const path = item.url.split(/[?#]/)[0].toLowerCase();
+    if (host === 'docs.google.com') {
+      const part = path.split('/')[3] ?? '';
+      if (GOOGLE_FORMATS[part]) return GOOGLE_FORMATS[part];
+    }
+    if (host === 'drive.google.com' && path.includes('/folders/')) return FOLDER;
+    if (host.endsWith('.sharepoint.com')) {
+      const letter = path.match(/^https?:\/\/[^/]+\/:([a-z]):\//)?.[1] ?? '';
+      if (SHAREPOINT_FORMATS[letter]) return SHAREPOINT_FORMATS[letter];
+    }
+    for (const text of [item.title.toLowerCase(), path.replace(/^https?:\/\/[^/]*/, '')]) {
+      for (const match of text.matchAll(/\.([a-z0-9]{2,5})\b/g)) {
+        if (EXTENSION_FORMATS[match[1]]) return EXTENSION_FORMATS[match[1]];
+      }
+    }
+    return KIND_FORMATS[item.kind];
+  },
+
+  /** Where the link lives, for the subtitle: "Google Drive", "OneDrive", "YouTube" or the site's name. */
+  sourceOf(url: string): string {
+    const host = (hostOf(url) ?? '').toLowerCase().replace(/^www\./, '');
+    if (host === 'drive.google.com' || host === 'docs.google.com') return 'Google Drive';
+    if (host.endsWith('-my.sharepoint.com')) return 'OneDrive';
+    if (host.endsWith('.sharepoint.com')) return 'SharePoint';
+    if (host === 'teams.microsoft.com') return 'Teams';
+    if (host.endsWith('youtube.com') || host === 'youtu.be') return 'YouTube';
+    return host;
   },
 
   /** Returns an error message, or null when the item can be saved. */

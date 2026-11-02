@@ -234,13 +234,20 @@ test.describe.serial('a class from start to finish', () => {
     const link = stu.page.getByRole('link', { name: /Syllabus/ });
     await expect(link).toHaveAttribute('href', 'https://drive.google.com/file/d/abc123/view');
     await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-    await expect(stu.page.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+    await expect(link).toContainText('File  ·  Google Drive');
+    // The row menu: everyone can copy the link, only officers can edit.
+    await stu.page.getByRole('button', { name: 'More for "Syllabus"' }).click();
+    await expect(stu.page.getByRole('menuitem', { name: 'Copy link' })).toBeVisible();
+    await expect(stu.page.getByRole('menuitem', { name: 'Edit' })).toHaveCount(0);
+    await stu.page.keyboard.press('Escape');
 
-    await page.getByRole('button', { name: 'Edit' }).click();
+    await page.getByRole('button', { name: 'More for "Syllabus"' }).click();
+    await page.getByRole('menuitem', { name: 'Edit' }).click();
     await page.getByLabel('Title').fill('Syllabus v2');
     await page.getByRole('button', { name: 'Save changes' }).click();
     await expectNotice(page, 'Saved "Syllabus v2".');
-    await page.getByRole('button', { name: 'Edit' }).click();
+    await page.getByRole('button', { name: 'More for "Syllabus v2"' }).click();
+    await page.getByRole('menuitem', { name: 'Edit' }).click();
     await page.getByRole('button', { name: 'Delete' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
     await expectNotice(page, 'Deleted "Syllabus v2".');

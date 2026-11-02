@@ -18,11 +18,13 @@
   --expense: #c2410c;
   --pending: #b45309;
   --scrim: rgba(15, 20, 28, 0.45);
-  --shadow: 0 1px 2px rgba(15, 20, 28, 0.06), 0 2px 8px rgba(15, 20, 28, 0.05);
+  --shadow: 0 1px 2px rgba(15, 20, 28, 0.04), 0 4px 16px rgba(15, 20, 28, 0.06);
+  --card-border: transparent;
+  --tint: 14%;
   --radius: 16px;
   --sidebar: 288px;
   color-scheme: light;
-  font-family: 'Roboto', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  font-family: 'Roboto Variable', 'Roboto', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
   font-size: 15px;
   line-height: 1.45;
   color: var(--on-surface);
@@ -46,6 +48,8 @@
   --expense: #fb923c;
   --pending: #fbbf24;
   --shadow: none;
+  --card-border: color-mix(in srgb, var(--outline) 55%, transparent);
+  --tint: 24%;
   color-scheme: dark;
 }
 
@@ -273,7 +277,7 @@ textarea {
   background: var(--surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  border: 1px solid color-mix(in srgb, var(--outline) 60%, transparent);
+  border: 1px solid var(--card-border);
   padding: 18px;
 }
 
@@ -334,7 +338,7 @@ textarea {
 
 @media (max-width: 999px) {
   .split {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -522,9 +526,26 @@ a.list-row:hover {
   bottom: 84px;
   z-index: 25;
   min-height: 56px;
-  padding: 0 22px;
+  min-width: 56px;
+  padding: 0 22px 0 18px;
+  gap: 8px;
   border-radius: 16px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+}
+
+.fab-plus {
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+/* While scrolling down, only the "+" shows. */
+.fab.compact {
+  padding: 0;
+}
+
+.fab.compact .fab-text {
+  display: none;
 }
 
 @media (min-width: 900px) {
@@ -760,6 +781,11 @@ a.list-row:hover {
   align-items: center;
   justify-content: center;
   border-radius: 12px;
+}
+
+/* Wallet-style: the icon sits in a soft circle of its own color. */
+.styled-icon.tinted {
+  border-radius: 50%;
 }
 
 /* ------------------------------------------------------------------ Tabs */
@@ -1080,8 +1106,26 @@ a.list-row:hover {
 }
 
 .money-big {
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A smaller peso sign lets the number itself stand out. */
+.money-big .peso {
+  font-size: 0.66em;
+  font-weight: 700;
+  margin-right: 2px;
+  vertical-align: 0.14em;
+}
+
+/* Amounts line up digit for digit. */
+.money,
+.end-col,
+.summary-tile {
+  font-variant-numeric: tabular-nums;
 }
 
 .mono {
@@ -1178,11 +1222,36 @@ a.list-row:hover {
   flex: none;
 }
 
-.type-bar {
-  width: 4px;
-  height: 36px;
-  border-radius: 2px;
+/* Record types: a soft circle for rows without a person, a small badge on the picture for rows with one. */
+.type-icon {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) var(--tint), transparent);
+}
+
+.avatar-typed {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+}
+
+.type-dot {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--c);
+  color: #ffffff;
+  box-shadow: 0 0 0 2px var(--surface);
 }
 
 .tag {
@@ -1390,8 +1459,123 @@ a.list-row:hover {
   align-items: start;
 }
 
+.content-card {
+  padding: 6px 0 8px;
+}
+
+.content-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 4px;
+}
+
+.content-card-head h3 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.content-card-head .count {
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--surface-variant);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
 .content-row {
-  padding-right: 4px;
+  padding-right: 6px;
+}
+
+/* File names often have no spaces, so they may break anywhere. */
+.content-row .title {
+  overflow-wrap: anywhere;
+}
+
+.content-card.wide .content-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(380px, 100%), 1fr));
+  column-gap: 16px;
+}
+
+.content-row .icon-btn {
+  color: var(--muted);
+}
+
+.show-all {
+  margin: 2px 8px 0;
+}
+
+.menu.end {
+  left: auto;
+  right: 0;
+  min-width: 160px;
+}
+
+/* ------------------------------------------------------------------ Home sections */
+
+.home-col {
+  gap: 20px;
+}
+
+.home-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding-left: 4px;
+}
+
+.section-head h2 {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.section-head .btn.text {
+  margin-right: -8px;
+}
+
+/* The class's own card is a light tint, so the money card below stays the one solid color. */
+.class-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--primary-container);
+  box-shadow: none;
+}
+
+.class-name {
+  display: block;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.class-meta {
+  display: block;
+  margin-top: 4px;
+}
+
+.manage-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px;
+}
+
+.balance-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
 }
 
 .menu-anchor {
@@ -1449,15 +1633,32 @@ a.list-row:hover {
   flex: none;
 }
 
+/* One column: the two column stacks dissolve and the sections follow the home-order numbers. */
 @media (max-width: 999px) {
   .home-grid {
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 20px;
   }
+  .home-grid section {
+    min-width: 0;
+  }
+  .home-col {
+    display: contents;
+  }
+  .home-order-1 { order: 1; }
+  .home-order-2 { order: 2; }
+  .home-order-3 { order: 3; }
+  .home-order-4 { order: 4; }
+  .home-order-5 { order: 5; }
+  .home-order-6 { order: 6; }
+  .home-order-7 { order: 7; }
 }
 
 @media (max-width: 899px) {
   .class-frame .page {
-    padding-bottom: 150px;
+    padding-bottom: 170px;
   }
   .members-grid,
   .contents-grid {

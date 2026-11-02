@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import type { LedgerRecord, Member, RecordType } from '../../data/models';
 import { Ledger } from '../../domain/ledger';
 import { LEDGER_FILTERS, LedgerView, type ChargeBatch, type LedgerEntry, type LedgerFilter } from '../../domain/ledgerView';
@@ -84,9 +84,56 @@ const s = (n: number) => (n === 1 ? '' : 's');
 
 // ---------------------------------------------------------------- Building blocks
 
-export function TypeBar({ type }: { type: RecordType }) {
-  // A slim bar in the record type's color marks the row; the type itself is written in the subtitle.
-  return <span className="type-bar" style={{ background: recordColor(type) }} />;
+/** A small mark for each record type, drawn on a 24 by 24 grid: plus, minus, an arrow out, and a bank note. */
+const TYPE_MARKS: Record<RecordType, string[]> = {
+  PAYMENT: ['M12 6v12', 'M6 12h12'],
+  CHARGE: ['M6 12h12'],
+  WITHDRAWAL: ['M7 17L17 7', 'M9 7h8v8'],
+  EXPENSE: ['M3 7h18v10H3z', 'M12 9.5a2.5 2.5 0 1 1 0 5a2.5 2.5 0 1 1 0-5z'],
+};
+
+function TypeMark({ type, size }: { type: RecordType; size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+      {TYPE_MARKS[type].map((d) => (
+        <path key={d} d={d} fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+      ))}
+    </svg>
+  );
+}
+
+/** The record type as a soft circle in its color, for rows with no person (class charges and pay-outs). */
+export function TypeIcon({ type, size = 40 }: { type: RecordType; size?: number }) {
+  return (
+    <span className="type-icon" style={{ '--c': recordColor(type), width: size, height: size } as CSSProperties}>
+      <TypeMark type={type} size={Math.round(size * 0.5)} />
+    </span>
+  );
+}
+
+/** A person's picture with the record type as a small badge on its corner. */
+function AvatarWithType({ type, children }: { type: RecordType; children: ReactNode }) {
+  return (
+    <span className="avatar-typed">
+      {children}
+      <span className="type-dot" style={{ '--c': recordColor(type) } as CSSProperties} title={recordLabel(type)}>
+        <TypeMark type={type} size={11} />
+      </span>
+    </span>
+  );
+}
+
+/** An amount with a smaller peso sign, for the big numbers at the top of a card. */
+function BigMoney({ centavos }: { centavos: number }) {
+  const text = formatMoney(centavos);
+  const sign = text.indexOf('₱');
+  return (
+    <div className="money-big">
+      {text.slice(0, sign)}
+      <span className="peso">₱</span>
+      {text.slice(sign + 1)}
+    </div>
+  );
 }
 
 export function Tag({ text, color }: { text: string; color: string }) {
@@ -129,8 +176,13 @@ export function EntryRow({ entry, state, onClick }: { entry: LedgerEntry; state:
   const role = photoOwner ? state.roleOf(state.members.find((m) => m.id === photoOwner.memberId)) : null;
   const content = (
     <>
-      <TypeBar type={entry.type} />
-      {photoOwner && <Avatar photo={state.avatars.get(photoOwner.memberId)} name={photoOwner.memberName} color={hexColor(role?.colorHex, '#6B768A')} size={36} />}
+      {photoOwner ? (
+        <AvatarWithType type={entry.type}>
+          <Avatar photo={state.avatars.get(photoOwner.memberId)} name={photoOwner.memberName} color={hexColor(role?.colorHex, '#6B768A')} size={40} />
+        </AvatarWithType>
+      ) : (
+        <TypeIcon type={entry.type} />
+      )}
       <span className="grow ellipsis-box">
         <span className="title ellipsis">{title}</span>
         <span className="sub ellipsis">{subtitle}</span>
@@ -168,7 +220,7 @@ export function FundSummaryCard({ records, title }: { records: LedgerRecord[]; t
     <div className="card hero">
       {title && <div className="bold" style={{ fontSize: 17, marginBottom: 6 }}>{title}</div>}
       <div className="soft">Cash on hand</div>
-      <div className="money-big">{formatMoney(Ledger.cashOnHand(records))}</div>
+      <BigMoney centavos={Ledger.cashOnHand(records)} />
       <div className="tiles">
         <SummaryTile label="Net collected" centavos={Ledger.netCollected(records)} />
         <SummaryTile label="Charged to members" centavos={Ledger.total(records, 'CHARGE')} />
@@ -199,7 +251,7 @@ export function MyBalanceCard({ records, balanceCentavos, myUid }: { records: Le
   return (
     <div className={'card hero' + (owes ? ' hero-error' : '')}>
       <div className="soft">{owes ? 'You owe' : 'Your balance'}</div>
-      <div className="money-big">{formatMoney(owes ? -balanceCentavos : balanceCentavos)}</div>
+      <BigMoney centavos={owes ? -balanceCentavos : balanceCentavos} />
       <div className="small semibold">
         {owes ? 'Please settle it with your class officers.' : balanceCentavos > 0 ? 'Credit that will cover your next class charges.' : 'You are all settled.'}
       </div>
@@ -440,7 +492,7 @@ export function AddRecordChooser({ onPick, onDismiss }: { onPick: (type: RecordT
     >
       {options.map(([type, description]) => (
         <button key={type} type="button" className="option-card" onClick={() => onPick(type)}>
-          <TypeBar type={type} />
+          <TypeIcon type={type} />
           <span className="grow">
             <span className="bold" style={{ display: 'block' }}>{recordLabel(type)}</span>
             <span className="small muted">{description}</span>

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
 import { useParams } from 'react-router-dom';
 import { CONTENT_KINDS, newContentItem, type ClassRoom, type ContentItem, type ContentKind, type Course } from '../../data/models';
-import { CONTENT_SORTS, ContentRules, type ContentSort } from '../../domain/contentRules';
+import { CONTENT_SORTS, ContentRules, type ContentFormat, type ContentSort } from '../../domain/contentRules';
 import { ContentIcons } from '../../domain/iconStyles';
 import { ConfirmDialog, Dialog, Field, PickerField, Spinner, StyledIcon, useBack } from '../common';
 import { useClass, type ClassState } from '../classroom/ClassContext';
@@ -17,18 +17,16 @@ function pluralLabel(kind: ContentKind): string {
   return kind === 'FILE' ? 'Files' : kind === 'VIDEO' ? 'Videos' : 'Websites';
 }
 
-/** "drive.google.com" from a full link, for the subtitle. */
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return '';
-  }
-}
-
 function KindBadge({ kind, room }: { kind: ContentKind; room: ClassRoom | null }) {
   // The class's chosen icon and color for this type (or the defaults).
   return <StyledIcon icon={ContentIcons.iconFor(kind, room?.contentIcons ?? {})} color={ContentIcons.colorFor(kind, room?.contentColors ?? {})} label={kindLabel(kind)} />;
+}
+
+/** The row's icon: a format icon (slides, folder...) in the type's color, unless the class picked its own icon for the type. */
+function ContentBadge({ item, format, room }: { item: ContentItem; format: ContentFormat; room: ClassRoom | null }) {
+  const icon = ContentIcons.iconFor(item.kind, room?.contentIcons ?? {});
+  const own = icon !== ContentIcons.DEFAULTS[item.kind];
+  return <StyledIcon icon={own || !format.icon ? icon : format.icon} color={ContentIcons.colorFor(item.kind, room?.contentColors ?? {})} label={format.label} box={40} tint />;
 }
 
 /** Only web links open; anything else (such as a javascript: link) is refused. */
@@ -37,8 +35,8 @@ export function openLink(url: string, onError: (message: string) => void) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-/** A chip that opens a small menu below it. */
-function MenuChip({ label, active, children }: { label: string; active: boolean; children: (close: () => void) => ReactNode }) {
+/** Open state for a small menu that closes on a click outside it or on Escape. */
+function useMenu(): [boolean, (open: boolean) => void, RefObject<HTMLDivElement>] {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -52,6 +50,12 @@ function MenuChip({ label, active, children }: { label: string; active: boolean;
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
+  return [open, setOpen, ref];
+}
+
+/** A chip that opens a small menu below it. */
+function MenuChip({ label, active, children }: { label: string; active: boolean; children: (close: () => void) => ReactNode }) {
+  const [open, setOpen, ref] = useMenu();
   return (
     <div className="menu-anchor" ref={ref}>
       <button type="button" className={'chip menu-chip' + (active ? ' selected' : '')} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -75,17 +79,104 @@ function MenuOption({ text, chosen, leading, onClick }: { text: string; chosen: 
   );
 }
 
+/** The ⋮ button on a row: copy the link for everyone, and edit for officers. */
+function RowMenu({ item, onEdit, onNotice }: { item: ContentItem; onEdit: (() => void) | null; onNotice: (message: string) => void }) {
+  const [open, setOpen, ref] = useMenu();
+  const copy = () => {
+    setOpen(false);
+    navigator.clipboard.writeText(item.url).then(
+      () => onNotice('Link copied.'),
+      () => onNotice('The link could not be copied.'),
+    );
+  };
+  return (
+    <div className="menu-anchor" ref={ref}>
+      <button type="button" className="icon-btn" aria-label={`More for "${item.title}"`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden>
+          <circle cx="12" cy="5" r="1.8" fill="currentColor" />
+          <circle cx="12" cy="12" r="1.8" fill="currentColor" />
+          <circle cx="12" cy="19" r="1.8" fill="currentColor" />
+        </svg>
+      </button>
+      {open && (
+        <div className="menu end" role="menu">
+          <button type="button" role="menuitem" className="menu-item" onClick={copy}>
+            Copy link
+          </button>
+          {onEdit && (
+            <button type="button" role="menuitem" className="menu-item" onClick={() => (setOpen(false), onEdit())}>
+              Edit
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One link: the whole row opens it, and the ⋮ menu holds the other actions. */
+function ContentRow({
+  item,
+  state,
+  showCourse,
+  onEdit,
+  onNotice,
+}: {
+  item: ContentItem;
+  state: ClassState;
+  showCourse: boolean;
+  onEdit: ((id: string) => void) | null;
+  onNotice: (message: string) => void;
+}) {
+  const format = ContentRules.formatOf(item);
+  const subtitle = [showCourse ? state.courses.find((c) => c.id === item.courseId)?.name ?? 'General' : '', format.label, ContentRules.sourceOf(item.url), item.note]
+    .filter((x) => x.trim())
+    .join('  ·  ');
+  const valid = ContentRules.isValidUrl(item.url);
+  return (
+    <div className="list-row content-row">
+      <a
+        className="row grow link-reset"
+        href={valid ? item.url : undefined}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => {
+          if (!valid) {
+            e.preventDefault();
+            onNotice('That link cannot be opened.');
+          }
+        }}
+      >
+        <ContentBadge item={item} format={format} room={state.room} />
+        <span className="grow ellipsis-box">
+          <span className="title clamp-2">{item.title}</span>
+          <span className="sub ellipsis">{subtitle}</span>
+        </span>
+      </a>
+      <RowMenu item={item} onEdit={onEdit && (() => onEdit(item.id))} onNotice={onNotice} />
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- Contents tab
 
 const ALL = '*all*';
 const GENERAL = '';
+/** Rows a course shows before "Show all". */
+const FOLDED_ROWS = 5;
+const NEW_KEY = '*new*';
+const WEEK_MILLIS = 7 * 24 * 3600 * 1000;
+/** "New this week" repeats links that are also in their course, so it only shows once the list is long enough to need it. */
+const NEW_SECTION_MIN_ITEMS = 10;
 
-export function ContentsTab({ state, onEdit, onError }: { state: ClassState; onEdit: (id: string) => void; onError: (message: string) => void }) {
+export function ContentsTab({ state, onEdit, onNotice }: { state: ClassState; onEdit: (id: string) => void; onNotice: (message: string) => void }) {
   const [query, setQuery] = useState('');
   const [courseFilter, setCourseFilter] = useState(ALL);
-  const [sort, setSort] = useState<ContentSort>('OLDEST');
+  const [sort, setSort] = useState<ContentSort>('NEWEST');
   const [typeFilter, setTypeFilter] = useState<string>(ALL);
   const [groupByCourse, setGroupByCourse] = useState(true);
+  // Sections opened with "Show all".
+  const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(new Set());
   const canManage = state.can('CONTENTS_MANAGE');
 
   const knownCourses = new Set(state.courses.map((c) => c.id));
@@ -101,14 +192,52 @@ export function ContentsTab({ state, onEdit, onError }: { state: ClassState; onE
     : shown.length > 0
       ? [[null, [...shown].sort(ContentRules.comparator(sort))]]
       : [];
+  // The plain grouped view folds long sections and starts with what was added this week.
+  // A search or a course filter shows every match.
+  const browsing = groupByCourse && courseFilter === ALL && !query.trim();
+  const weekAgo = Date.now() - WEEK_MILLIS;
+  const fresh =
+    browsing && typeFilter === ALL && state.contents.length > NEW_SECTION_MIN_ITEMS
+      ? state.contents.filter((c) => c.createdAtMillis >= weekAgo).sort(ContentRules.comparator('NEWEST'))
+      : [];
 
   const pickCourse = (filter: string, group = groupByCourse) => {
     setCourseFilter(filter);
     setGroupByCourse(group);
   };
+  const toggleFold = (key: string) =>
+    setUnfolded((open) => {
+      const next = new Set(open);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
   const sortLabel = CONTENT_SORTS.find((x) => x.id === sort)?.label ?? '';
   const courseLabel =
     courseFilter === ALL ? (groupByCourse ? 'Course' : 'One list') : courseFilter === GENERAL ? 'General' : state.courses.find((c) => c.id === courseFilter)?.name ?? 'Course';
+
+  // Sections that mix courses (New this week, one list) take the full width, with their rows in columns on wide screens.
+  const section = (key: string, heading: string, items: ContentItem[], mixed: boolean) => {
+    const foldable = browsing && items.length > FOLDED_ROWS;
+    const folded = foldable && !unfolded.has(key);
+    return (
+      <section key={key} className={'card flush content-card' + (mixed ? ' wide' : '')} aria-label={heading}>
+        <div className="content-card-head">
+          <h3 className="grow ellipsis">{heading}</h3>
+          <span className="count">{items.length}</span>
+        </div>
+        <div className="content-rows">
+          {(folded ? items.slice(0, FOLDED_ROWS) : items).map((item) => (
+            <ContentRow key={item.id} item={item} state={state} showCourse={mixed} onEdit={canManage ? onEdit : null} onNotice={onNotice} />
+          ))}
+        </div>
+        {foldable && (
+          <button type="button" className="btn text small show-all" aria-expanded={!folded} onClick={() => toggleFold(key)}>
+            {folded ? `Show all ${items.length}` : 'Show fewer'}
+          </button>
+        )}
+      </section>
+    );
+  };
 
   return (
     <div className="stack">
@@ -118,7 +247,7 @@ export function ContentsTab({ state, onEdit, onError }: { state: ClassState; onE
           <input type="search" placeholder="Search contents" value={query} onChange={(e) => setQuery(e.target.value)} />
         </label>
         <div className="row wrap">
-          <MenuChip label={sortLabel} active={sort !== 'OLDEST'}>
+          <MenuChip label={sortLabel} active={sort !== 'NEWEST'}>
             {(close) =>
               CONTENT_SORTS.map((option) => <MenuOption key={option.id} text={option.label} chosen={option.id === sort} onClick={() => (setSort(option.id), close())} />)
             }
@@ -167,53 +296,13 @@ export function ContentsTab({ state, onEdit, onError }: { state: ClassState; onE
         </div>
       )}
 
-      <div className="contents-grid">
-        {groups.map(([course, items]) => (
-          <div key={course?.id ?? 'general'} className="card flush">
-            <div className="section-label">
-              {groupByCourse ? `${course?.name ?? 'General'}  ·  ${items.length}` : `${items.length} ${items.length === 1 ? 'item' : 'items'}`}
-            </div>
-            {items.map((item) => {
-              const subtitle = [
-                groupByCourse ? '' : state.courses.find((c) => c.id === item.courseId)?.name ?? 'General',
-                kindLabel(item.kind),
-                hostOf(item.url),
-                item.note,
-              ]
-                .filter((x) => x.trim())
-                .join('  ·  ');
-              const valid = ContentRules.isValidUrl(item.url);
-              return (
-                <div key={item.id} className="list-row content-row">
-                  <a
-                    className="row grow link-reset"
-                    href={valid ? item.url : undefined}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => {
-                      if (!valid) {
-                        e.preventDefault();
-                        onError('That link cannot be opened.');
-                      }
-                    }}
-                  >
-                    <KindBadge kind={item.kind} room={state.room} />
-                    <span className="grow ellipsis-box">
-                      <span className="title clamp-2">{item.title}</span>
-                      <span className="sub ellipsis">{subtitle}</span>
-                    </span>
-                  </a>
-                  {canManage && (
-                    <button type="button" className="btn text small" onClick={() => onEdit(item.id)}>
-                      Edit
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
+      {fresh.length > 0 && section(NEW_KEY, 'New this week', fresh, true)}
+
+      {groupByCourse ? (
+        <div className="contents-grid">{groups.map(([course, items]) => section(course?.id ?? 'general', course?.name ?? 'General', items, false))}</div>
+      ) : (
+        groups.map(([, items]) => section('all', 'All items', items, true))
+      )}
     </div>
   );
 }
