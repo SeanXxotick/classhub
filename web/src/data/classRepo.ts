@@ -1,16 +1,19 @@
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocFromServer, getDocs, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocFromServer, getDocs, getDocsFromServer, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
 import {
   ROLE_MAYOR,
   ROLE_MEMBER,
   newClassRoom,
   newMember,
+  newRecord,
   type ClassMembership,
   type ClassRoom,
+  type LedgerRecord,
   type Role,
 } from './models';
 import { DefaultRoles, RoleRules } from '../domain/permissions';
 import { InviteCode } from '../domain/inviteCode';
+import { Ledger } from '../domain/ledger';
 
 /*
  * Classes, invites, "My classes", members, roles and courses: the same documents and batches as the
@@ -168,6 +171,54 @@ export async function handOverAndLeave(classId: string, uid: string, newMayorUid
   batch.update(classDoc(classId), { ownerUid: newMayorUid });
   batch.update(doc(membersOf(classId), newMayorUid), { roleId: ROLE_MAYOR });
   await batch.commit();
+}
+
+/** Firestore takes at most 500 writes in one batch. */
+const BATCH_LIMIT = 450;
+
+/**
+ * The Mayor deletes the class for everyone, once every balance is zero and the class fund is empty
+ * (checked again here against the server). Apps cannot delete a document with everything inside it, so
+ * this goes document by document: first the records (in one batch when they fit, so stopping halfway never
+ * leaves half a ledger), schedule, contents, courses and photo; then the done marks, members, roles,
+ * invite code and the class itself in one last batch, as the security rules require. Until that last batch
+ * the class still works, and deleting again picks up where it stopped. Other members' "My classes"
+ * entries are theirs alone: each app drops the class the next time they open it.
+ */
+export async function deleteClass(classId: string, ownerUid: string): Promise<void> {
+  const fromServer = (name: string) => getDocsFromServer(collection(db, 'classes', classId, name));
+  const [room, records, schedule, contents, courses, progress, members, roles] = await Promise.all([
+    getDocFromServer(classDoc(classId)),
+    fromServer('records'),
+    fromServer('schedule'),
+    fromServer('contents'),
+    fromServer('courses'),
+    fromServer('progress'),
+    fromServer('members'),
+    fromServer('roles'),
+  ]);
+  if (room.get('ownerUid') !== ownerUid) throw new Error('Only the Mayor can delete the class.');
+  if (!Ledger.canCloseBooks(records.docs.map((d) => newRecord(d.data() as Partial<LedgerRecord>)))) {
+    throw new Error('Everyone must be settled and the class fund must be empty before the class can be deleted.');
+  }
+
+  const first = [...records.docs, ...schedule.docs, ...contents.docs, ...courses.docs].map((d) => d.ref);
+  first.push(doc(db, 'classPhotos', classId));
+  for (let i = 0; i < first.length; i += BATCH_LIMIT) {
+    const batch = writeBatch(db);
+    first.slice(i, i + BATCH_LIMIT).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+
+  // The invite code goes too, but only if it really points to this class (the rules check that).
+  const code = room.get('inviteCode') as string | undefined;
+  const invite = code ? await getDocFromServer(doc(invites, code)) : null;
+  const last = writeBatch(db);
+  if (invite?.exists() && invite.get('classId') === classId) last.delete(invite.ref);
+  [...progress.docs, ...members.docs, ...roles.docs].forEach((d) => last.delete(d.ref));
+  last.delete(doc(membershipsOf(ownerUid), classId));
+  last.delete(classDoc(classId));
+  await last.commit();
 }
 
 // ---- Members ----

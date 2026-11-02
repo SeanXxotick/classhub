@@ -1669,3 +1669,9 @@ a.list-row:hover {
   }
 }
 
+
+/* A short list of reasons, such as who still owes money before a class can be deleted. */
+.plain-list {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}

@@ -143,7 +143,7 @@ function HandOverDialog({ className, candidates, onConfirm, onDismiss }: { class
           </button>
         }
       >
-        <p style={{ margin: 0 }}>You are the only member of {className}. Invite someone and make them the Mayor before you leave.</p>
+        <p style={{ margin: 0 }}>You are the only member of {className}. Invite someone and make them the Mayor before you leave, or delete the class in Class settings.</p>
       </Dialog>
     );
   }

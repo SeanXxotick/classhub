@@ -3,7 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { CONTENT_KINDS, PERMISSIONS, SCHEDULE_KINDS, newRole, type ClassRoom, type ContentKind, type Course, type Member, type Permission, type Role, type ScheduleKind } from '../../data/models';
 import { ClassRules, CourseRules, MemberRules } from '../../domain/classRules';
 import { ContentIcons, IconLibrary, ScheduleIcons } from '../../domain/iconStyles';
+import { Ledger } from '../../domain/ledger';
 import { LedgerView } from '../../domain/ledgerView';
+import { formatMoney } from '../../domain/money';
 import { RoleRules } from '../../domain/permissions';
 import {
   ACCENT_CHOICES,
@@ -24,6 +26,7 @@ import {
 } from '../common';
 import { balanceText, EntryRow } from '../ledger/LedgerUi';
 import { kindLabel as scheduleKindLabel } from '../schedule/ScheduleUi';
+import { setPinned } from '../settings';
 import { useClass } from './ClassContext';
 import { NoAccess, SubPage } from './SubPage';
 
@@ -620,6 +623,8 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
         {actions.busy ? <Spinner small /> : 'Save settings'}
       </button>
 
+      {room.ownerUid === state.myUid && <DeleteClassCard room={room} />}
+
       {pickingSchedule && (
         <IconStylePicker
           title={scheduleKindLabel(pickingSchedule)}
@@ -649,6 +654,89 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
           }}
           onDismiss={() => setPickingContent(null)}
         />
+      )}
+    </div>
+  );
+}
+
+/** People listed by name before "and N more". */
+const SHOWN_UNSETTLED = 5;
+
+/**
+ * The Mayor deletes the class for everyone. Allowed only once the books are closed: every balance
+ * (former members too) is zero and the class fund is empty, so no money is lost track of.
+ */
+function DeleteClassCard({ room }: { room: ClassRoom }) {
+  const { state, actions } = useClass();
+  const navigate = useNavigate();
+  const [confirming, setConfirming] = useState(false);
+  const [typed, setTyped] = useState('');
+  const unsettled = Ledger.unsettled(state.records);
+  const cash = Ledger.cashOnHand(state.records);
+  const waiting = Ledger.awaitingPayout(state.records);
+  const ready = unsettled.length === 0 && cash === 0;
+  const others = state.members.length - 1;
+
+  return (
+    <div className="card stack" style={{ gap: 10 }}>
+      <div className="bold error-text">Delete class</div>
+      <p className="small muted" style={{ margin: 0 }}>
+        Deletes {room.name} for everyone, with its ledger, schedule, contents, courses and roles. This cannot be undone.
+      </p>
+      {!ready && (
+        <div className="small" role="status">
+          <p className="semibold" style={{ margin: 0 }}>You can delete the class once everyone is settled and the class fund is empty.</p>
+          <ul className="plain-list">
+            {unsettled.slice(0, SHOWN_UNSETTLED).map((p) => (
+              <li key={p.memberId}>
+                {p.balanceCentavos < 0 ? `${p.name} owes ${formatMoney(-p.balanceCentavos)}` : `${p.name} has ${formatMoney(p.balanceCentavos)} left`}
+              </li>
+            ))}
+            {unsettled.length > SHOWN_UNSETTLED && <li>and {unsettled.length - SHOWN_UNSETTLED} more</li>}
+            {waiting > 0 && <li>{formatMoney(waiting)} of charges is waiting to be paid out</li>}
+            {/* Balances and charges explain the money in the fund; anything else means the books are off. */}
+            {unsettled.length === 0 && waiting === 0 && cash !== 0 && <li>The class fund still shows {formatMoney(cash)}. A record may be missing.</li>}
+          </ul>
+        </div>
+      )}
+      <button type="button" className="btn outline danger block" disabled={!ready || actions.busy} onClick={() => (setTyped(''), setConfirming(true))}>
+        Delete class
+      </button>
+
+      {confirming && (
+        <Dialog
+          title={`Delete ${room.name}?`}
+          onClose={() => setConfirming(false)}
+          actions={
+            <>
+              <button type="button" className="btn text" onClick={() => setConfirming(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn text danger"
+                disabled={typed.trim() !== room.name.trim() || actions.busy}
+                onClick={() =>
+                  actions.deleteClass(() => {
+                    setPinned(state.classId, false);
+                    navigate('/', { replace: true });
+                  })
+                }
+              >
+                {actions.busy ? <Spinner small /> : 'Delete class'}
+              </button>
+            </>
+          }
+        >
+          <p style={{ margin: 0 }}>
+            {others > 0
+              ? `The class disappears for you and the ${others} other member${others === 1 ? '' : 's'}. Its ledger history, schedule, contents, courses and roles are deleted for good.`
+              : 'Its ledger history, schedule, contents, courses and roles are deleted for good.'}
+          </p>
+          <Field label="Type the class name to confirm">
+            <input value={typed} placeholder={room.name} autoComplete="off" onChange={(e) => setTyped(e.target.value)} />
+          </Field>
+        </Dialog>
       )}
     </div>
   );

@@ -497,6 +497,73 @@ async function main() {
     await assertFails(b.commit());
   });
 
+  // ---------------------------------------------------------------- Deleting a class
+
+  const DEL = 'class9';
+  const DEL_CODE = 'DEL234';
+  const students = Array.from({ length: 30 }, (_, i) => `stu${i}`);
+  {
+    await createClassBatch(db('owner9'), 'owner9', DEL, DEL_CODE).commit();
+    for (const s of students) {
+      await joinBatch(db(s), s, { code: DEL_CODE, classId: DEL }).commit();
+      await setDoc(doc(db(s), `classes/${DEL}/progress/${s}`), { done: { quiz1: 1 } });
+    }
+    const owner = db('owner9');
+    await setDoc(doc(owner, `classes/${DEL}/records/r1`), record('PAYMENT', 2000, 'owner9', { memberId: 'stu0' }));
+    await setDoc(doc(owner, `classes/${DEL}/records/r2`), record('WITHDRAWAL', 2000, 'owner9', { memberId: 'stu0' }));
+    await setDoc(doc(owner, `classes/${DEL}/schedule/s1`), { title: 'Quiz 1', kind: 'QUIZ', dueMillis: 5 });
+    await setDoc(doc(owner, `classes/${DEL}/contents/c1`), { title: 'Syllabus', url: 'https://example.com', kind: 'WEBSITE' });
+    await setDoc(doc(owner, `classes/${DEL}/courses/or`), { id: '', name: 'Operations Research' });
+  }
+
+  /** Exactly the last batch ClassRepository.deleteClass writes. */
+  function lastDeleteBatch(store, ownerUid, { keepOwnMember = false } = {}) {
+    const b = writeBatch(store);
+    b.delete(doc(store, `invites/${DEL_CODE}`));
+    for (const s of students) {
+      b.delete(doc(store, `classes/${DEL}/members/${s}`));
+      b.delete(doc(store, `classes/${DEL}/progress/${s}`));
+    }
+    for (const id of Object.keys(roles)) b.delete(doc(store, `classes/${DEL}/roles/${id}`));
+    if (!keepOwnMember) b.delete(doc(store, `classes/${DEL}/members/${ownerUid}`));
+    b.delete(doc(store, `users/${ownerUid}/memberships/${DEL}`));
+    b.delete(doc(store, `classes/${DEL}`));
+    return b;
+  }
+
+  await test('A student cannot delete the class', async () => {
+    const store = db('stu1');
+    const b = writeBatch(store);
+    b.delete(doc(store, `classes/${DEL}/members/stu1`));
+    b.delete(doc(store, `classes/${DEL}`));
+    await assertFails(b.commit());
+  });
+
+  await test('The Mayor cannot delete the class and keep their own member entry', () =>
+    assertFails(lastDeleteBatch(db('owner9'), 'owner9', { keepOwnMember: true }).commit()));
+
+  await test('Outside of deleting the class, the Mayor cannot delete the Mayor role or a student\'s done marks', async () => {
+    await assertFails(deleteDoc(doc(db('owner9'), `classes/${DEL}/roles/mayor`)));
+    await assertFails(deleteDoc(doc(db('owner9'), `classes/${DEL}/progress/stu1`)));
+  });
+
+  await test('The Mayor deletes the whole class: contents first, then everyone and the class in one batch', async () => {
+    const owner = db('owner9');
+    const first = writeBatch(owner);
+    for (const p of ['records/r1', 'records/r2', 'schedule/s1', 'contents/c1', 'courses/or']) first.delete(doc(owner, `classes/${DEL}/${p}`));
+    first.delete(doc(owner, `classPhotos/${DEL}`));
+    await assertSucceeds(first.commit());
+    await assertSucceeds(lastDeleteBatch(owner, 'owner9').commit());
+  });
+
+  await test('After the class is deleted, a former student cannot read it but can see they are no longer a member', async () => {
+    const store = db('stu1');
+    await assertFails(getDoc(doc(store, `classes/${DEL}`)));
+    const me = await assertSucceeds(getDoc(doc(store, `classes/${DEL}/members/stu1`)));
+    if (me.exists()) throw new Error('member entry still exists');
+    await assertSucceeds(deleteDoc(doc(store, `users/stu1/memberships/${DEL}`)));
+  });
+
   await env.cleanup();
 
   // ---------------------------------------------------------------- Report

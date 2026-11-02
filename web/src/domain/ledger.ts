@@ -93,6 +93,29 @@ export const Ledger = {
     });
   },
 
+  /**
+   * Everyone whose balance is not zero, with their latest saved name, owing first and then by amount.
+   * People who left the class count too: their money is still part of the class's books.
+   */
+  unsettled(records: LedgerRecord[]): { memberId: string; name: string; balanceCentavos: number }[] {
+    const people = new Map<string, { memberId: string; name: string; balanceCentavos: number }>();
+    for (const r of records) {
+      if (!r.memberId) continue;
+      const person = people.get(r.memberId) ?? { memberId: r.memberId, name: r.memberName, balanceCentavos: 0 };
+      person.balanceCentavos += Ledger.memberDelta(r);
+      if (r.memberName.trim()) person.name = r.memberName;
+      people.set(r.memberId, person);
+    }
+    return [...people.values()]
+      .filter((p) => p.balanceCentavos !== 0)
+      .sort((a, b) => a.balanceCentavos - b.balanceCentavos);
+  },
+
+  /** A class can be deleted only when every balance is zero and no money is left in the fund. */
+  canCloseBooks(records: LedgerRecord[]): boolean {
+    return Ledger.unsettled(records).length === 0 && Ledger.cashOnHand(records) === 0;
+  },
+
   status(balanceCentavos: number): BalanceStatus {
     if (balanceCentavos < 0) return 'OWES';
     if (balanceCentavos > 0) return 'CREDIT';

@@ -79,6 +79,7 @@ export interface ClassActions {
   setCoursesTaken: (member: Member, taken: Set<string>, onDone?: Done) => void;
   removeMember: (member: Member, onDone?: Done) => void;
   leaveClass: (newMayorUid: string | null, onDone: Done) => void;
+  deleteClass: (onDone: Done) => void;
   saveRole: (role: Role, onDone?: Done) => void;
   deleteRole: (role: Role, onDone?: Done) => void;
   addCourse: (name: string, onDone?: Done) => void;
@@ -300,6 +301,13 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         if (!newMayorUid) return deny('Choose the new Mayor before you leave.');
         if (!MemberRules.mayorCandidates(uid, c.members).some((m) => m.id === newMayorUid)) return deny('Choose someone who is still in the class.');
         runAction(null, onDone, () => classRepo.handOverAndLeave(classId, uid, newMayorUid));
+      },
+
+      deleteClass(onDone) {
+        const c = st();
+        if (!c.room || c.room.ownerUid !== uid) return deny('Only the Mayor can delete the class.');
+        if (!Ledger.canCloseBooks(c.records)) return deny('Everyone must be settled and the class fund must be empty before the class can be deleted.');
+        runAction(`${c.room.name} was deleted.`, onDone, () => classRepo.deleteClass(classId, uid));
       },
 
       // ---- Roles ----

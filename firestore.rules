@@ -53,6 +53,19 @@ service cloud.firestore {
       return signedIn() && !exists(classPath(c)) && getAfter(classPath(c)).data.ownerUid == uid();
     }
 
+    // The class owner (the Mayor).
+    function isOwner(c) {
+      return signedIn() && get(classPath(c)).data.ownerUid == uid();
+    }
+
+    // The owner deletes the whole class. The app first deletes the records, schedule, contents, courses
+    // and photo (already allowed for the Mayor), then the members, roles, done marks and the class itself
+    // in one last batch. Members, roles and done marks may only go in that batch, so a class is never
+    // left without its Mayor or roles. The app checks that everyone is settled before it starts.
+    function isOwnerDeletingClass(c) {
+      return isOwner(c) && !existsAfter(classPath(c));
+    }
+
     // A per-type style setting (icons or colors): a map with at most one entry per type.
     function isSmallMap(field) {
       return request.resource.data.get(field, {}) is map && request.resource.data.get(field, {}).size() <= 5;
@@ -231,7 +244,8 @@ service cloud.firestore {
             || (can(classId, 'MEMBERS_MANAGE') && changesOnly(['inviteCode']))))
         || isMayorHandover(classId);
 
-      allow delete: if false;
+      // Only the owner, and only in the last batch, which also removes the owner's own member entry.
+      allow delete: if isOwner(classId) && !existsAfter(memberPath(classId, uid()));
 
       match /roles/{roleId} {
         allow read: if isMember(classId);
@@ -240,9 +254,10 @@ service cloud.firestore {
         allow update: if can(classId, 'ROLES_MANAGE')
           && resource.data.get('locked', false) != true
           && request.resource.data.get('locked', false) != true;
-        allow delete: if can(classId, 'ROLES_MANAGE')
-          && resource.data.get('locked', false) != true
-          && roleId != get(classPath(classId)).data.defaultRoleId;
+        allow delete: if (can(classId, 'ROLES_MANAGE')
+            && resource.data.get('locked', false) != true
+            && roleId != get(classPath(classId)).data.defaultRoleId)
+          || isOwnerDeletingClass(classId);
       }
 
       match /members/{memberId} {
@@ -265,7 +280,8 @@ service cloud.firestore {
         allow delete: if (can(classId, 'MEMBERS_MANAGE')
             && memberId != uid()
             && memberId != get(classPath(classId)).data.ownerUid)
-          || (signedIn() && memberId == uid() && getAfter(classPath(classId)).data.ownerUid != uid());
+          || (signedIn() && memberId == uid() && getAfter(classPath(classId)).data.ownerUid != uid())
+          || isOwnerDeletingClass(classId);
       }
 
       match /courses/{courseId} {
@@ -297,8 +313,8 @@ service cloud.firestore {
         allow create, update: if signedIn() && studentId == uid() && isMember(classId)
           && request.resource.data.keys().hasOnly(['done'])
           && request.resource.data.done is map;
-        // Removed with the account when a student deletes it.
-        allow delete: if signedIn() && studentId == uid();
+        // Removed with the account when a student deletes it, or with the whole class.
+        allow delete: if (signedIn() && studentId == uid()) || isOwnerDeletingClass(classId);
       }
     }
   }

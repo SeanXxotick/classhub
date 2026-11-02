@@ -50,6 +50,29 @@ describe('Ledger', () => {
     expect(Ledger.memberBalances([lito], [payment('lito', 5), charge('lito', 6)]).get('lito')).toBe(-100);
   });
 
+  it('unsettled people and closing the books', () => {
+    const settle = (b: string) => newRecord({ type: 'CHARGE', amountCentavos: 2_000, memberId: 'ana', memberName: 'Ana', batchId: b });
+    const records = [
+      newRecord({ type: 'PAYMENT', amountCentavos: 5_000, memberId: 'ana', memberName: 'Ana' }),
+      settle('b1'),
+      newRecord({ type: 'CHARGE', amountCentavos: 1_000, memberId: 'gone', memberName: 'Left Early', batchId: 'b1' }),
+    ];
+    // Ana has 30 pesos left; a student who left still owes 10.
+    expect(Ledger.unsettled(records)).toEqual([
+      { memberId: 'gone', name: 'Left Early', balanceCentavos: -1_000 },
+      { memberId: 'ana', name: 'Ana', balanceCentavos: 3_000 },
+    ]);
+    expect(Ledger.canCloseBooks(records)).toBe(false);
+    expect(Ledger.canCloseBooks([])).toBe(true);
+    // Everyone settled, but the charge is not paid out yet, so its money is still in the fund.
+    const settled = [payment('ana', 20), charge('ana', 20)];
+    expect(Ledger.unsettled(settled)).toEqual([]);
+    expect(Ledger.canCloseBooks(settled)).toBe(false);
+    expect(Ledger.canCloseBooks([...settled, expense(20)])).toBe(true);
+    // A withdrawal of the whole balance also settles.
+    expect(Ledger.canCloseBooks([payment('ana', 20), withdrawal('ana', 20)])).toBe(true);
+  });
+
   it('status follows the sign', () => {
     expect([Ledger.status(-1), Ledger.status(1), Ledger.status(0)]).toEqual(['OWES', 'CREDIT', 'SETTLED']);
   });
