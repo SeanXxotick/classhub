@@ -1,4 +1,4 @@
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocFromServer, getDocs, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
 import {
   ROLE_MAYOR,
@@ -130,9 +130,14 @@ export async function updateSettings(room: ClassRoom, editorUid: string): Promis
   await batch.commit();
 }
 
-/** Removes the class from the user's own list, for example after they were removed from it. */
-export function forgetMembership(uid: string, classId: string): Promise<void> {
-  return deleteDoc(doc(membershipsOf(uid), classId));
+/**
+ * Removes the class from the user's own list after they were removed from it or it was deleted.
+ * It first asks the server whether the user's member entry is really gone: a passing refusal (for
+ * example while signing out) must not drop a class the user is still in. Offline, nothing is removed.
+ */
+export async function forgetMembership(uid: string, classId: string): Promise<void> {
+  if ((await getDocFromServer(doc(membersOf(classId), uid))).exists()) return;
+  await deleteDoc(doc(membershipsOf(uid), classId));
 }
 
 /** The member leaves on their own. Their ledger records stay, since they are the class's history. */

@@ -16,6 +16,17 @@ let firstCode = '';
 
 const shots = (name: string) => `test-results/screenshots/${name}.png`;
 
+// Direct access to the Firestore emulator, past the security rules, to set up a broken state on purpose.
+const EMULATOR_DOCS = 'http://127.0.0.1:8080/v1/projects/demo-classhub/databases/(default)/documents';
+const OWNER = { Authorization: 'Bearer owner' };
+
+async function uidOf(displayName: string): Promise<string> {
+  const users: { documents: { name: string; fields?: { displayName?: { stringValue?: string } } }[] } = await (await fetch(`${EMULATOR_DOCS}/users?pageSize=100`, { headers: OWNER })).json();
+  const user = users.documents.find((d) => d.fields?.displayName?.stringValue === displayName);
+  if (!user) throw new Error(`No profile for ${displayName}`);
+  return user.name.split('/').pop()!;
+}
+
 function tomorrowKey(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -286,6 +297,24 @@ test.describe.serial('a class from start to finish', () => {
     await k.getByRole('button', { name: 'Join Test Class' }).click();
     await expect(k.getByText('3 members')).toBeVisible();
     await expect(page.getByText('3 members')).toBeVisible();
+  });
+
+  test('a class the student is still in comes back to their list', async () => {
+    // Kim's list entry goes missing while Kim is still a member (a passing sign-in error used to cause this).
+    const k = kim.page;
+    await k.goto('/account');
+    const classId = classUrl.split('/class/')[1].split(/[/?#]/)[0];
+    const removed = await fetch(`${EMULATOR_DOCS}/users/${await uidOf('Kim Lee')}/memberships/${classId}`, { method: 'DELETE', headers: OWNER });
+    expect(removed.ok).toBe(true);
+    await k.goto('/');
+    await expect(k.getByRole('heading', { name: 'Hi, Kim Lee!' })).toBeVisible();
+
+    // Opening the class link loads the class and puts it back in the list.
+    await k.goto(classUrl);
+    await expect(k.getByText('3 members')).toBeVisible();
+    await k.goto('/');
+    await k.locator('.grid-2').getByRole('link', { name: /Test Class/ }).click();
+    await expect(k.getByText('3 members')).toBeVisible();
   });
 
   test('class settings: rename and turn a module off', async () => {

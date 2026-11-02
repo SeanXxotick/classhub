@@ -13,6 +13,7 @@ import {
   newRecord,
   newRole,
   newScheduleItem,
+  type ClassMembership,
   type ClassRoom,
   type ContentItem,
   type Course,
@@ -128,13 +129,6 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
   const membership = useDocValue(`membership/${uid}/${classId}`, doc(classRepo.membershipsOf(uid), classId), (d) => (d.get('className') as string | undefined) ?? '');
   const memberIds = useMemo(() => (members.data ?? []).map((m) => m.id), [members.data]);
 
-  // My classes keeps the name from when the student joined; bring it up to date after an officer renames the class.
-  const liveName = me.data ? room.data?.name : undefined;
-  useEffect(() => {
-    if (liveName && typeof membership.data === 'string' && membership.data !== liveName) {
-      setDoc(doc(classRepo.membershipsOf(uid), classId), { className: liveName }, { merge: true }).catch(() => {});
-    }
-  }, [liveName, membership.data, uid, classId]);
   const avatars = photoRepo.useAvatars(memberIds);
 
   const state = useMemo<ClassState>(() => {
@@ -185,6 +179,20 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
   const notice = useNotice();
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+
+  // Keeps this class in My classes while the user is a member: puts it back if it went missing, and brings
+  // the name up to date after an officer renames the class. Skipped while an action (such as leaving) runs.
+  const liveName = me.data ? room.data?.name : undefined;
+  const joinedAt = me.data?.joinedAtMillis ?? 0;
+  useEffect(() => {
+    if (!liveName || busy) return;
+    const entry = doc(classRepo.membershipsOf(uid), classId);
+    if (membership.data === null) {
+      setDoc(entry, { classId: '', className: liveName, joinedAtMillis: joinedAt } satisfies ClassMembership).catch(() => {});
+    } else if (typeof membership.data === 'string' && membership.data !== liveName) {
+      setDoc(entry, { className: liveName }, { merge: true }).catch(() => {});
+    }
+  }, [liveName, joinedAt, membership.data, busy, uid, classId]);
   const stateRef = useRef(state);
   stateRef.current = state;
 
