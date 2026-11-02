@@ -52,15 +52,17 @@ export function AuthScreen() {
   return (
     <div className="auth">
       <section className="auth-art">
-        <div className="row" style={{ gap: 12 }}>
-          <Logo size={44} />
-          <span style={{ fontSize: 26, fontWeight: 800 }}>ClassHub</span>
+        <div className="auth-art-inner">
+          <div className="row" style={{ gap: 12 }}>
+            <Logo size={44} />
+            <span style={{ fontSize: 26, fontWeight: 800 }}>ClassHub</span>
+          </div>
+          <h2 style={{ fontSize: 30 }}>{creating ? 'Create your account' : 'Everything your class needs.'}</h2>
+          <p style={{ margin: 0, color: '#d9f2ee' }}>
+            {creating ? 'After signing up, join your class with the invite code from your officers.' : 'Sign in to see your dues, deadlines and class files.'}
+          </p>
+          <PreviewCards />
         </div>
-        <h2 style={{ fontSize: 30, maxWidth: 420 }}>{creating ? 'Create your account' : 'Everything your class needs.'}</h2>
-        <p style={{ margin: 0, maxWidth: 420, color: '#d9f2ee' }}>
-          {creating ? 'After signing up, join your class with the invite code from your officers.' : 'Sign in to see your dues, deadlines and class files.'}
-        </p>
-        <PreviewCards />
       </section>
       <section className="auth-form">
         <div>

@@ -996,11 +996,21 @@ a.list-row:hover {
   color: #fff;
   display: flex;
   flex-direction: column;
+  align-items: center;
   justify-content: center;
   padding: 48px;
   gap: 18px;
   position: relative;
   overflow: hidden;
+}
+
+/* The logo, title and cards sit together in the middle of the panel, like the form on the other side. */
+.auth-art-inner {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
 .auth-form {
