@@ -127,6 +127,8 @@ export interface JoinRequest {
   id: string;
   uid: string;
   name: string;
+  /** Copied from the invite, because someone who is still waiting cannot read the class itself. */
+  className: string;
   joinCode: string;
   requestedAtMillis: number;
 }

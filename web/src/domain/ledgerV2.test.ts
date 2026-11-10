@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { newMember, newRecord } from '../data/models';
 import { Ledger } from './ledger';
+import { LedgerView, single } from './ledgerView';
 
 const rec = (type: Parameters<typeof newRecord>[0]['type'], amount: number, extra = {}) =>
   newRecord({ id: Math.random().toString(36), type, amountCentavos: amount, memberId: type === 'EXPENSE' ? '' : 'ana', memberName: 'Ana', ...extra });
@@ -91,5 +92,81 @@ describe('fund summary', () => {
   it('notices a summary that drifted', () => {
     expect(Ledger.summaryMatches({ ...Ledger.summarize(records), cashOnHandCentavos: 1 }, records)).toBe(false);
     expect(Ledger.summaryMatches(null, records)).toBe(false);
+  });
+});
+
+describe('ledger list with voids and opening balances', () => {
+  const charge = (id: string, extra = {}) => rec('CHARGE', 600, { id, batchId: 'b1', ...extra });
+  const payout = (extra = {}) => rec('EXPENSE', 1200, { id: 'e1', settlesBatchId: 'b1', ...extra });
+
+  it('shows an opening balance with its own sign', () => {
+    expect(LedgerView.displayAmount(single(rec('OPENING', 25000)))).toBe(25000);
+    expect(LedgerView.displayAmount(single(rec('OPENING', -5000)))).toBe(-5000);
+  });
+
+  it('a voided pay-out no longer counts as the pay-out of its charge', () => {
+    const records = [charge('c1'), charge('c2'), payout({ voidedAtMillis: 4 })];
+    expect(LedgerView.payoutFor('b1', records)).toBeNull();
+    expect(LedgerView.unpaidCharges(records).map((b) => b.batchId)).toEqual(['b1']);
+  });
+
+  it('a later pay-out is found even when an earlier one was voided', () => {
+    const records = [charge('c1'), charge('c2'), payout({ voidedAtMillis: 4 }), payout({ id: 'e2' })];
+    expect(LedgerView.payoutFor('b1', records)?.id).toBe('e2');
+    expect(LedgerView.unpaidCharges(records)).toEqual([]);
+    expect(Ledger.booksDifference(records)).toBe(0);
+  });
+
+  it('a voided charge is not waiting to be paid out, and is marked voided in the list', () => {
+    const records = [charge('c1', { voidedAtMillis: 4 }), charge('c2', { voidedAtMillis: 4 })];
+    expect(LedgerView.unpaidCharges(records)).toEqual([]);
+    expect(Ledger.awaitingPayout(records)).toBe(0);
+    const [entry] = LedgerView.entries(records);
+    expect(entry.kind === 'batch' && entry.voided).toBe(true);
+  });
+
+  it('the books check catches a charge voided while its pay-out still stands', () => {
+    const records = [charge('c1', { voidedAtMillis: 4 }), charge('c2', { voidedAtMillis: 4 }), payout()];
+    expect(Ledger.booksDifference(records)).toBe(-1200);
+  });
+
+  it('the books check catches one share voided out of a paid-out charge', () => {
+    const records = [charge('c1', { voidedAtMillis: 4 }), charge('c2'), payout()];
+    expect(Ledger.booksDifference(records)).toBe(-600);
+  });
+});
+
+describe('fund summary when voiding', () => {
+  type Totals = ReturnType<typeof Ledger.summarize>;
+  const add = (a: Totals, d: Totals): Totals => ({
+    cashOnHandCentavos: a.cashOnHandCentavos + d.cashOnHandCentavos,
+    waitingPayoutCentavos: a.waitingPayoutCentavos + d.waitingPayoutCentavos,
+    balancesTotalCentavos: a.balancesTotalCentavos + d.balancesTotalCentavos,
+    recordCount: a.recordCount + d.recordCount,
+  });
+
+  it('voiding a pay-out by increments matches recomputing', () => {
+    const charges = [rec('CHARGE', 600, { batchId: 'b1' }), rec('CHARGE', 600, { batchId: 'b1', memberId: 'ben' })];
+    const payout = rec('EXPENSE', 1200, { settlesBatchId: 'b1' });
+    const before = [rec('PAYMENT', 20000), ...charges, payout];
+    const stored = add(Ledger.summarize(before), Ledger.summaryDeltaForVoid(payout));
+    const after = before.map((r) => (r === payout ? { ...r, voidedAtMillis: 9 } : r));
+    expect(Ledger.summaryMatches(stored, after)).toBe(true);
+    expect(stored.waitingPayoutCentavos).toBe(1200);
+  });
+
+  it('voiding a whole unpaid charge by increments matches recomputing', () => {
+    const charges = [rec('CHARGE', 600, { batchId: 'b1' }), rec('CHARGE', 600, { batchId: 'b1', memberId: 'ben' })];
+    const before = [rec('PAYMENT', 20000), ...charges];
+    const stored = charges.map(Ledger.summaryDeltaForVoid).reduce(add, Ledger.summarize(before));
+    const after = before.map((r) => (charges.includes(r) ? { ...r, voidedAtMillis: 9 } : r));
+    expect(Ledger.summaryMatches(stored, after)).toBe(true);
+  });
+
+  it('voiding an opening balance by increments matches recomputing', () => {
+    const opening = rec('OPENING', -5000);
+    const payment = rec('PAYMENT', 20000);
+    const stored = add(Ledger.summarize([payment, opening]), Ledger.summaryDeltaForVoid(opening));
+    expect(Ledger.summaryMatches(stored, [payment, { ...opening, voidedAtMillis: 9 }])).toBe(true);
   });
 });

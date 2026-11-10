@@ -26,6 +26,8 @@ export interface ChargeBatch {
   totalCentavos: number;
   /** The amount each student was charged, or null if the amounts differ. */
   perMemberCentavos: number | null;
+  /** True when the whole charge was voided. A charge is voided for every student at once. */
+  voided: boolean;
 }
 
 export function single(record: LedgerRecord): SingleEntry {
@@ -46,6 +48,7 @@ export function chargeBatch(batchId: string, records: LedgerRecord[]): ChargeBat
     count: records.length,
     totalCentavos: records.reduce((a, r) => a + r.amountCentavos, 0),
     perMemberCentavos: amounts.size === 1 ? records[0].amountCentavos : null,
+    voided: records.every((r) => !!r.voidedAtMillis),
   };
 }
 
@@ -107,14 +110,14 @@ export const LedgerView = {
   /** Charges that no pay-out has settled yet, oldest first (the order to pay them in). */
   unpaidCharges(records: LedgerRecord[]): ChargeBatch[] {
     const paid = Ledger.paidOutBatchIds(records);
-    return LedgerView.entries(records.filter((r) => r.type === 'CHARGE' && r.batchId && !paid.has(r.batchId)))
+    return LedgerView.entries(Ledger.live(records).filter((r) => r.type === 'CHARGE' && r.batchId && !paid.has(r.batchId)))
       .filter((e): e is ChargeBatch => e.kind === 'batch')
       .sort((a, b) => a.dateMillis - b.dateMillis);
   },
 
-  /** The pay-out that settled the batch, if any. */
+  /** The pay-out that settled the batch, if any. A voided pay-out settles nothing. */
   payoutFor(batchId: string, records: LedgerRecord[]): LedgerRecord | null {
-    return records.find((r) => r.type === 'EXPENSE' && r.settlesBatchId === batchId) ?? null;
+    return Ledger.live(records).find((r) => r.type === 'EXPENSE' && r.settlesBatchId === batchId) ?? null;
   },
 
   /** The charge a pay-out settled, if it still exists. */
@@ -128,9 +131,13 @@ export const LedgerView = {
     return newestFirst(records.filter((r) => r.memberId === memberId));
   },
 
-  /** Signed amount shown on a ledger line, from the class fund's point of view for pay-outs. */
+  /**
+   * Signed amount shown on a ledger line, from the class fund's point of view for pay-outs.
+   * An opening balance is stored signed already (negative when the student owed).
+   */
   displayAmount(entry: LedgerEntry): number {
     if (entry.kind === 'batch') return -entry.totalCentavos;
-    return entry.record.type === 'PAYMENT' ? entry.record.amountCentavos : -entry.record.amountCentavos;
+    const { type, amountCentavos } = entry.record;
+    return type === 'PAYMENT' || type === 'OPENING' ? amountCentavos : -amountCentavos;
   },
 };

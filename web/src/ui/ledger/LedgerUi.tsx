@@ -172,6 +172,9 @@ export function EntryRow({ entry, state, onClick }: { entry: LedgerEntry; state:
       case 'EXPENSE':
         [title, subtitle] = [r.note.trim() || 'Pay-out', 'Paid out from fund' + (r.paidTo.trim() ? ` to ${r.paidTo}` : '')];
         break;
+      case 'OPENING':
+        [title, subtitle] = [r.memberName, withNote('Opening balance')];
+        break;
       default:
         [title, subtitle] = [r.note.trim() || 'Charge', `Charge · ${r.memberName}`];
     }

@@ -238,3 +238,5 @@ Each phase ends with all tests passing. Work happens on a `v2` branch against th
 1. The Cloudflare Worker sender has to be proven in a small experiment before phase 6 relies on it.
 2. "Start next semester" as described above was designed from the "new class each semester" decision and has not been reviewed in detail.
 3. Payment info is plain text for now; a QR image can be added later if the class wants it.
+4. Opening balances only match the real fund when the earlier books have no charge waiting to be paid out. "Start next semester" and the go-live import must refuse to run until every charge is paid out (or voided).
+5. A pay-out gets a fixed document id made from its charge (`payout-{batchId}`), so two treasurers cannot pay the same charge out twice, and the rules can refuse to void a charge whose pay-out still stands. A replacement after a voided pay-out needs a numbered id; settle the exact scheme with the rules in phase 1.

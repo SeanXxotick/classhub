@@ -21,11 +21,11 @@ export const Ledger = {
   live,
 
   /**
-   * OPENING carries a student's balance in from before. It is signed (negative = owes) and moves the cash by the
-   * same amount, which keeps cash on hand = all balances + charges not yet paid out, as it was in the earlier class.
+   * Effect on the member's own balance. An EXPENSE has no member, so it is 0.
+   * OPENING carries a balance in from before: its amount is signed (negative = owes) and it moves the cash by the
+   * same amount, so cash on hand still equals all balances plus charges not yet paid out. That is only true to the
+   * real fund when the earlier books had no charge waiting to be paid out, so those are paid out before carrying over.
    */
-
-  /** Effect on the member's own balance. An EXPENSE has no member, so it is 0. */
   memberDelta(record: LedgerRecord): number {
     switch (record.type) {
       case 'PAYMENT':
@@ -155,7 +155,11 @@ export const Ledger = {
     return (Object.keys(wanted) as (keyof FundSummary)[]).every((k) => stored[k] === wanted[k]);
   },
 
-  /** Changes to the stored summary for one new record, written as increments in the same batch as the record. */
+  /**
+   * Changes to the stored summary for one new record, written as increments in the same batch as the record.
+   * It relies on what the app guarantees: a pay-out is for exactly its charge's total, and a charge has one
+   * pay-out at most. If the stored totals ever differ, summaryMatches notices and the app rewrites them.
+   */
   summaryDelta(record: LedgerRecord): FundSummary {
     const waiting = record.type === 'CHARGE' ? record.amountCentavos : record.type === 'EXPENSE' ? -record.amountCentavos : 0;
     return {
@@ -163,6 +167,17 @@ export const Ledger = {
       waitingPayoutCentavos: waiting,
       balancesTotalCentavos: record.memberId ? Ledger.memberDelta(record) : 0,
       recordCount: 1,
+    };
+  },
+
+  /** Changes to the stored summary when a record is voided: exactly the opposite of adding it. */
+  summaryDeltaForVoid(record: LedgerRecord): FundSummary {
+    const d = Ledger.summaryDelta(record);
+    return {
+      cashOnHandCentavos: 0 - d.cashOnHandCentavos,
+      waitingPayoutCentavos: 0 - d.waitingPayoutCentavos,
+      balancesTotalCentavos: 0 - d.balancesTotalCentavos,
+      recordCount: -1,
     };
   },
 
