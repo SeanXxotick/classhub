@@ -7,8 +7,11 @@ export const LedgerForms = {
   /** ₱1,000,000.00. Anything larger is almost certainly a typo for a class fund. */
   MAX_AMOUNT_CENTAVOS: 100_000_000,
 
-  /** Firestore writes up to 500 documents in one batch; one slot is kept for a pay-out saved with the charge. */
-  MAX_CHARGED: 499,
+  /**
+   * Firestore writes up to 500 documents in one batch. A charge's batch also holds its charge document, the
+   * fund summary and an optional pay-out, so 497 shares fit.
+   */
+  MAX_CHARGED: 497,
 
   checkAmount(amountCentavos: number | null): string | null {
     if (amountCentavos === null) return 'Enter an amount greater than zero, with up to 2 decimal places.';

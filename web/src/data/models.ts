@@ -91,7 +91,20 @@ export interface ClassRoom {
   /** Icon and color chosen per contents type (FILE, VIDEO, WEBSITE). */
   contentIcons: Record<string, string>;
   contentColors: Record<string, string>;
+  /**
+   * 0 normally. The Mayor sets it as the first step of deleting the class; from then on the books are closed
+   * and it is never cleared. A class left with a value here is finished by the Mayor's app the next time it opens.
+   */
+  deletingAtMillis: number;
   createdAtMillis: number;
+}
+
+/** Firestore: invites/{code}. Only the class id and name: someone holding the code cannot read the class yet. */
+export interface Invite {
+  /** The invite code (the document id). */
+  code: string;
+  classId: string;
+  className: string;
 }
 
 /** Firestore: classes/{classId}/roles/{roleId}. A locked role (the Mayor) cannot be edited or deleted. */
@@ -163,6 +176,62 @@ export interface LedgerRecord {
   voidReason: string;
 }
 
+/**
+ * Firestore: classes/{classId}/charges/{batchId}. One per charge, written in the same batch as its CHARGE shares.
+ * It carries no names, so every member may read it. perMemberCentavos is 0 when the students were charged
+ * different amounts. payoutRecordId names the one standing pay-out (empty until paid out, cleared when that
+ * pay-out is voided).
+ */
+export interface Charge {
+  /** The batch id shared by the charge's CHARGE records (the document id). */
+  id: string;
+  note: string;
+  courseId: string;
+  dateMillis: number;
+  count: number;
+  totalCentavos: number;
+  perMemberCentavos: number;
+  payoutRecordId: string;
+  voidedAtMillis: number;
+  voidedByUid: string;
+  voidReason: string;
+  createdByUid: string;
+  createdAtMillis: number;
+}
+
+/**
+ * Firestore: classes/{classId}/summary/fund. The fund totals every member may read, kept with increments in the
+ * same batch as each record write and rewritten whole when a records manager's app repairs it.
+ */
+export interface StoredFundSummary {
+  cashOnHandCentavos: number;
+  waitingPayoutCentavos: number;
+  balancesTotalCentavos: number;
+  recordCount: number;
+  updatedAtMillis: number;
+}
+
+/**
+ * Firestore: classes/{classId}/openingBalances/{uid}. A balance waiting for its student to be in the class.
+ * A records manager's app turns it into the OPENING record opening-{uid} and deletes it in one batch.
+ */
+export interface PendingOpeningBalance {
+  /** The student's uid (the document id). */
+  id: string;
+  /** Signed: negative when the student owed the class. Never 0. */
+  amountCentavos: number;
+  note: string;
+}
+
+/** Firestore: clientErrors/{id}. Create only; nobody reads them from the app. */
+export interface ClientErrorReport {
+  message: string;
+  stack: string;
+  appVersion: string;
+  platform: string;
+  atMillis: number;
+}
+
 /** Firestore: classes/{classId}/contents/{id}. courseId is empty for general class material. */
 export interface ContentItem {
   id: string;
@@ -224,5 +293,26 @@ export const newClassRoom = (c: Partial<ClassRoom>): ClassRoom => ({
   id: '', name: '', description: '', ownerUid: '', accentColor: '#0F766E', inviteCode: '', defaultRoleId: ROLE_MEMBER,
   ledgerEnabled: true, scheduleEnabled: true, contentsEnabled: true, announcementsEnabled: true, timetableEnabled: true,
   balanceVisibility: 'EVERYONE', paymentInfo: '', scheduleIcons: {}, scheduleColors: {},
-  contentIcons: {}, contentColors: {}, createdAtMillis: 0, ...c,
+  contentIcons: {}, contentColors: {}, deletingAtMillis: 0, createdAtMillis: 0, ...c,
+});
+
+export const newInvite = (i: Partial<Invite>): Invite => ({ code: '', classId: '', className: '', ...i });
+
+export const newJoinRequest = (r: Partial<JoinRequest>): JoinRequest => ({
+  id: '', uid: '', name: '', className: '', joinCode: '', requestedAtMillis: 0, ...r,
+});
+
+export const newCourse = (c: Partial<Course>): Course => ({ id: '', name: '', ...c });
+
+export const newCharge = (c: Partial<Charge>): Charge => ({
+  id: '', note: '', courseId: '', dateMillis: 0, count: 0, totalCentavos: 0, perMemberCentavos: 0, payoutRecordId: '',
+  voidedAtMillis: 0, voidedByUid: '', voidReason: '', createdByUid: '', createdAtMillis: 0, ...c,
+});
+
+export const newStoredFundSummary = (s: Partial<StoredFundSummary>): StoredFundSummary => ({
+  cashOnHandCentavos: 0, waitingPayoutCentavos: 0, balancesTotalCentavos: 0, recordCount: 0, updatedAtMillis: 0, ...s,
+});
+
+export const newPendingOpeningBalance = (o: Partial<PendingOpeningBalance>): PendingOpeningBalance => ({
+  id: '', amountCentavos: 0, note: '', ...o,
 });

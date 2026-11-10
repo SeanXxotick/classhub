@@ -1,4 +1,5 @@
 import { newRecord, type LedgerRecord, type Member } from '../data/models';
+import { LedgerForms } from './ledgerForms';
 
 /** What the "New charge" screen shows before the treasurer taps Save. */
 export interface ChargePreview {
@@ -38,8 +39,14 @@ export const ChargePlanner = {
     return newRecord({ type: 'EXPENSE', amountCentavos: totalCentavos, note, dateMillis, settlesBatchId: batchId, paidTo: paidTo.trim() });
   },
 
+  /** True when the charge fits one batch (LedgerForms.MAX_CHARGED students at most). */
+  fitsOneBatch(preview: ChargePreview): boolean {
+    return preview.charged.length <= LedgerForms.MAX_CHARGED;
+  },
+
   /** One CHARGE record per charged member, all sharing batchId so they can be undone together. */
   buildRecords(preview: ChargePreview, note: string, courseId: string, dateMillis: number, batchId: string): LedgerRecord[] {
+    if (!ChargePlanner.fitsOneBatch(preview)) throw new Error(`You can charge up to ${LedgerForms.MAX_CHARGED} students at once.`);
     return preview.charged.map((member) =>
       newRecord({
         type: 'CHARGE',
