@@ -68,6 +68,7 @@ classes/{classId}
     ledgerEnabled, scheduleEnabled, contentsEnabled, announcementsEnabled, timetableEnabled,
     balanceVisibility (EVERYONE|OFFICERS|TREASURERS),
     paymentInfo (text: where to send GCash and so on),
+    deletingAtMillis (0 normally; set by the Mayor as the first step of deleting the class),
     icon and color maps, createdAtMillis
 
 classes/{classId}/roles/{roleId}            name, colorHex, permissions, locked
@@ -77,13 +78,16 @@ classes/{classId}/members/{uid}
 classes/{classId}/joinRequests/{uid}
     uid, name, className, joinCode, requestedAtMillis
 classes/{classId}/openingBalances/{uid}
-    amountCentavos (signed), note           (written by the go-live import; applied as an OPENING record when that student is approved)
+    amountCentavos (signed), note           (written by the go-live import; a records manager's app turns it into an OPENING record once that student is in the class)
 
 classes/{classId}/records/{id}
     type (PAYMENT|CHARGE|WITHDRAWAL|EXPENSE|OPENING), amountCentavos, memberId, memberName, note,
     dateMillis, batchId, courseId, settlesBatchId, paidTo, claimId,
     createdByUid, createdAtMillis,
     voidedAtMillis, voidedByUid, voidReason
+classes/{classId}/charges/{batchId}
+    note, courseId, dateMillis, count, totalCentavos, perMemberCentavos (0 when the amounts differ),
+    payoutRecordId (empty until paid out), voidedAtMillis, voidedByUid, voidReason, createdByUid, createdAtMillis
 classes/{classId}/summary/fund
     cashOnHandCentavos, waitingPayoutCentavos, balancesTotalCentavos, recordCount, updatedAtMillis
 
@@ -108,9 +112,24 @@ clientErrors/{id}                           message, stack, appVersion, platform
 ### What this fixes
 
 - **"My classes" has no copy any more.** `users/{uid}/memberships` is gone. The list is a collection-group query on `members` where `uid` is the signed-in user (and on `joinRequests` for classes still waiting). This removes the rejoin bug, the stale class names and the entry that disappeared.
-- **Joining needs approval.** A code creates a `joinRequests` entry. An officer approves it, which creates the member entry (default role only), applies any opening balance and deletes the request in one batch. Rejecting deletes the request.
+- **Joining needs approval.** A code creates a `joinRequests` entry. An officer approves it, which creates the member entry (default role only) and deletes the request in one batch. Rejecting deletes the request. A student can cancel their own request.
+- **Pending opening balances.** When a records manager opens the ledger, the app applies any `openingBalances` entry whose student is now a member: it creates the `OPENING` record under the fixed id `opening-{uid}` and deletes the entry in one batch, so it can never be applied twice.
 - **The ledger keeps its history.** Records cannot be deleted or edited. Voiding sets the three `voided` fields once; voided records are left out of every total and stay visible, crossed out, with the reason. A paid-out charge still cannot be voided before its pay-out.
 - **Opening balances.** `OPENING` moves a student's balance and the cash on hand by the same signed amount, so the books check still holds.
+
+### One document per charge
+
+A charge to many students is still one `CHARGE` record per student sharing a `batchId`. In v2 the charge also has its own document, `charges/{batchId}`, written in the same batch. It lets the security rules enforce what v1 only checked in the app:
+
+- Charge records can only be created together with their charge document, so nobody adds a share to an old charge later.
+- A pay-out must be for exactly the charge's total, and a charge has one standing pay-out at most (`payoutRecordId`). Two treasurers cannot pay the same charge out twice.
+- Voiding a pay-out clears `payoutRecordId`, so the charge can be paid out again.
+- A charge is voided as a whole (the charge document and every share in one batch), and never while its pay-out stands.
+- Every member can read charge documents (what was charged, the total, paid out or not) even when balances are hidden, because they carry no names.
+
+### Deleting a class
+
+Records can no longer be deleted one by one, so deleting a class has its own gate. The Mayor's app checks that everyone is settled and the fund is empty, sets `deletingAtMillis` on the class, and only then may delete the records, charges, summary and the rest, ending with the members, roles, invite and the class itself in one last batch as in v1.
 
 ### No limits on balances
 
@@ -197,7 +216,7 @@ Default roles: Mayor (all, locked), Treasurer (`RECORDS_MANAGE`), Secretary (`SC
 
 ### Opening balances
 - A records manager can add an **Opening balance** for a student from the Ledger: the amount the student already had in (or owed) before the class started using ClassHub. It may be negative.
-- At go-live, an admin script writes the balances from the class spreadsheet to `openingBalances`; each one is applied when that student is approved into the class.
+- At go-live, an admin script writes the balances from the class spreadsheet to `openingBalances`; each one is applied by a records manager's app once that student is in the class.
 - A new class the next semester is started the same way: create it, share the code, and enter the opening balances.
 
 ## Looking after the app
@@ -209,12 +228,12 @@ Default roles: Mayor (all, locked), Treasurer (`RECORDS_MANAGE`), Secretary (`SC
 
 ## Phases
 
-Each phase ends with all tests passing. Work happens on a `v2` branch against the emulators and a Hosting preview channel; the live site stays on v1 until the 2.0 go-live.
+Each phase ends with all tests passing. One exception: the v1 screens and their browser tests stop matching the rules after phase 1 and are replaced in phase 3, so the browser tests are paused between those two phases. Work happens on a `v2` branch against the emulators and a Hosting preview channel; the live site stays on v1 until the 2.0 go-live.
 
 | Phase | What | Result |
 |---|---|---|
 | 0. Prepare | Tag `native-1.3.2`, create `v2`, remove the Kotlin app from the branch, set up CI | Clean branch with CI |
-| 1. Foundation | v2 models, rules and rules tests; domain changes (void, `OPENING`, visibility, summary); join requests; "My classes" query | Data layer and rules done and tested |
+| 1. Foundation | v2 models, rules and rules tests for everything 2.0 needs; domain changes (void, `OPENING`, visibility, summary); a new data layer in `web/src/data/` with join requests, the "My classes" query, charges, voids and the summary, tested against the emulators | Data layer and rules done and tested |
 | 2. Design | Tokens and shared components; clickable mockups of Home, Ledger, Schedule, Contents, Members, Account in light and dark, phone and desktop | Mockups approved by the project lead |
 | 3. Rebuild | Every existing screen on the new design and data layer; void with reason; opening balance form; balance visibility; join approval; files split by feature | Feature parity with v1, new look |
 | 4. Shell and offline | Capacitor Android shell, invite links, share target, service worker, update dialog | Installable APK and offline web app |
@@ -226,7 +245,14 @@ Each phase ends with all tests passing. Work happens on a `v2` branch against th
 
 **Where the strongest model matters:** phases 1 and 5 and the go-live (security rules, money math, live data), and the sender in phase 6. Phases 2, 3, 7 and 8 are mostly screens and are fine on a cheaper model.
 
+## How the work is done
+
+- Each phase is built by subagents: Opus for security rules, money math, the data layer and anything touching live data; Sonnet for screens, wording, CI and routine changes.
+- The lead session (Fable) writes each task brief, reviews every diff like a pull request, runs the tests itself, and only then commits. Subagents never commit, push or deploy.
+
 ## Testing
+
+- Data layer tests (Vitest on the Auth and Firestore emulators) that call the real data functions as several users, under the real rules.
 
 - Unit tests (Vitest) for every domain rule, including void, opening balances, the summary totals and the visibility decision.
 - Rules tests for every permission, each visibility setting, join approval, void-once and claims.
@@ -246,4 +272,4 @@ Each phase ends with all tests passing. Work happens on a `v2` branch against th
 1. The Cloudflare Worker sender has to be proven in a small experiment before phase 6 relies on it.
 2. Payment info is plain text for now; a QR image can be added later if the class wants it.
 3. Opening balances only match the real fund when the earlier books have no charge waiting to be paid out. The go-live import must refuse to run until every charge in the spreadsheet is paid out, and the Opening balance form says the same.
-4. A pay-out gets a fixed document id made from its charge (`payout-{batchId}`), so two treasurers cannot pay the same charge out twice, and the rules can refuse to void a charge whose pay-out still stands. A replacement after a voided pay-out needs a numbered id; settle the exact scheme with the rules in phase 1.
+4. Rules for claims, announcements, the timetable, notifications and device tokens are written in the phase that builds each feature, not in phase 1.
