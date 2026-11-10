@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [v2, main]
+  pull_request:
+    branches: [v2, main]
+
+permissions:
+  contents: read
+
+# Cancel a run when a newer one starts on the same branch or pull request.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web (types, unit tests, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit -p .
+      - run: npx vitest run
+      # The build needs no Firebase secrets: Vite only inlines env values, and
+      # no code runs at build time. Dummy values keep the bundle valid.
+      - run: npm run build
+        env:
+          VITE_FIREBASE_API_KEY: ci-dummy-key
+          VITE_FIREBASE_AUTH_DOMAIN: demo-classhub.firebaseapp.com
+          VITE_FIREBASE_PROJECT_ID: demo-classhub
+          VITE_FIREBASE_APP_ID: ci-dummy-app
+
+  rules:
+    name: Firestore rules tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: firestore-tests/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+        working-directory: firestore-tests
+      - run: npm i -g firebase-tools@15
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-firebase-tools-15
+      - run: firebase emulators:exec --only firestore --project demo-classhub "node firestore-tests/rules.test.js"
+
+  # The Playwright browser tests (web/e2e) are paused until phase 3 of
+  # docs/PLAN-V2.md. Add an "e2e" job here then: install Chromium, then run
+  # firebase emulators:exec --only auth,firestore ... "npm --prefix web run e2e".
