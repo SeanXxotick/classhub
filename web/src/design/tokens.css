@@ -1,0 +1,272 @@
+/*
+ * ClassHub 2.0 design tokens.
+ *
+ * Naming: every token starts with --ch- and reads  --ch-<group>-<name>[-<variant>].
+ *   --ch-bg, --ch-surface, --ch-surface-2      page and card backgrounds
+ *   --ch-text, --ch-text-muted                 text colours
+ *   --ch-border, --ch-border-strong            hairlines and input outlines
+ *   --ch-primary*                              the class accent (derived from --ch-accent)
+ *   --ch-income / -charge / -withdrawal / -payout / -opening
+ *                                              the five money colours; each has a -soft tint
+ *   --ch-success / -warning / -danger / -info  status colours; each has a -soft tint
+ *   --ch-fs-*, --ch-fw-*, --ch-lh-*            type scale (size, weight, line height)
+ *   --ch-space-1 ... --ch-space-12             4px spacing scale
+ *   --ch-radius-*, --ch-shadow-*, --ch-dur-*   shape, elevation, motion
+ *   --ch-w-*, --ch-h-*, --ch-tap               layout widths and control heights
+ *
+ * Theme: colours are defined for light, then redefined for dark in two places that must stay
+ * identical: the OS preference (guarded so an explicit light choice wins) and data-theme="dark".
+ * The app sets data-theme="dark" today and removes the attribute for light; phase 3 must set
+ * data-theme="light" explicitly (see the report) so the media query cannot override a light choice.
+ *
+ * Per-class accent: set --ch-accent (a #RRGGBB value) on an element with class "ch-accented".
+ * Everything accent-coloured (--ch-primary*, --ch-hero, --ch-focus) is derived from it and is
+ * recomputed on that element. Brand default: #0F766E.
+ *
+ * Money rule: amounts use font-variant-numeric: var(--ch-numeric) and white-space: nowrap.
+ * State colours never carry meaning alone: pair them with an icon or a word.
+ */
+
+:root {
+  /* ---- Brand and accent ------------------------------------------------ */
+  --ch-brand: #0f766e;
+  --ch-accent: var(--ch-brand);
+
+  /* ---- Surfaces and text (light) --------------------------------------- */
+  --ch-bg: #f6f8fb;
+  --ch-surface: #ffffff;
+  --ch-surface-2: #eef1f6;
+  --ch-text: #1a1c1e;
+  --ch-text-muted: #596478;
+  --ch-border: #d5dbe5;
+  --ch-border-strong: #8892a5;
+  --ch-scrim: rgba(15, 20, 28, 0.45);
+  --ch-on-solid: #ffffff;
+
+  /* ---- Money colours (light) ------------------------------------------- */
+  --ch-income: #146c34;
+  --ch-charge: #b91c1c;
+  --ch-withdrawal: #0369a1;
+  --ch-payout: #8a5a00;
+  --ch-opening: #475569;
+
+  /* ---- Status colours (light) ------------------------------------------ */
+  --ch-success: #146c34;
+  --ch-warning: #a35207;
+  --ch-danger: #b91c1c;
+  --ch-info: #0369a1;
+
+  /* ---- Tints: soft backgrounds made from a colour ----------------------- */
+  --ch-tint: 13%;
+  --ch-income-soft: color-mix(in srgb, var(--ch-income) var(--ch-tint), var(--ch-surface));
+  --ch-charge-soft: color-mix(in srgb, var(--ch-charge) var(--ch-tint), var(--ch-surface));
+  --ch-withdrawal-soft: color-mix(in srgb, var(--ch-withdrawal) var(--ch-tint), var(--ch-surface));
+  --ch-payout-soft: color-mix(in srgb, var(--ch-payout) var(--ch-tint), var(--ch-surface));
+  --ch-opening-soft: color-mix(in srgb, var(--ch-opening) var(--ch-tint), var(--ch-surface));
+  --ch-success-soft: color-mix(in srgb, var(--ch-success) var(--ch-tint), var(--ch-surface));
+  --ch-warning-soft: color-mix(in srgb, var(--ch-warning) var(--ch-tint), var(--ch-surface));
+  --ch-danger-soft: color-mix(in srgb, var(--ch-danger) var(--ch-tint), var(--ch-surface));
+  --ch-info-soft: color-mix(in srgb, var(--ch-info) var(--ch-tint), var(--ch-surface));
+  --ch-hover: color-mix(in srgb, var(--ch-text) 5%, transparent);
+  --ch-pressed: color-mix(in srgb, var(--ch-text) 9%, transparent);
+
+  /* ---- Elevation -------------------------------------------------------- */
+  --ch-card-border: transparent;
+  --ch-shadow-1: 0 1px 2px rgba(15, 20, 28, 0.04), 0 4px 16px rgba(15, 20, 28, 0.06);
+  --ch-shadow-2: 0 8px 24px rgba(15, 20, 28, 0.16);
+  --ch-shadow-3: 0 10px 40px rgba(15, 20, 28, 0.3);
+
+  /* ---- Type ------------------------------------------------------------- */
+  --ch-font: 'Roboto Variable', 'Roboto', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  --ch-font-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --ch-numeric: tabular-nums lining-nums;
+  --ch-fs-caption: 12px;
+  --ch-fs-small: 13px;
+  --ch-fs-body: 15px;
+  --ch-fs-lead: 16px;
+  --ch-fs-title: 20px;
+  --ch-fs-headline: 24px;
+  --ch-fs-display: 32px;
+  --ch-fw-regular: 400;
+  --ch-fw-medium: 500;
+  --ch-fw-semibold: 600;
+  --ch-fw-bold: 700;
+  --ch-fw-black: 800;
+  --ch-lh-tight: 1.2;
+  --ch-lh-snug: 1.3;
+  --ch-lh-normal: 1.45;
+  --ch-ls-label: 0.06em;
+  --ch-ls-money: -0.01em;
+
+  /* ---- Spacing (4px base) ----------------------------------------------- */
+  --ch-space-1: 4px;
+  --ch-space-2: 8px;
+  --ch-space-3: 12px;
+  --ch-space-4: 16px;
+  --ch-space-5: 20px;
+  --ch-space-6: 24px;
+  --ch-space-8: 32px;
+  --ch-space-10: 40px;
+  --ch-space-12: 48px;
+
+  /* ---- Shape ------------------------------------------------------------ */
+  --ch-radius-sm: 8px;
+  --ch-radius-md: 12px;
+  --ch-radius-lg: 16px;
+  --ch-radius-xl: 24px;
+  --ch-radius-pill: 999px;
+
+  /* ---- Motion ----------------------------------------------------------- */
+  --ch-dur-fast: 120ms;
+  --ch-dur-base: 180ms;
+  --ch-dur-slow: 280ms;
+  --ch-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---- Layout and controls ---------------------------------------------- */
+  --ch-w-sidebar: 288px;
+  --ch-w-page: 1080px;
+  --ch-w-narrow: 680px;
+  --ch-w-dialog: 460px;
+  --ch-w-wide-from: 900px; /* single column with a bottom tab bar below this; media queries cannot read it */
+  --ch-h-topbar: 60px;
+  --ch-h-bottom-nav: 64px;
+  --ch-h-input: 48px;
+  --ch-tap: 44px;
+}
+
+/*
+ * Accent-derived tokens. Declared on :root and again on .ch-accented, so setting --ch-accent
+ * on any element recolours everything inside it. The fallback line uses color-mix; browsers
+ * that know relative colours (the @supports block) get a better-tuned lightness.
+ */
+:root,
+.ch-accented {
+  --ch-primary: var(--ch-accent);
+  --ch-on-primary: #ffffff;
+  --ch-primary-text: color-mix(in srgb, var(--ch-accent) 78%, #000);
+  --ch-primary-soft: color-mix(in srgb, var(--ch-accent) 14%, var(--ch-surface));
+  --ch-hero: var(--ch-accent);
+  --ch-on-hero: #ffffff;
+  --ch-focus: var(--ch-primary-text);
+}
+
+@supports (color: oklch(from red l c h)) {
+  :root,
+  .ch-accented {
+    --ch-primary-text: oklch(from var(--ch-accent) min(l, 0.47) c h);
+  }
+}
+
+:root {
+  --ch-hero-danger: #b91c1c;
+  color-scheme: light;
+  font-family: var(--ch-font);
+  font-size: var(--ch-fs-body);
+  line-height: var(--ch-lh-normal);
+  color: var(--ch-text);
+  background: var(--ch-bg);
+}
+
+/* ======================================================================
+   Dark theme. Keep the two blocks below identical.
+   ====================================================================== */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ch-bg: #0f141c;
+    --ch-surface: #161d27;
+    --ch-surface-2: #222b37;
+    --ch-text: #e6e9ef;
+    --ch-text-muted: #a7b1c2;
+    --ch-border: #344052;
+    --ch-border-strong: #66748a;
+    --ch-scrim: rgba(0, 0, 0, 0.6);
+    --ch-income: #4ade80;
+    --ch-charge: #f87171;
+    --ch-withdrawal: #38bdf8;
+    --ch-payout: #facc15;
+    --ch-opening: #a9b4c6;
+    --ch-success: #4ade80;
+    --ch-warning: #fbbf24;
+    --ch-danger: #f87171;
+    --ch-info: #38bdf8;
+    --ch-tint: 20%;
+    --ch-card-border: color-mix(in srgb, var(--ch-border) 55%, transparent);
+    --ch-shadow-1: none;
+    --ch-shadow-2: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --ch-shadow-3: 0 10px 40px rgba(0, 0, 0, 0.6);
+    --ch-hero-danger: color-mix(in srgb, #f87171 30%, #161d27);
+    color-scheme: dark;
+  }
+
+  :root:not([data-theme='light']),
+  :root:not([data-theme='light']) .ch-accented {
+    --ch-primary: color-mix(in srgb, var(--ch-accent) 55%, #fff);
+    --ch-on-primary: #0f141c;
+    --ch-primary-text: var(--ch-primary);
+    --ch-primary-soft: color-mix(in srgb, var(--ch-accent) 30%, var(--ch-surface));
+    --ch-hero: color-mix(in srgb, var(--ch-accent) 30%, var(--ch-surface));
+    --ch-on-hero: #f1f5f9;
+    --ch-focus: var(--ch-primary);
+  }
+
+  @supports (color: oklch(from red l c h)) {
+    :root:not([data-theme='light']),
+    :root:not([data-theme='light']) .ch-accented {
+      --ch-primary: oklch(from var(--ch-accent) max(l, 0.8) c h);
+    }
+  }
+}
+
+:root[data-theme='dark'] {
+  --ch-bg: #0f141c;
+  --ch-surface: #161d27;
+  --ch-surface-2: #222b37;
+  --ch-text: #e6e9ef;
+  --ch-text-muted: #a7b1c2;
+  --ch-border: #344052;
+  --ch-border-strong: #66748a;
+  --ch-scrim: rgba(0, 0, 0, 0.6);
+  --ch-income: #4ade80;
+  --ch-charge: #f87171;
+  --ch-withdrawal: #38bdf8;
+  --ch-payout: #facc15;
+  --ch-opening: #a9b4c6;
+  --ch-success: #4ade80;
+  --ch-warning: #fbbf24;
+  --ch-danger: #f87171;
+  --ch-info: #38bdf8;
+  --ch-tint: 20%;
+  --ch-card-border: color-mix(in srgb, var(--ch-border) 55%, transparent);
+  --ch-shadow-1: none;
+  --ch-shadow-2: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --ch-shadow-3: 0 10px 40px rgba(0, 0, 0, 0.6);
+  --ch-hero-danger: color-mix(in srgb, #f87171 30%, #161d27);
+  color-scheme: dark;
+}
+
+:root[data-theme='dark'],
+:root[data-theme='dark'] .ch-accented {
+  --ch-primary: color-mix(in srgb, var(--ch-accent) 55%, #fff);
+  --ch-on-primary: #0f141c;
+  --ch-primary-text: var(--ch-primary);
+  --ch-primary-soft: color-mix(in srgb, var(--ch-accent) 30%, var(--ch-surface));
+  --ch-hero: color-mix(in srgb, var(--ch-accent) 30%, var(--ch-surface));
+  --ch-on-hero: #f1f5f9;
+  --ch-focus: var(--ch-primary);
+}
+
+@supports (color: oklch(from red l c h)) {
+  :root[data-theme='dark'],
+  :root[data-theme='dark'] .ch-accented {
+    --ch-primary: oklch(from var(--ch-accent) max(l, 0.8) c h);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ch-dur-fast: 0ms;
+    --ch-dur-base: 0ms;
+    --ch-dur-slow: 0ms;
+  }
+}

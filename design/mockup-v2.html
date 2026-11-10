@@ -1,0 +1,1620 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClassHub 2.0 mockups</title>
+<style>
+/* ---- Copied verbatim from web/src/design/tokens.css (keep identical) ---- */
+/*
+ * ClassHub 2.0 design tokens.
+ *
+ * Naming: every token starts with --ch- and reads  --ch-<group>-<name>[-<variant>].
+ *   --ch-bg, --ch-surface, --ch-surface-2      page and card backgrounds
+ *   --ch-text, --ch-text-muted                 text colours
+ *   --ch-border, --ch-border-strong            hairlines and input outlines
+ *   --ch-primary*                              the class accent (derived from --ch-accent)
+ *   --ch-income / -charge / -withdrawal / -payout / -opening
+ *                                              the five money colours; each has a -soft tint
+ *   --ch-success / -warning / -danger / -info  status colours; each has a -soft tint
+ *   --ch-fs-*, --ch-fw-*, --ch-lh-*            type scale (size, weight, line height)
+ *   --ch-space-1 ... --ch-space-12             4px spacing scale
+ *   --ch-radius-*, --ch-shadow-*, --ch-dur-*   shape, elevation, motion
+ *   --ch-w-*, --ch-h-*, --ch-tap               layout widths and control heights
+ *
+ * Theme: colours are defined for light, then redefined for dark in two places that must stay
+ * identical: the OS preference (guarded so an explicit light choice wins) and data-theme="dark".
+ * The app sets data-theme="dark" today and removes the attribute for light; phase 3 must set
+ * data-theme="light" explicitly (see the report) so the media query cannot override a light choice.
+ *
+ * Per-class accent: set --ch-accent (a #RRGGBB value) on an element with class "ch-accented".
+ * Everything accent-coloured (--ch-primary*, --ch-hero, --ch-focus) is derived from it and is
+ * recomputed on that element. Brand default: #0F766E.
+ *
+ * Money rule: amounts use font-variant-numeric: var(--ch-numeric) and white-space: nowrap.
+ * State colours never carry meaning alone: pair them with an icon or a word.
+ */
+
+:root {
+  /* ---- Brand and accent ------------------------------------------------ */
+  --ch-brand: #0f766e;
+  --ch-accent: var(--ch-brand);
+
+  /* ---- Surfaces and text (light) --------------------------------------- */
+  --ch-bg: #f6f8fb;
+  --ch-surface: #ffffff;
+  --ch-surface-2: #eef1f6;
+  --ch-text: #1a1c1e;
+  --ch-text-muted: #596478;
+  --ch-border: #d5dbe5;
+  --ch-border-strong: #8892a5;
+  --ch-scrim: rgba(15, 20, 28, 0.45);
+  --ch-on-solid: #ffffff;
+
+  /* ---- Money colours (light) ------------------------------------------- */
+  --ch-income: #146c34;
+  --ch-charge: #b91c1c;
+  --ch-withdrawal: #0369a1;
+  --ch-payout: #8a5a00;
+  --ch-opening: #475569;
+
+  /* ---- Status colours (light) ------------------------------------------ */
+  --ch-success: #146c34;
+  --ch-warning: #a35207;
+  --ch-danger: #b91c1c;
+  --ch-info: #0369a1;
+
+  /* ---- Tints: soft backgrounds made from a colour ----------------------- */
+  --ch-tint: 13%;
+  --ch-income-soft: color-mix(in srgb, var(--ch-income) var(--ch-tint), var(--ch-surface));
+  --ch-charge-soft: color-mix(in srgb, var(--ch-charge) var(--ch-tint), var(--ch-surface));
+  --ch-withdrawal-soft: color-mix(in srgb, var(--ch-withdrawal) var(--ch-tint), var(--ch-surface));
+  --ch-payout-soft: color-mix(in srgb, var(--ch-payout) var(--ch-tint), var(--ch-surface));
+  --ch-opening-soft: color-mix(in srgb, var(--ch-opening) var(--ch-tint), var(--ch-surface));
+  --ch-success-soft: color-mix(in srgb, var(--ch-success) var(--ch-tint), var(--ch-surface));
+  --ch-warning-soft: color-mix(in srgb, var(--ch-warning) var(--ch-tint), var(--ch-surface));
+  --ch-danger-soft: color-mix(in srgb, var(--ch-danger) var(--ch-tint), var(--ch-surface));
+  --ch-info-soft: color-mix(in srgb, var(--ch-info) var(--ch-tint), var(--ch-surface));
+  --ch-hover: color-mix(in srgb, var(--ch-text) 5%, transparent);
+  --ch-pressed: color-mix(in srgb, var(--ch-text) 9%, transparent);
+
+  /* ---- Elevation -------------------------------------------------------- */
+  --ch-card-border: transparent;
+  --ch-shadow-1: 0 1px 2px rgba(15, 20, 28, 0.04), 0 4px 16px rgba(15, 20, 28, 0.06);
+  --ch-shadow-2: 0 8px 24px rgba(15, 20, 28, 0.16);
+  --ch-shadow-3: 0 10px 40px rgba(15, 20, 28, 0.3);
+
+  /* ---- Type ------------------------------------------------------------- */
+  --ch-font: 'Roboto Variable', 'Roboto', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  --ch-font-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --ch-numeric: tabular-nums lining-nums;
+  --ch-fs-caption: 12px;
+  --ch-fs-small: 13px;
+  --ch-fs-body: 15px;
+  --ch-fs-lead: 16px;
+  --ch-fs-title: 20px;
+  --ch-fs-headline: 24px;
+  --ch-fs-display: 32px;
+  --ch-fw-regular: 400;
+  --ch-fw-medium: 500;
+  --ch-fw-semibold: 600;
+  --ch-fw-bold: 700;
+  --ch-fw-black: 800;
+  --ch-lh-tight: 1.2;
+  --ch-lh-snug: 1.3;
+  --ch-lh-normal: 1.45;
+  --ch-ls-label: 0.06em;
+  --ch-ls-money: -0.01em;
+
+  /* ---- Spacing (4px base) ----------------------------------------------- */
+  --ch-space-1: 4px;
+  --ch-space-2: 8px;
+  --ch-space-3: 12px;
+  --ch-space-4: 16px;
+  --ch-space-5: 20px;
+  --ch-space-6: 24px;
+  --ch-space-8: 32px;
+  --ch-space-10: 40px;
+  --ch-space-12: 48px;
+
+  /* ---- Shape ------------------------------------------------------------ */
+  --ch-radius-sm: 8px;
+  --ch-radius-md: 12px;
+  --ch-radius-lg: 16px;
+  --ch-radius-xl: 24px;
+  --ch-radius-pill: 999px;
+
+  /* ---- Motion ----------------------------------------------------------- */
+  --ch-dur-fast: 120ms;
+  --ch-dur-base: 180ms;
+  --ch-dur-slow: 280ms;
+  --ch-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---- Layout and controls ---------------------------------------------- */
+  --ch-w-sidebar: 288px;
+  --ch-w-page: 1080px;
+  --ch-w-narrow: 680px;
+  --ch-w-dialog: 460px;
+  --ch-w-wide-from: 900px; /* single column with a bottom tab bar below this; media queries cannot read it */
+  --ch-h-topbar: 60px;
+  --ch-h-bottom-nav: 64px;
+  --ch-h-input: 48px;
+  --ch-tap: 44px;
+}
+
+/*
+ * Accent-derived tokens. Declared on :root and again on .ch-accented, so setting --ch-accent
+ * on any element recolours everything inside it. The fallback line uses color-mix; browsers
+ * that know relative colours (the @supports block) get a better-tuned lightness.
+ */
+:root,
+.ch-accented {
+  --ch-primary: var(--ch-accent);
+  --ch-on-primary: #ffffff;
+  --ch-primary-text: color-mix(in srgb, var(--ch-accent) 78%, #000);
+  --ch-primary-soft: color-mix(in srgb, var(--ch-accent) 14%, var(--ch-surface));
+  --ch-hero: var(--ch-accent);
+  --ch-on-hero: #ffffff;
+  --ch-focus: var(--ch-primary-text);
+}
+
+@supports (color: oklch(from red l c h)) {
+  :root,
+  .ch-accented {
+    --ch-primary-text: oklch(from var(--ch-accent) min(l, 0.47) c h);
+  }
+}
+
+:root {
+  --ch-hero-danger: #b91c1c;
+  color-scheme: light;
+  font-family: var(--ch-font);
+  font-size: var(--ch-fs-body);
+  line-height: var(--ch-lh-normal);
+  color: var(--ch-text);
+  background: var(--ch-bg);
+}
+
+/* ======================================================================
+   Dark theme. Keep the two blocks below identical.
+   ====================================================================== */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ch-bg: #0f141c;
+    --ch-surface: #161d27;
+    --ch-surface-2: #222b37;
+    --ch-text: #e6e9ef;
+    --ch-text-muted: #a7b1c2;
+    --ch-border: #344052;
+    --ch-border-strong: #66748a;
+    --ch-scrim: rgba(0, 0, 0, 0.6);
+    --ch-income: #4ade80;
+    --ch-charge: #f87171;
+    --ch-withdrawal: #38bdf8;
+    --ch-payout: #facc15;
+    --ch-opening: #a9b4c6;
+    --ch-success: #4ade80;
+    --ch-warning: #fbbf24;
+    --ch-danger: #f87171;
+    --ch-info: #38bdf8;
+    --ch-tint: 20%;
+    --ch-card-border: color-mix(in srgb, var(--ch-border) 55%, transparent);
+    --ch-shadow-1: none;
+    --ch-shadow-2: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --ch-shadow-3: 0 10px 40px rgba(0, 0, 0, 0.6);
+    --ch-hero-danger: color-mix(in srgb, #f87171 30%, #161d27);
+    color-scheme: dark;
+  }
+
+  :root:not([data-theme='light']),
+  :root:not([data-theme='light']) .ch-accented {
+    --ch-primary: color-mix(in srgb, var(--ch-accent) 55%, #fff);
+    --ch-on-primary: #0f141c;
+    --ch-primary-text: var(--ch-primary);
+    --ch-primary-soft: color-mix(in srgb, var(--ch-accent) 30%, var(--ch-surface));
+    --ch-hero: color-mix(in srgb, var(--ch-accent) 30%, var(--ch-surface));
+    --ch-on-hero: #f1f5f9;
+    --ch-focus: var(--ch-primary);
+  }
+
+  @supports (color: oklch(from red l c h)) {
+    :root:not([data-theme='light']),
+    :root:not([data-theme='light']) .ch-accented {
+      --ch-primary: oklch(from var(--ch-accent) max(l, 0.8) c h);
+    }
+  }
+}
+
+:root[data-theme='dark'] {
+  --ch-bg: #0f141c;
+  --ch-surface: #161d27;
+  --ch-surface-2: #222b37;
+  --ch-text: #e6e9ef;
+  --ch-text-muted: #a7b1c2;
+  --ch-border: #344052;
+  --ch-border-strong: #66748a;
+  --ch-scrim: rgba(0, 0, 0, 0.6);
+  --ch-income: #4ade80;
+  --ch-charge: #f87171;
+  --ch-withdrawal: #38bdf8;
+  --ch-payout: #facc15;
+  --ch-opening: #a9b4c6;
+  --ch-success: #4ade80;
+  --ch-warning: #fbbf24;
+  --ch-danger: #f87171;
+  --ch-info: #38bdf8;
+  --ch-tint: 20%;
+  --ch-card-border: color-mix(in srgb, var(--ch-border) 55%, transparent);
+  --ch-shadow-1: none;
+  --ch-shadow-2: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --ch-shadow-3: 0 10px 40px rgba(0, 0, 0, 0.6);
+  --ch-hero-danger: color-mix(in srgb, #f87171 30%, #161d27);
+  color-scheme: dark;
+}
+
+:root[data-theme='dark'],
+:root[data-theme='dark'] .ch-accented {
+  --ch-primary: color-mix(in srgb, var(--ch-accent) 55%, #fff);
+  --ch-on-primary: #0f141c;
+  --ch-primary-text: var(--ch-primary);
+  --ch-primary-soft: color-mix(in srgb, var(--ch-accent) 30%, var(--ch-surface));
+  --ch-hero: color-mix(in srgb, var(--ch-accent) 30%, var(--ch-surface));
+  --ch-on-hero: #f1f5f9;
+  --ch-focus: var(--ch-primary);
+}
+
+@supports (color: oklch(from red l c h)) {
+  :root[data-theme='dark'],
+  :root[data-theme='dark'] .ch-accented {
+    --ch-primary: oklch(from var(--ch-accent) max(l, 0.8) c h);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ch-dur-fast: 0ms;
+    --ch-dur-base: 0ms;
+    --ch-dur-slow: 0ms;
+  }
+}
+
+/* ====================================================================
+   Mockup layer: the control bar and the stage are NOT part of the design.
+   Everything inside .dev below uses only the tokens above.
+   ==================================================================== */
+:root { --stage: #d9dfe9; }
+:root[data-theme='dark'] { --stage: #05070a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --stage: #05070a; } }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--stage); }
+body { -webkit-font-smoothing: antialiased; }
+
+#controls {
+  display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+  padding: 8px 12px; background: #111827; color: #e5e7eb;
+  font: 13px/1.3 system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+}
+#controls label { display: inline-flex; align-items: center; gap: 6px; }
+#controls select, #controls button {
+  font: inherit; color: #f9fafb; background: #1f2937; border: 1px solid #4b5563; border-radius: 6px; padding: 5px 8px; min-height: 32px;
+}
+#controls button[aria-pressed='true'] { background: #0f766e; border-color: #5eead4; }
+#controls .grp { display: inline-flex; gap: 0; }
+#controls .grp button { border-radius: 0; }
+#controls .grp button:first-child { border-radius: 6px 0 0 6px; }
+#controls .grp button:last-child { border-radius: 0 6px 6px 0; }
+#controls strong { font-weight: 700; margin-right: 4px; }
+#stage { padding: 16px 0 40px; }
+
+.dev {
+  position: relative; margin: 0 auto; overflow: clip; min-height: 780px;
+  background: var(--ch-bg); color: var(--ch-text);
+  font-family: var(--ch-font); font-size: var(--ch-fs-body); line-height: var(--ch-lh-normal);
+  box-shadow: var(--ch-shadow-3);
+}
+.dev.is-phone { width: 390px; border-radius: 28px; }
+.dev.is-wide { width: 1280px; border-radius: 12px; }
+@media (max-width: 420px) { .dev.is-phone { border-radius: 0; box-shadow: none; } #stage { padding-top: 0; } }
+.dev * { box-sizing: border-box; }
+.dev h1, .dev h2, .dev h3, .dev p { margin: 0; }
+.dev h1, .dev h2, .dev h3 { line-height: var(--ch-lh-snug); }
+:where(.dev) :where(button, input, select, textarea) { font: inherit; color: inherit; }
+.dev a { color: var(--ch-primary-text); }
+.dev :focus-visible { outline: 2px solid var(--ch-focus); outline-offset: 2px; }
+.dev .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------------- Shell ---------------- */
+.app { display: flex; min-height: 780px; }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.is-phone .wide-only { display: none !important; }
+.is-wide .phone-only { display: none !important; }
+.sidebar { flex: none; width: var(--ch-w-sidebar); background: var(--ch-surface); border-right: 1px solid var(--ch-border); }
+.is-phone .sidebar { display: none; }
+.sidebar-in { position: sticky; top: 0; display: flex; flex-direction: column; gap: 2px; padding: var(--ch-space-5) var(--ch-space-3); min-height: 640px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: var(--ch-fw-black); font-size: var(--ch-fs-title); padding: 4px 8px 16px; }
+.brand svg { width: 34px; height: 34px; border-radius: 10px; }
+.side-label { font-size: var(--ch-fs-caption); font-weight: var(--ch-fw-bold); letter-spacing: var(--ch-ls-label); text-transform: uppercase; color: var(--ch-text-muted); padding: 12px 10px 4px; }
+.side-item { display: flex; align-items: center; gap: 10px; min-height: var(--ch-tap); padding: 6px 10px; border-radius: var(--ch-radius-md); border: 0; background: none; width: 100%; text-align: left; cursor: pointer; color: var(--ch-text); transition: background var(--ch-dur-fast) var(--ch-ease); }
+.side-item:hover { background: var(--ch-surface-2); }
+.side-item.active { background: var(--ch-primary-soft); font-weight: var(--ch-fw-bold); }
+.side-item .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-spacer { flex: 1; }
+.class-dot { width: 30px; height: 30px; border-radius: var(--ch-radius-sm); flex: none; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: var(--ch-fw-bold); font-size: 12px; background: var(--ch-accent); }
+.side-plus { width: 30px; height: 30px; border-radius: var(--ch-radius-sm); border: 1px dashed var(--ch-border-strong); display: inline-flex; align-items: center; justify-content: center; color: var(--ch-text-muted); flex: none; }
+
+.topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 8px; min-height: var(--ch-h-topbar); padding: 8px 12px 8px 8px; background: color-mix(in srgb, var(--ch-bg) 94%, transparent); backdrop-filter: blur(8px); }
+.is-wide .topbar { padding-left: 24px; padding-right: 24px; }
+.topbar-in { width: 100%; max-width: var(--ch-w-page); margin: 0 auto; display: flex; align-items: center; gap: 8px; }
+.topbar .title { flex: 1; min-width: 0; font-size: var(--ch-fs-title); font-weight: var(--ch-fw-bold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page { width: 100%; max-width: var(--ch-w-page); margin: 0 auto; padding: var(--ch-space-3) var(--ch-space-4) var(--ch-space-6); flex: 1; }
+.is-wide .page { padding: var(--ch-space-5) var(--ch-space-6) var(--ch-space-12); }
+.page.narrow { max-width: var(--ch-w-narrow); }
+.page.has-fab { padding-bottom: 96px; }
+
+.bottom-nav { position: sticky; bottom: 0; z-index: 30; display: flex; background: var(--ch-surface); border-top: 1px solid var(--ch-border); min-height: var(--ch-h-bottom-nav); }
+.bottom-nav button { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 6px 0 8px; border: 0; background: none; color: var(--ch-text-muted); font-size: var(--ch-fs-caption); font-weight: var(--ch-fw-semibold); cursor: pointer; }
+.bottom-nav button.selected { color: var(--ch-primary-text); }
+.nav-icon { display: inline-flex; padding: 2px 16px; border-radius: var(--ch-radius-pill); transition: background var(--ch-dur-base) var(--ch-ease); }
+.bottom-nav button.selected .nav-icon { background: var(--ch-primary-soft); }
+
+.fab-wrap { position: sticky; bottom: calc(var(--ch-h-bottom-nav) + 16px); height: 0; z-index: 25; display: flex; justify-content: flex-end; padding-right: var(--ch-space-4); pointer-events: none; }
+.is-wide .fab-wrap { bottom: 24px; padding-right: 32px; }
+.fab-wrap.no-nav { bottom: 16px; }
+.fab { pointer-events: auto; position: absolute; bottom: 0; right: 16px; min-height: 56px; padding: 0 22px 0 16px; gap: 8px; border-radius: var(--ch-radius-lg); box-shadow: var(--ch-shadow-2); display: inline-flex; align-items: center; border: 0; background: var(--ch-primary); color: var(--ch-on-primary); font-weight: var(--ch-fw-bold); cursor: pointer; white-space: nowrap; }
+.is-wide .fab { right: 32px; }
+
+/* ---------------- Cards, lists, text ---------------- */
+.card { background: var(--ch-surface); border-radius: var(--ch-radius-lg); box-shadow: var(--ch-shadow-1); border: 1px solid var(--ch-card-border); padding: var(--ch-space-4); }
+.card.flush { padding: var(--ch-space-2) 0; }
+.card.tinted { background: var(--ch-primary-soft); box-shadow: none; }
+.card.hero { background: var(--ch-hero); color: var(--ch-on-hero); border: 0; }
+.card.hero.danger { background: var(--ch-hero-danger); }
+.card.hero .soft { opacity: 0.88; }
+.card-title, .card h2 { font-size: var(--ch-fs-lead); font-weight: var(--ch-fw-bold); }
+.stack { display: flex; flex-direction: column; gap: var(--ch-space-3); }
+.stack.lg { gap: var(--ch-space-5); }
+.row { display: flex; align-items: center; gap: var(--ch-space-3); }
+.row.wrap { flex-wrap: wrap; }
+.row.top { align-items: flex-start; }
+.grow { flex: 1; min-width: 0; }
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--ch-space-4); align-items: start; }
+.is-phone .cols { display: flex; flex-direction: column; gap: var(--ch-space-5); }
+.col { display: flex; flex-direction: column; gap: var(--ch-space-5); min-width: 0; }
+.grid-auto { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--ch-space-4); align-items: start; }
+.is-phone .grid-auto { grid-template-columns: minmax(0, 1fr); }
+.muted { color: var(--ch-text-muted); }
+.small { font-size: var(--ch-fs-small); }
+.caption { font-size: var(--ch-fs-caption); }
+.bold { font-weight: var(--ch-fw-bold); }
+.semibold { font-weight: var(--ch-fw-semibold); }
+.center { text-align: center; }
+.wrap-any { overflow-wrap: anywhere; }
+.ellipsis { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.struck { text-decoration: line-through; }
+.section-head { display: flex; align-items: center; gap: var(--ch-space-2); min-height: 36px; padding-left: 4px; }
+.section-head h2 { font-size: var(--ch-fs-lead); font-weight: var(--ch-fw-bold); flex: 1; }
+.section-head .btn.text { margin-right: -12px; }
+.section-label { font-size: var(--ch-fs-caption); font-weight: var(--ch-fw-bold); letter-spacing: var(--ch-ls-label); text-transform: uppercase; color: var(--ch-text-muted); padding: var(--ch-space-3) var(--ch-space-4) var(--ch-space-1); }
+.divider { height: 1px; background: var(--ch-border); border: 0; margin: var(--ch-space-2) 0; }
+.list-row { display: flex; align-items: center; gap: var(--ch-space-3); padding: var(--ch-space-3) var(--ch-space-4); min-height: 56px; width: 100%; text-align: left; background: none; border: 0; color: inherit; text-decoration: none; }
+.list-row + .list-row, .section-label + .list-row { box-shadow: none; }
+.list-row + .list-row { border-top: 1px solid color-mix(in srgb, var(--ch-border) 60%, transparent); }
+button.list-row, a.list-row, .list-row.clickable { cursor: pointer; transition: background var(--ch-dur-fast) var(--ch-ease); }
+button.list-row:hover, .list-row.clickable:hover { background: var(--ch-hover); }
+.list-row .title { font-weight: var(--ch-fw-semibold); }
+.list-row .sub { font-size: var(--ch-fs-small); color: var(--ch-text-muted); }
+.end-col { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; text-align: right; }
+.chev { color: var(--ch-text-muted); flex: none; }
+.empty { text-align: center; color: var(--ch-text-muted); padding: var(--ch-space-10) var(--ch-space-4); display: flex; flex-direction: column; align-items: center; gap: var(--ch-space-2); }
+.empty .ei { width: 56px; height: 56px; border-radius: 50%; background: var(--ch-surface-2); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 4px; }
+.empty .t { color: var(--ch-text); font-weight: var(--ch-fw-bold); font-size: var(--ch-fs-lead); }
+
+/* ---------------- Money ---------------- */
+.money { font-variant-numeric: var(--ch-numeric); white-space: nowrap; font-weight: var(--ch-fw-semibold); }
+.money.big { font-size: var(--ch-fs-display); font-weight: var(--ch-fw-black); line-height: var(--ch-lh-tight); letter-spacing: var(--ch-ls-money); }
+.money.big .peso { font-size: 0.66em; font-weight: var(--ch-fw-bold); margin-right: 2px; vertical-align: 0.14em; }
+.money.mid { font-size: 20px; font-weight: var(--ch-fw-bold); }
+.tone-income { --tc: var(--ch-income); --tb: var(--ch-income-soft); }
+.tone-charge { --tc: var(--ch-charge); --tb: var(--ch-charge-soft); }
+.tone-withdrawal { --tc: var(--ch-withdrawal); --tb: var(--ch-withdrawal-soft); }
+.tone-payout { --tc: var(--ch-payout); --tb: var(--ch-payout-soft); }
+.tone-opening { --tc: var(--ch-opening); --tb: var(--ch-opening-soft); }
+.tone-success { --tc: var(--ch-success); --tb: var(--ch-success-soft); }
+.tone-warning { --tc: var(--ch-warning); --tb: var(--ch-warning-soft); }
+.tone-danger { --tc: var(--ch-danger); --tb: var(--ch-danger-soft); }
+.tone-info { --tc: var(--ch-info); --tb: var(--ch-info-soft); }
+.tone-neutral { --tc: var(--ch-text-muted); --tb: var(--ch-surface-2); }
+.tone-primary { --tc: var(--ch-primary-text); --tb: var(--ch-primary-soft); }
+.c-income { color: var(--ch-income); } .c-charge { color: var(--ch-charge); } .c-withdrawal { color: var(--ch-withdrawal); }
+.c-payout { color: var(--ch-payout); } .c-opening { color: var(--ch-opening); } .c-danger { color: var(--ch-danger); } .c-warning { color: var(--ch-warning); } .c-success { color: var(--ch-success); }
+
+.tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: var(--ch-radius-pill); font-size: var(--ch-fs-caption); font-weight: var(--ch-fw-bold); line-height: 1.5; white-space: nowrap; flex: none; color: var(--tc); background: var(--tb); }
+.type-icon { flex: none; width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--tc); background: var(--tb); }
+.avatar { flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; color: #fff; font-weight: var(--ch-fw-bold); }
+.avatar-typed { position: relative; flex: none; display: inline-flex; }
+.type-dot { position: absolute; right: -6px; bottom: -6px; width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--tc); color: var(--ch-surface); box-shadow: 0 0 0 2px var(--ch-surface); }
+.rec.void .money { text-decoration: line-through; }
+.rec.void .title { text-decoration: line-through; color: var(--ch-text-muted); }
+.rec.void .type-icon, .rec.void .avatar-typed { opacity: 0.6; }
+
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: var(--ch-space-2); margin-top: var(--ch-space-3); }
+.tile { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: var(--ch-space-2) var(--ch-space-3); border-radius: var(--ch-radius-md); background: var(--ch-surface-2); }
+.card.hero .tile { background: color-mix(in srgb, #fff 16%, transparent); }
+.tile .lbl { font-size: var(--ch-fs-caption); color: var(--ch-text-muted); font-weight: var(--ch-fw-semibold); }
+.card.hero .tile .lbl { color: inherit; opacity: 0.9; }
+.notice { display: flex; gap: var(--ch-space-3); align-items: flex-start; padding: var(--ch-space-3) var(--ch-space-4); border-radius: var(--ch-radius-md); background: var(--tb); color: var(--ch-text); border: 1px solid color-mix(in srgb, var(--tc) 35%, transparent); }
+.notice > svg { flex: none; color: var(--tc); margin-top: 2px; }
+.notice .nt { font-weight: var(--ch-fw-bold); }
+
+/* ---------------- Buttons and form controls ---------------- */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: var(--ch-tap); padding: 0 var(--ch-space-5); border-radius: var(--ch-radius-pill); border: 1px solid transparent; font-weight: var(--ch-fw-semibold); cursor: pointer; text-decoration: none; white-space: nowrap; background: none; color: var(--ch-primary-text); transition: background var(--ch-dur-fast) var(--ch-ease), filter var(--ch-dur-fast) var(--ch-ease); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn.solid { background: var(--ch-primary); color: var(--ch-on-primary); }
+.btn.solid:hover:not(:disabled) { filter: brightness(1.08); }
+.btn.outline { border-color: var(--ch-border-strong); }
+.btn.outline:hover:not(:disabled), .btn.text:hover:not(:disabled) { background: color-mix(in srgb, var(--ch-primary) 10%, transparent); }
+.btn.danger { color: var(--ch-danger); }
+.btn.solid.danger { background: var(--ch-danger); color: var(--ch-surface); }
+.btn.outline.danger { border-color: color-mix(in srgb, var(--ch-danger) 55%, transparent); }
+.btn.big { min-height: 52px; font-size: var(--ch-fs-lead); font-weight: var(--ch-fw-bold); }
+.btn.block { width: 100%; }
+.btn.small { padding: 0 var(--ch-space-3); font-size: var(--ch-fs-small); }
+.btn .count { background: var(--ch-primary); color: var(--ch-on-primary); border-radius: var(--ch-radius-pill); min-width: 20px; height: 20px; padding: 0 6px; font-size: var(--ch-fs-caption); display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: var(--ch-numeric); }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: var(--ch-tap); height: var(--ch-tap); border-radius: 50%; border: 0; background: none; cursor: pointer; color: var(--ch-text); flex: none; }
+.icon-btn:hover { background: var(--ch-pressed); }
+.back-btn { gap: 2px; padding-left: 6px; padding-right: 12px; }
+
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field > .lbl { font-size: var(--ch-fs-small); font-weight: var(--ch-fw-semibold); color: var(--ch-text-muted); }
+.input, .field input[type='text'], .field input[type='password'], .field input[type='email'], .field input[type='search'], .field input[type='number'], .field input[type='date'], .field select, .field textarea {
+  width: 100%; min-height: var(--ch-h-input); padding: 10px 14px; border-radius: var(--ch-radius-md); border: 1px solid var(--ch-border-strong); background: var(--ch-surface); color: var(--ch-text); font-size: var(--ch-fs-lead);
+}
+.field textarea { min-height: 96px; resize: vertical; }
+.field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--ch-primary-text); box-shadow: 0 0 0 1px var(--ch-primary-text); }
+.field .help { font-size: var(--ch-fs-caption); color: var(--ch-text-muted); }
+.field.invalid input { border-color: var(--ch-danger); }
+.input.picker { display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer; }
+.with-prefix { position: relative; display: block; }
+.with-prefix .prefix { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--ch-text-muted); font-size: var(--ch-fs-lead); }
+.with-prefix input { padding-left: 32px !important; font-variant-numeric: var(--ch-numeric); }
+.search { position: relative; }
+.search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--ch-text-muted); }
+.search input { padding-left: 40px !important; }
+.switch-row { display: flex; align-items: center; gap: var(--ch-space-3); padding: var(--ch-space-2) var(--ch-space-4); min-height: 56px; cursor: pointer; }
+.switch { appearance: none; -webkit-appearance: none; flex: none; width: 46px; height: 28px; border-radius: var(--ch-radius-pill); background: var(--ch-border-strong); position: relative; cursor: pointer; transition: background var(--ch-dur-base) var(--ch-ease); margin: 0; }
+.switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform var(--ch-dur-base) var(--ch-ease); }
+.switch:checked { background: var(--ch-primary); }
+.switch:checked::after { transform: translateX(18px); background: var(--ch-on-primary); }
+.switch:checked::after { background: #fff; }
+:root[data-theme='dark'] .switch:checked::after { background: #0f141c; }
+.radio-row { display: flex; align-items: flex-start; gap: var(--ch-space-3); padding: var(--ch-space-3) var(--ch-space-4); min-height: 56px; cursor: pointer; }
+.radio-row input { accent-color: var(--ch-primary); width: 20px; height: 20px; margin: 2px 0 0; flex: none; }
+.check { width: 22px; height: 22px; accent-color: var(--ch-primary); flex: none; }
+.segmented { display: inline-flex; border: 1px solid var(--ch-border-strong); border-radius: var(--ch-radius-pill); overflow: hidden; max-width: 100%; }
+.segmented button { border: 0; background: none; padding: 0 var(--ch-space-4); min-height: 44px; cursor: pointer; font-weight: var(--ch-fw-semibold); color: var(--ch-text-muted); white-space: nowrap; }
+.segmented button + button { border-left: 1px solid var(--ch-border-strong); }
+.segmented button.selected { background: var(--ch-primary-soft); color: var(--ch-primary-text); font-weight: var(--ch-fw-bold); }
+.segmented.full { display: flex; width: 100%; }
+.segmented.full button { flex: 1; padding: 0 6px; }
+
+.chips { display: flex; gap: var(--ch-space-2); overflow-x: auto; padding: 4px 2px 8px; scrollbar-width: thin; }
+.chip { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; border: 1px solid var(--ch-border-strong); background: var(--ch-surface); color: var(--ch-text); border-radius: var(--ch-radius-md); padding: 0 var(--ch-space-3); font-size: 14px; cursor: pointer; white-space: nowrap; position: relative; }
+.chip::after { content: ''; position: absolute; inset: -4px 0; }
+.chip.selected { background: var(--ch-primary-soft); border-color: transparent; font-weight: var(--ch-fw-bold); color: var(--ch-primary-text); }
+.swatches { display: flex; flex-wrap: wrap; gap: var(--ch-space-3); }
+.swatch { width: 44px; height: 44px; border-radius: 50%; border: 0; cursor: pointer; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #fff; }
+.swatch.selected { box-shadow: 0 0 0 3px var(--ch-bg), 0 0 0 5px var(--ch-text); }
+.pending-chip { }
+
+/* ---------------- Tabs ---------------- */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--ch-border); margin-bottom: var(--ch-space-4); }
+.tab { display: inline-flex; align-items: center; gap: 8px; min-height: var(--ch-tap); padding: 0 var(--ch-space-4); border: 0; background: none; cursor: pointer; color: var(--ch-text-muted); font-weight: var(--ch-fw-semibold); border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.tab:hover { color: var(--ch-text); }
+.tab.selected { color: var(--ch-primary-text); border-bottom-color: var(--ch-primary-text); }
+
+/* ---------------- Dialogs ---------------- */
+.scrim { position: absolute; inset: 0; z-index: 100; background: var(--ch-scrim); }
+.scrim-in { position: sticky; top: 0; height: min(100vh, 100%); display: flex; align-items: center; justify-content: center; padding: var(--ch-space-4); }
+.dialog { background: var(--ch-surface); border: 1px solid var(--ch-card-border); border-radius: var(--ch-radius-xl); width: 100%; max-width: var(--ch-w-dialog); max-height: 100%; overflow-y: auto; padding: 22px; display: flex; flex-direction: column; gap: var(--ch-space-3); box-shadow: var(--ch-shadow-3); }
+.dialog h2 { font-size: var(--ch-fs-title); }
+.dialog-actions { display: flex; justify-content: flex-end; gap: var(--ch-space-2); flex-wrap: wrap; margin-top: 4px; }
+.snackbar { position: sticky; bottom: 88px; z-index: 200; height: 0; display: flex; justify-content: center; pointer-events: none; }
+.snackbar > div { position: absolute; bottom: 0; max-width: calc(100% - 32px); background: #2b3140; color: #f1f5f9; padding: 12px 16px; border-radius: var(--ch-radius-md); box-shadow: var(--ch-shadow-2); display: flex; gap: 10px; align-items: center; }
+.skeleton { background: linear-gradient(90deg, var(--ch-surface-2), color-mix(in srgb, var(--ch-surface-2) 60%, var(--ch-surface)), var(--ch-surface-2)); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; border-radius: var(--ch-radius-sm); }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--ch-primary) 25%, transparent); border-top-color: var(--ch-primary); animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .skeleton, .spinner { animation: none; } }
+
+/* ---------------- Screens ---------------- */
+.class-header { display: flex; align-items: center; gap: 14px; }
+.class-name { font-size: 22px; font-weight: var(--ch-fw-bold); line-height: var(--ch-lh-snug); overflow-wrap: anywhere; }
+.class-logo { width: 52px; height: 52px; border-radius: var(--ch-radius-md); background: var(--ch-accent); color: #fff; font-weight: var(--ch-fw-black); display: inline-flex; align-items: center; justify-content: center; flex: none; font-size: 18px; }
+.manage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--ch-space-2); padding: var(--ch-space-3); }
+.manage-grid .btn { justify-content: flex-start; }
+.todo { display: flex; align-items: center; gap: var(--ch-space-3); width: 100%; min-height: 60px; padding: var(--ch-space-3) var(--ch-space-4); border: 0; text-align: left; cursor: pointer; color: inherit; background: none; }
+.todo + .todo { border-top: 1px solid color-mix(in srgb, var(--ch-border) 60%, transparent); }
+.todo:hover { background: var(--ch-hover); }
+.todo .n { min-width: 28px; height: 28px; border-radius: var(--ch-radius-pill); background: var(--ch-primary); color: var(--ch-on-primary); font-weight: var(--ch-fw-bold); display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: var(--ch-numeric); padding: 0 8px; flex: none; }
+.meeting { display: flex; gap: var(--ch-space-3); align-items: flex-start; padding: var(--ch-space-3) var(--ch-space-4); }
+.meeting + .meeting { border-top: 1px solid color-mix(in srgb, var(--ch-border) 60%, transparent); }
+.meeting .time { flex: none; width: 74px; font-variant-numeric: var(--ch-numeric); font-weight: var(--ch-fw-semibold); }
+.meeting.off .cname { text-decoration: line-through; color: var(--ch-text-muted); }
+.week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.day { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; border-radius: var(--ch-radius-md); border: 0; background: none; cursor: pointer; min-height: 62px; color: var(--ch-text); }
+.day:hover { background: var(--ch-hover); }
+.day .dow { font-size: var(--ch-fs-caption); color: var(--ch-text-muted); font-weight: var(--ch-fw-semibold); }
+.day .num { font-size: var(--ch-fs-lead); font-weight: var(--ch-fw-semibold); }
+.day.today .num { color: var(--ch-primary-text); font-weight: var(--ch-fw-black); }
+.day.selected { background: var(--ch-primary-soft); }
+.dots { display: flex; gap: 3px; height: 6px; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--ch-primary-text); }
+.dots i.exam { background: var(--ch-danger); }
+.done-check { width: 32px; height: 32px; flex: none; border-radius: 50%; border: 2px solid var(--ch-border-strong); background: none; color: var(--ch-surface); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; position: relative; }
+.done-check::after { content: ''; position: absolute; inset: -6px; }
+.done-check.on { background: var(--ch-success); border-color: var(--ch-success); }
+.item-done .title { text-decoration: line-through; color: var(--ch-text-muted); }
+
+.tt-wrap { overflow: hidden; }
+.tt { display: grid; grid-template-columns: 52px repeat(6, minmax(0, 1fr)); }
+.tt .th { padding: 8px 4px; text-align: center; font-weight: var(--ch-fw-bold); font-size: var(--ch-fs-small); border-bottom: 1px solid var(--ch-border); }
+.tt .th.today { color: var(--ch-primary-text); }
+.tt .th small { display: block; font-weight: var(--ch-fw-regular); color: var(--ch-text-muted); font-size: var(--ch-fs-caption); }
+.tt .hours { position: relative; }
+.tt .hours span { position: absolute; right: 6px; font-size: var(--ch-fs-caption); color: var(--ch-text-muted); transform: translateY(-50%); font-variant-numeric: var(--ch-numeric); }
+.tt .dcol { position: relative; border-left: 1px solid var(--ch-border); background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 55px, color-mix(in srgb, var(--ch-border) 60%, transparent) 55px, color-mix(in srgb, var(--ch-border) 60%, transparent) 56px); }
+.tt .blk { position: absolute; left: 3px; right: 3px; border-radius: var(--ch-radius-sm); padding: 5px 7px; background: var(--ch-primary-soft); border-left: 3px solid var(--ch-primary-text); font-size: var(--ch-fs-caption); line-height: 1.3; overflow: hidden; color: var(--ch-text); }
+.tt .blk b { display: block; font-size: var(--ch-fs-small); overflow-wrap: anywhere; }
+.tt .blk.off { background: var(--ch-surface-2); border-left-color: var(--ch-text-muted); color: var(--ch-text-muted); }
+.tt .blk.off b { text-decoration: line-through; }
+.tt .dayoff { position: absolute; inset: 4px 3px; border-radius: var(--ch-radius-sm); background: repeating-linear-gradient(135deg, var(--ch-surface-2), var(--ch-surface-2) 8px, color-mix(in srgb, var(--ch-surface-2) 55%, var(--ch-surface)) 8px, color-mix(in srgb, var(--ch-surface-2) 55%, var(--ch-surface)) 16px); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; padding: 12px 6px; text-align: center; font-size: var(--ch-fs-caption); color: var(--ch-text); }
+
+.content-head { display: flex; align-items: center; gap: 8px; padding: 8px 16px 4px; }
+.content-head h3 { font-size: var(--ch-fs-body); font-weight: var(--ch-fw-bold); flex: 1; min-width: 0; }
+.count { font-size: var(--ch-fs-caption); font-weight: var(--ch-fw-bold); color: var(--ch-text-muted); background: var(--ch-surface-2); border-radius: var(--ch-radius-pill); padding: 1px 8px; font-variant-numeric: var(--ch-numeric); }
+.post-body { white-space: pre-line; }
+.proof { height: 120px; border-radius: var(--ch-radius-md); background: repeating-linear-gradient(45deg, var(--ch-surface-2), var(--ch-surface-2) 10px, var(--ch-surface) 10px, var(--ch-surface) 20px); display: flex; align-items: center; justify-content: center; color: var(--ch-text-muted); gap: 8px; border: 1px dashed var(--ch-border-strong); }
+.code { font-family: var(--ch-font-mono); font-size: var(--ch-fs-display); letter-spacing: 6px; font-weight: var(--ch-fw-black); color: var(--ch-primary-text); }
+.perm-card .switch-row { padding-left: 0; padding-right: 0; }
+.stmt-row { display: flex; gap: var(--ch-space-3); align-items: center; padding: var(--ch-space-3) var(--ch-space-4); }
+.stmt-row + .stmt-row { border-top: 1px solid color-mix(in srgb, var(--ch-border) 60%, transparent); }
+.stmt-head { display: flex; gap: var(--ch-space-3); padding: var(--ch-space-2) var(--ch-space-4); font-size: var(--ch-fs-caption); font-weight: var(--ch-fw-bold); color: var(--ch-text-muted); text-transform: uppercase; letter-spacing: var(--ch-ls-label); }
+.stmt-bal { width: 110px; text-align: right; flex: none; }
+.is-phone .stmt-bal { width: auto; }
+
+/* auth */
+.auth { display: grid; grid-template-columns: 1.1fr 1fr; min-height: 780px; }
+.is-phone .auth { display: flex; flex-direction: column; min-height: 780px; }
+.auth-art { background: linear-gradient(160deg, var(--ch-brand), color-mix(in srgb, var(--ch-brand) 62%, #000)); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px; gap: 18px; }
+.is-phone .auth-art { padding: 28px 20px 24px; }
+.auth-art-in { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 14px; }
+.auth-art h1 { font-size: 34px; font-weight: var(--ch-fw-black); }
+.preview-card { background: var(--ch-surface); color: var(--ch-text); border-radius: 18px; padding: 12px 14px; display: flex; gap: 10px; align-items: center; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); max-width: 330px; }
+.preview-card:nth-child(2) { margin-left: 48px; }
+.auth-form { display: flex; align-items: center; justify-content: center; padding: 32px 20px; background: var(--ch-bg); flex: 1; }
+.auth-form > div { width: 100%; max-width: 400px; }
+.class-card { display: flex; align-items: center; gap: var(--ch-space-3); padding: var(--ch-space-4); cursor: pointer; width: 100%; text-align: left; border: 1px solid var(--ch-card-border); color: inherit; }
+.class-card:hover { background: color-mix(in srgb, var(--ch-text) 4%, var(--ch-surface)); }
+.component-grid { display: flex; flex-wrap: wrap; gap: var(--ch-space-3); align-items: center; }
+.swatch-tok { width: 84px; }
+.swatch-tok i { display: block; height: 40px; border-radius: var(--ch-radius-sm); border: 1px solid var(--ch-border); }
+.swatch-tok span { display: block; font-size: 11px; color: var(--ch-text-muted); margin-top: 2px; overflow-wrap: anywhere; }
+.is-wide .snackbar { bottom: 24px; }
+.fab-wrap .fab { right: 16px; }
+</style>
+</head>
+<body>
+<div id="controls"></div>
+<div id="stage"><div id="dev" class="dev"></div></div>
+<script>
+(function () {
+'use strict';
+
+/* ================================================================
+   State
+   ================================================================ */
+const S = {
+  theme: 'light', mode: 'phone', role: 'treasurer', vis: 'OFFICERS',
+  screen: 'signin', params: {}, dialog: null, history: [],
+  accent: '#0F766E', className: 'BSCS 2B',
+  modules: { ledger: true, schedule: true, timetable: true, contents: true, news: true },
+  ui: { filter: 'ALL', sched: 'deadlines', claimsTab: 'waiting', authMode: 'signin', theme: 'SYSTEM' },
+  done: { q3: false, ps5: false, essay: false, lab5: false, mid: false },
+  toast: ''
+};
+const PERMS = ['RECORDS_MANAGE', 'SCHEDULE_MANAGE', 'MEMBERS_MANAGE', 'ROLES_MANAGE', 'CLASS_SETTINGS', 'CONTENTS_MANAGE', 'ANNOUNCEMENTS_MANAGE'];
+const ROLES = {
+  mayor: { label: 'Mayor', name: 'Carlo Dizon', perms: PERMS.slice(), color: '#3730A3' },
+  treasurer: { label: 'Treasurer', name: 'Ana Reyes', perms: ['RECORDS_MANAGE'], color: '#15803D' },
+  secretary: { label: 'Secretary', name: 'Ben Santos', perms: ['SCHEDULE_MANAGE', 'CONTENTS_MANAGE', 'ANNOUNCEMENTS_MANAGE'], color: '#0369A1' },
+  member: { label: 'Member', name: 'Lia Mendoza', perms: [], color: '#6B768A' }
+};
+const me = () => ROLES[S.role];
+const can = (p) => me().perms.indexOf(p) >= 0;
+const isMayor = () => S.role === 'mayor';
+const isOfficer = () => me().perms.length > 0;
+const canSeeAll = () => isMayor() || can('RECORDS_MANAGE') || S.vis === 'EVERYONE' || (S.vis === 'OFFICERS' && isOfficer());
+const VIS_LABEL = { EVERYONE: 'Whole class', OFFICERS: 'Officers only', TREASURERS: 'Treasurers only' };
+
+/* ================================================================
+   Invented data
+   ================================================================ */
+const COURSES = ['CS 201 Data Structures', 'CS 205 Computer Organization', 'MATH 210 Discrete Mathematics', 'ENG 102 Technical Writing', 'PE 2 Fitness Exercises'];
+const LONG_NAME = 'Maria Cristina Alexandra Villanueva-De Los Santos Jr.';
+const OWN = {
+  member: [
+    { d: 'Nov 2', n: 'Carried over from the first semester', t: 'OPENING', c: 2100 },
+    { d: 'Nov 3', n: 'Payment, class fund', t: 'PAYMENT', c: 20000 },
+    { d: 'Nov 5', n: 'Class shirts', t: 'CHARGE', c: -25000 },
+    { d: 'Today', n: 'Printing: CS 201 handouts', t: 'CHARGE', c: -600 }
+  ],
+  treasurer: [
+    { d: 'Nov 3', n: 'Payment, class fund', t: 'PAYMENT', c: 40000 },
+    { d: 'Nov 5', n: 'Class shirts', t: 'CHARGE', c: -25000 },
+    { d: 'Today', n: 'Printing: CS 201 handouts', t: 'CHARGE', c: -600 }
+  ],
+  secretary: [
+    { d: 'Nov 1', n: 'Payment, class fund', t: 'PAYMENT', c: 50000 },
+    { d: 'Nov 5', n: 'Class shirts', t: 'CHARGE', c: -25000 },
+    { d: 'Yesterday', n: 'Refund for the cancelled trip', t: 'WITHDRAWAL', c: -50000 },
+    { d: 'Today', n: 'Printing: CS 201 handouts', t: 'CHARGE', c: -600 }
+  ]
+};
+OWN.mayor = OWN.treasurer;
+const myBalance = () => OWN[S.role].reduce((a, r) => a + r.c, 0);
+const MEMBERS = [
+  { id: 'm1', name: 'Carlo Dizon', role: 'mayor', bal: OWN.mayor.reduce((a, r) => a + r.c, 0) },
+  { id: 'm2', name: 'Ana Reyes', role: 'treasurer', bal: OWN.treasurer.reduce((a, r) => a + r.c, 0) },
+  { id: 'm3', name: 'Ben Santos', role: 'secretary', bal: OWN.secretary.reduce((a, r) => a + r.c, 0) },
+  { id: 'm4', name: 'Lia Mendoza', role: 'member', bal: OWN.member.reduce((a, r) => a + r.c, 0) },
+  { id: 'm5', name: 'Dan Cruz', role: 'member', bal: -4500 },
+  { id: 'm6', name: 'Elena Bautista', role: 'member', bal: 24400 },
+  { id: 'm7', name: 'Francis Aquino', role: 'member', bal: 0 },
+  { id: 'm8', name: 'Grace Villanueva', role: 'member', bal: 7500 },
+  { id: 'm9', name: 'Hector Ramos', role: 'member', bal: -600 },
+  { id: 'm10', name: 'Isabel Navarro', role: 'member', bal: 19400 },
+  { id: 'm11', name: 'Joshua Pascual', role: 'member', bal: -25600 },
+  { id: 'm12', name: LONG_NAME, role: 'member', bal: 0 }
+];
+const memberById = (id) => MEMBERS.find((m) => m.id === id) || MEMBERS[3];
+const REQUESTS = [{ id: 'q1', name: 'Rafael Ocampo', when: 'Today, 8:40 AM' }, { id: 'q2', name: 'Nina Salazar', when: 'Yesterday' }];
+const FUND = { cash: 425000, waiting: 17400 };
+
+const REC = {
+  r1: { id: 'r1', type: 'PAYMENT', who: 'Ana Reyes', c: 20000, note: 'Class fund for November', day: 'Today', time: '9:12 AM', by: 'Ana Reyes' },
+  cprint: { id: 'cprint', type: 'CHARGE', charge: 'cprint', c: -17400, note: 'Printing: CS 201 handouts', day: 'Today', time: '8:05 AM', by: 'Ana Reyes' },
+  r2: { id: 'r2', type: 'WITHDRAWAL', who: 'Ben Santos', c: -50000, note: 'Refund for the cancelled trip', day: 'Yesterday', time: '4:30 PM', by: 'Ana Reyes' },
+  r3: { id: 'r3', type: 'EXPENSE', who: 'Kuya Rey Tailoring', c: -775000, note: 'Settles the Class shirts charge', day: 'Sat, Nov 7', time: '11:00 AM', by: 'Ana Reyes', settles: 'cshirt' },
+  r4: { id: 'r4', type: 'PAYMENT', who: LONG_NAME, c: 15000, note: 'Class fund', day: 'Fri, Nov 6', time: '2:20 PM', by: 'Ana Reyes', voided: { by: 'Ana Reyes', at: 'Nov 6, 2:41 PM', reason: 'Entered twice by mistake' } },
+  cshirt: { id: 'cshirt', type: 'CHARGE', charge: 'cshirt', c: -775000, note: 'Class shirts', day: 'Thu, Nov 5', time: '10:15 AM', by: 'Ana Reyes' },
+  r5: { id: 'r5', type: 'OPENING', who: 'Dan Cruz', c: -4500, note: 'Carried over from the first semester', day: 'Mon, Nov 2', time: '7:50 PM', by: 'Ana Reyes' },
+  r6: { id: 'r6', type: 'OPENING', who: 'Elena Bautista', c: 25000, note: 'Carried over from the first semester', day: 'Mon, Nov 2', time: '7:48 PM', by: 'Ana Reyes' }
+};
+const CHARGES = {
+  cprint: { id: 'cprint', note: 'Printing: CS 201 handouts', course: 'CS 201 Data Structures', per: 600, count: 29, skipped: 3, total: 17400, paid: false, day: 'Today, 8:05 AM', by: 'Ana Reyes' },
+  cshirt: { id: 'cshirt', note: 'Class shirts', course: 'All courses', per: 25000, count: 31, skipped: 0, total: 775000, paid: true, payout: 'r3', day: 'Thu, Nov 5, 10:15 AM', by: 'Ana Reyes' }
+};
+const DAYS = [
+  { day: 'Today', ids: ['r1', 'cprint'] },
+  { day: 'Yesterday', ids: ['r2'] },
+  { day: 'Sat, Nov 7', ids: ['r3'] },
+  { day: 'Fri, Nov 6', ids: ['r4'] },
+  { day: 'Thu, Nov 5', ids: ['cshirt'] },
+  { day: 'Mon, Nov 2', ids: ['r6', 'r5'] }
+];
+const TYPE = {
+  PAYMENT: { tone: 'income', label: 'Payment', icon: 'income' },
+  CHARGE: { tone: 'charge', label: 'Charge', icon: 'charge' },
+  WITHDRAWAL: { tone: 'withdrawal', label: 'Withdrawal', icon: 'withdrawal' },
+  EXPENSE: { tone: 'payout', label: 'Pay-out', icon: 'payout' },
+  OPENING: { tone: 'opening', label: 'Opening balance', icon: 'flag' }
+};
+const FILTERS = [['ALL', 'All'], ['PAYMENT', 'Payments'], ['CHARGE', 'Charges'], ['WITHDRAWAL', 'Withdrawals'], ['EXPENSE', 'Pay-outs'], ['OPENING', 'Opening'], ['VOID', 'Voided']];
+const CLAIMS = [
+  { id: 'k1', who: 'Elena Bautista', c: 20000, method: 'GCash', ref: '8812 345 6789', proof: true, note: 'November class fund', when: 'Today, 7:55 AM' },
+  { id: 'k2', who: 'Grace Villanueva', c: 10000, method: 'Maya', ref: 'MY-55021', proof: false, note: '', when: 'Today, 7:20 AM' },
+  { id: 'k3', who: 'Joshua Pascual', c: 20000, method: 'GCash', ref: '8812 345 6789', proof: true, note: '', when: 'Yesterday', dup: 'Elena Bautista' }
+];
+const ITEMS = [
+  { id: 'lab5', kind: 'Deadline', title: 'Lab report 5', course: 'CS 205', when: 'Mon, Nov 9', dayIdx: 0, overdue: true },
+  { id: 'q3', kind: 'Quiz', title: 'Quiz 3: Stacks and Queues', course: 'CS 201', when: 'Wed, Nov 11', dayIdx: 2 },
+  { id: 'ps5', kind: 'Deadline', title: 'Problem Set 5', course: 'MATH 210', when: 'Fri, Nov 13', dayIdx: 4 },
+  { id: 'essay', kind: 'Deadline', title: 'Technical report draft: a comparison of storage engines for small applications', course: 'ENG 102', when: 'Mon, Nov 16', dayIdx: 7 },
+  { id: 'mid', kind: 'Exam', title: 'Midterm exam', course: 'CS 201', when: 'Fri, Nov 20', dayIdx: 11 }
+];
+const MEETINGS = [
+  { c: 'CS 201', name: 'Data Structures', d: 0, s: 8 * 60, e: 9 * 60 + 30, room: 'Room 301' },
+  { c: 'MATH 210', name: 'Discrete Mathematics', d: 0, s: 10 * 60, e: 11 * 60 + 30, room: 'Room 204' },
+  { c: 'CS 205', name: 'Computer Organization', d: 1, s: 9 * 60, e: 10 * 60 + 30, room: 'Lab 2' },
+  { c: 'ENG 102', name: 'Technical Writing', d: 1, s: 13 * 60, e: 14 * 60 + 30, room: 'Room 105', off: 'Teacher is at a seminar' },
+  { c: 'MATH 210', name: 'Discrete Mathematics', d: 2, s: 10 * 60, e: 11 * 60 + 30, room: 'Room 204' },
+  { c: 'PE 2', name: 'Fitness Exercises', d: 2, s: 15 * 60, e: 17 * 60, room: 'Gym' },
+  { c: 'CS 201', name: 'Data Structures', d: 3, s: 8 * 60, e: 9 * 60 + 30, room: 'Room 301' },
+  { c: 'CS 205', name: 'Computer Organization', d: 3, s: 10 * 60 + 30, e: 12 * 60, room: 'Lab 2' },
+  { c: 'ENG 102', name: 'Technical Writing', d: 4, s: 13 * 60, e: 14 * 60 + 30, room: 'Room 105' },
+  { c: 'CS 205', name: 'Computer Organization', d: 4, s: 9 * 60, e: 10 * 60 + 30, room: 'Lab 2' }
+];
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAY_NUMS = [9, 10, 11, 12, 13, 14];
+const WHOLE_OFF = { d: 4, reason: 'Founding anniversary' };
+const CONTENTS = [
+  { course: 'CS 201 Data Structures', items: [
+    { t: 'slides', n: 'Week 9: Stacks and Queues (slides)', by: 'Ben Santos', d: 'Nov 9', isNew: true },
+    { t: 'pdf', n: 'Reviewer_for_Midterm_CS201_Data_Structures_and_Algorithms_Complete_Version_FINAL.pdf', by: 'Ben Santos', d: 'Nov 8', isNew: true },
+    { t: 'link', n: 'Visualgo: step by step animations', by: 'Carlo Dizon', d: 'Oct 28' }
+  ] },
+  { course: 'MATH 210 Discrete Mathematics', items: [
+    { t: 'pdf', n: 'Problem Set 5', by: 'Ben Santos', d: 'Nov 8', isNew: true },
+    { t: 'video', n: 'Recorded lecture: Graph coloring', by: 'Ana Reyes', d: 'Oct 30' }
+  ] },
+  { course: 'ENG 102 Technical Writing', items: [
+    { t: 'doc', n: 'Report template', by: 'Ben Santos', d: 'Oct 20' }
+  ] },
+  { course: 'CS 205 Computer Organization', items: [] }
+];
+const POSTS = [
+  { id: 'a1', pinned: true, title: 'Midterm week reminders', by: 'Ben Santos', when: 'Mon, Nov 9', body: 'The midterm exam in CS 201 is on Friday, Nov 20, at 8:00 AM in Room 301.\nBring a pen, a valid ID and a calculator. Phones stay in your bag.\nThe reviewer is in Contents under CS 201.' },
+  { id: 'a2', pinned: false, title: 'Please bring your valid school ID to the library card validation drive at the Student Services Building this Friday afternoon', by: 'Ben Santos', when: 'Sun, Nov 8', body: 'The library is validating cards from 1:00 PM to 4:00 PM this Friday. Bring your school ID. Bring the printed enrollment form if you have it.' },
+  { id: 'a3', pinned: false, title: 'Class photo on Friday', by: 'Carlo Dizon', when: 'Thu, Nov 5', body: 'Wear the class shirt. We meet at the quadrangle at 12:30 PM.' }
+];
+const SEEN = ['Ana Reyes', 'Ben Santos', 'Carlo Dizon', 'Elena Bautista', 'Francis Aquino', 'Grace Villanueva', 'Isabel Navarro', 'Joshua Pascual'];
+const NOT_SEEN = ['Lia Mendoza', 'Dan Cruz', 'Hector Ramos', LONG_NAME];
+const PERM_INFO = {
+  RECORDS_MANAGE: ['Manage the ledger', 'Add and void records, decide payment claims, set who sees balances'],
+  SCHEDULE_MANAGE: ['Manage the schedule', 'Deadlines, quizzes, exams, the timetable and no-classes marks'],
+  MEMBERS_MANAGE: ['Manage members', 'Approve join requests, remove members, assign roles, new invite code'],
+  ROLES_MANAGE: ['Manage roles', 'Create, edit and delete roles'],
+  CLASS_SETTINGS: ['Class settings', 'Name, color, modules and courses'],
+  CONTENTS_MANAGE: ['Manage contents', 'Add and remove class content links'],
+  ANNOUNCEMENTS_MANAGE: ['Manage announcements', 'Post, edit, pin and delete announcements']
+};
+const NOTIFS = [
+  ['New deadline, quiz or exam', 'When one is posted for a course you take', true],
+  ['Due tomorrow', 'The evening before, if you have not marked it done', true],
+  ['No classes', 'When a class or a whole day is cancelled', true],
+  ['New announcement', 'When an officer posts one', true],
+  ['Payment claim sent', 'Officers who manage the ledger', true],
+  ['Claim confirmed or rejected', 'When the Treasurer decides your claim', true],
+  ['Join request', 'Officers who manage members', true],
+  ['Request approved', 'When you are let into a class', true],
+  ['You owe', 'At most once a week while you owe the class', false]
+];
+
+/* ================================================================
+   Small helpers
+   ================================================================ */
+const AV = ['#0f766e', '#4f46e5', '#be185d', '#b4400f', '#1d4ed8', '#7e22ce', '#475569', '#15803d'];
+const hash = (s) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; };
+const initials = (n) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+const avatar = (n, size) => { size = size || 40; return `<span class="avatar" aria-hidden="true" style="width:${size}px;height:${size}px;background:${AV[hash(n) % AV.length]};font-size:${Math.round(size * 0.36)}px">${initials(n)}</span>`; };
+const fmt = (c) => { const a = Math.abs(c); return String(Math.floor(a / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + String(a % 100).padStart(2, '0'); };
+const money = (c, o) => { o = o || {}; const neg = c < 0; const sg = neg ? '−' : (o.plus && c > 0 ? '+' : ''); return `<span class="money${o.big ? ' big' : ''}${o.mid ? ' mid' : ''}${o.cls ? ' ' + o.cls : ''}">${sg}<span class="peso">₱</span>${fmt(c)}</span>`; };
+const ICON = {
+  home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10',
+  ledger: 'M3 7a2 2 0 0 1 2-2h13v3M3 7v11a2 2 0 0 0 2 2h15V8H5a2 2 0 0 1-2-1M16 14h2',
+  schedule: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
+  contents: 'M4 5h6l2 2h8v12H4z',
+  members: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M17 11a2.5 2.5 0 1 0 0-5M17.5 14c2.2.4 3.5 2.4 3.5 6',
+  news: 'M4 10v4h3l7 4V6L7 10zM17 9a4 4 0 0 1 0 6',
+  plus: 'M12 5v14M5 12h14', back: 'M15 5l-7 7 7 7', chev: 'M9 5l7 7-7 7', check: 'M5 12.5l4.5 4.5L19 7.5', x: 'M6 6l12 12M18 6L6 18',
+  sliders: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 5v4M6 15v4', user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4 3.6-7 8-7s8 3 8 7',
+  pdf: 'M7 3h7l5 5v13H7zM14 3v5h5M10 14h6M10 17h4', doc: 'M7 3h7l5 5v13H7zM14 3v5h5M10 14h6M10 17h6',
+  link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
+  slides: 'M3 5h18v11H3zM12 16v4M8 20h8', video: 'M3 6h13v12H3zM16 10l5-3v10l-5-3',
+  search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4', pin: 'M9 4h6l-1 6 3 3H7l3-3zM12 13v7',
+  clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2', alert: 'M12 3l10 18H2zM12 10v5M12 18h.01',
+  info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01', lock: 'M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3',
+  eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+  printer: 'M7 9V4h10v5M7 17H4v-7h16v7h-3M7 14h10v6H7z', download: 'M12 4v11M7 11l5 5 5-5M5 20h14',
+  camera: 'M4 8h4l2-3h4l2 3h4v11H4zM12 10.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z',
+  income: 'M18 6L7 17M7 8v9h9', charge: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6', withdrawal: 'M7 17L18 6M9 6h9v9',
+  payout: 'M4 14v6h16v-6M12 16V4M7 9l5-5 5 5', flag: 'M5 21V4M5 5h12l-2 4 2 4H5', ban: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM6 6l12 12',
+  trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13', edit: 'M4 20l1-5L16 4l4 4L9 19zM14 6l4 4', logout: 'M10 4H5v16h5M15 8l4 4-4 4M19 12H9',
+  bell: 'M6 17V11a6 6 0 0 1 12 0v6l2 2H4zM10 21h4', phone: 'M8 3h8v18H8zM11 18h2', share: 'M12 3v12M8 7l4-4 4 4M5 13v8h14v-8',
+  list: 'M5 4h14v16H5zM8 9h8M8 13h8M8 17h5', dots: 'M12 6h.01M12 12h.01M12 18h.01', key: 'M8 14a4 4 0 1 1 3.5-6H21v3h-3v3h-3v-3h-3.5A4 4 0 0 1 8 14z',
+  userplus: 'M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM3 20c0-3.6 3-6 7-6M18 8v6M15 11h6', coins: 'M12 4c4 0 7 1.3 7 3s-3 3-7 3-7-1.3-7-3 3-3 7-3zM5 7v5c0 1.7 3 3 7 3s7-1.3 7-3V7M5 12v5c0 1.7 3 3 7 3s7-1.3 7-3v-5',
+  shield: 'M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z', moon: 'M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z', file: 'M7 3h7l5 5v13H7zM14 3v5h5',
+  book: 'M5 4h12a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2zM5 18a2 2 0 0 1 2-2h12', hourglass: 'M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9'
+};
+const ic = (name, size, cls) => `<svg class="${cls || ''}" width="${size || 24}" height="${size || 24}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON[name] || ICON.info}"/></svg>`;
+const LOGO = (size) => `<svg viewBox="0 0 108 108" width="${size || 34}" height="${size || 34}" aria-hidden="true" style="border-radius:${(size || 34) * 0.28}px;flex:none"><rect width="108" height="108" fill="#0f766e"/><path fill="#fff" d="M37,32h9a5,5 0 0,1 5,5v9a5,5 0 0,1 -5,5h-9a5,5 0 0,1 -5,-5v-9a5,5 0 0,1 5,-5z M62,32h9a5,5 0 0,1 5,5v9a5,5 0 0,1 -5,5h-9a5,5 0 0,1 -5,-5v-9a5,5 0 0,1 5,-5z M37,57h9a5,5 0 0,1 5,5v9a5,5 0 0,1 -5,5h-9a5,5 0 0,1 -5,-5v-9a5,5 0 0,1 5,-5z"/><circle cx="66.5" cy="66.5" r="9.5" fill="#99f6e4"/></svg>`;
+
+const attrs = (o) => {
+  let s = '';
+  if (!o) return s;
+  if (o.go) s += ` data-go="${o.go}"`;
+  if (o.dlg) s += ` data-dlg="${o.dlg}"`;
+  if (o.act) s += ` data-act="${o.act}"`;
+  if (o.val !== undefined) s += ` data-val="${o.val}"`;
+  if (o.toast) s += ` data-toast="${o.toast}"`;
+  if (o.back) s += ' data-back="1"';
+  if (o.close) s += ' data-close="1"';
+  return s;
+};
+const btn = (label, o) => {
+  o = o || {};
+  return `<button type="button" class="btn ${o.kind || 'text'}${o.small ? ' small' : ''}${o.big ? ' big' : ''}${o.block ? ' block' : ''}${o.cls ? ' ' + o.cls : ''}"${attrs(o)}${o.aria ? ` aria-label="${o.aria}"` : ''}>${o.icon ? ic(o.icon, o.small ? 18 : 20) : ''}${label}${o.count ? `<span class="count">${o.count}</span>` : ''}</button>`;
+};
+const tag = (text, tone, icon) => `<span class="tag tone-${tone}">${icon ? ic(icon, 14) : ''}${text}</span>`;
+const card = (html, cls) => `<div class="card${cls ? ' ' + cls : ''}">${html}</div>`;
+const sectionHead = (title, action) => `<div class="section-head"><h2>${title}</h2>${action || ''}</div>`;
+const notice = (tone, icon, title, text) => `<div class="notice tone-${tone}" role="note">${ic(icon, 22)}<div>${title ? `<div class="nt">${title}</div>` : ''}<div>${text}</div></div></div>`;
+const roleTag = (rk) => { const r = ROLES[rk]; return `<span class="tag" style="--rc:${r.color};color:color-mix(in srgb,var(--rc) 62%,var(--ch-text));background:color-mix(in srgb,var(--rc) 14%,var(--ch-surface))">${r.label}</span>`; };
+const empty = (icon, title, text, action) => `<div class="empty"><span class="ei">${ic(icon, 28)}</span><div class="t">${title}</div><div>${text}</div>${action || ''}</div>`;
+const field = (label, input, help, cls) => `<label class="field${cls ? ' ' + cls : ''}"><span class="lbl">${label}</span>${input}${help ? `<span class="help">${help}</span>` : ''}</label>`;
+const switchRow = (label, sub, on, extra) => `<label class="switch-row"><span class="grow"><span class="semibold">${label}</span>${sub ? `<span class="muted small" style="display:block">${sub}</span>` : ''}</span><input type="checkbox" class="switch" role="switch" ${on ? 'checked' : ''} ${extra || ''}></label>`;
+const peso = (v) => `<span class="with-prefix"><span class="prefix" aria-hidden="true">₱</span>${v}</span>`;
+const toneOfRec = (r) => TYPE[r.type].tone;
+
+
+/* ================================================================
+   Shell: top bar, sidebar, tabs, bottom nav
+   ================================================================ */
+const SCREENS = {};
+const TABS = [['home', 'Home', 'home', 'Home'], ['ledger', 'Ledger', 'ledger', 'Ledger'], ['schedule', 'Schedule', 'schedule', 'Schedule'], ['contents', 'Contents', 'contents', 'Contents'], ['news', 'Announcements', 'news', 'News'], ['members', 'Members', 'members', 'Members']];
+const tabOn = (id) => id === 'home' || id === 'members' || (id === 'ledger' && S.modules.ledger) || (id === 'schedule' && (S.modules.schedule || S.modules.timetable)) || (id === 'contents' && S.modules.contents) || (id === 'news' && S.modules.news);
+const pend = () => (can('RECORDS_MANAGE') || isMayor() ? CLAIMS.length : 0);
+
+function topbar(title, o) {
+  o = o || {};
+  const back = o.back ? `<button type="button" class="btn text back-btn" data-back="1" aria-label="Back to ${o.backLabel || 'the previous screen'}">${ic('back', 22)}<span>${o.backLabel || 'Back'}</span></button>` : '';
+  return `<header class="topbar"><div class="topbar-in">${back}<h1 class="title">${title}</h1>${o.actions || ''}</div></header>`;
+}
+function sidebar(active) {
+  const cls = (id, name, color, role) => `<button type="button" class="side-item${active === id ? ' active' : ''}" data-go="${id === 'bscs' ? 'home' : 'classes'}"><span class="class-dot" style="background:${color}">${initials(name)}</span><span class="grow">${name}</span></button>`;
+  return `<aside class="sidebar wide-only" aria-label="Classes"><div class="sidebar-in">
+    <div class="brand">${LOGO(34)}ClassHub</div>
+    <div class="side-label">My classes</div>
+    ${cls('bscs', S.className, S.accent)}
+    ${cls('org', 'CS Organization Officers', '#6366F1')}
+    ${cls('it', 'BSIT 1C', '#DB2777')}
+    <button type="button" class="side-item" data-dlg="join"><span class="side-plus">${ic('plus', 16)}</span><span class="grow">Join with a code</span></button>
+    <button type="button" class="side-item" data-go="create"><span class="side-plus">${ic('plus', 16)}</span><span class="grow">Create a class</span></button>
+    <div class="side-spacer"></div>
+    <button type="button" class="side-item${active === 'account' ? ' active' : ''}" data-go="account">${avatar(me().name, 30)}<span class="grow">${me().name}</span></button>
+  </div></aside>`;
+}
+function tabsWide(cur) {
+  return `<nav class="tabs wide-only" aria-label="Class sections">${TABS.filter((t) => tabOn(t[0])).map((t) => `<button type="button" class="tab${t[0] === cur ? ' selected' : ''}" data-act="tab" data-val="${t[0]}"${t[0] === cur ? ' aria-current="page"' : ''}>${ic(t[2], 20)}${t[1]}${t[0] === 'members' && can('MEMBERS_MANAGE') ? `<span class="count">${REQUESTS.length}</span>` : ''}</button>`).join('')}</nav>`;
+}
+function bottomNav(cur) {
+  return `<nav class="bottom-nav phone-only" aria-label="Class sections">${TABS.filter((t) => tabOn(t[0])).map((t) => `<button type="button" class="${t[0] === cur ? 'selected' : ''}" data-act="tab" data-val="${t[0]}"${t[0] === cur ? ' aria-current="page"' : ''}><span class="nav-icon">${ic(t[2], 24)}</span>${t[3]}</button>`).join('')}</nav>`;
+}
+function gearBtn() { return `<button type="button" class="icon-btn" data-go="mine" aria-label="My settings for this class">${ic('sliders', 24)}</button>`; }
+
+/* kind: tab (class tab screen), sub (class subscreen), top (outside a class), auth */
+function frame(kind, title, body, o) {
+  o = o || {};
+  if (kind === 'auth') return `<div class="auth">${body}</div>`;
+  const inClass = kind === 'tab' || kind === 'sub';
+  const fab = o.fab ? `<div class="fab-wrap${kind === 'tab' ? '' : ' no-nav'}"><button type="button" class="fab"${attrs(o.fab)}>${ic('plus', 24)}<span>${o.fab.label}</span></button></div>` : '';
+  let top;
+  if (kind === 'tab') top = topbar(S.className, { back: true, backLabel: 'Classes', actions: gearBtn() });
+  else if (kind === 'sub') top = topbar(title, { back: true, backLabel: o.backLabel || 'Back', actions: o.actions });
+  else top = topbar(title, { back: !!o.back, backLabel: o.backLabel || 'Back', actions: o.actions });
+  return `<div class="app">${sidebar(o.side || (inClass ? 'bscs' : ''))}<div class="main">${top}
+    <main class="page${o.narrow ? ' narrow' : ''}${o.fab ? ' has-fab' : ''}" id="page">${kind === 'tab' ? tabsWide(o.tab) : ''}${body}</main>${fab}${kind === 'tab' ? bottomNav(o.tab) : ''}</div></div>`;
+}
+
+/* ================================================================
+   Sign in and create account
+   ================================================================ */
+SCREENS.signin = { label: 'Sign in', render() {
+  const create = S.ui.authMode === 'create';
+  const art = `<div class="auth-art"><div class="auth-art-in"><div class="row" style="gap:12px">${LOGO(48)}<h1>ClassHub</h1></div>
+    <p style="font-size:18px;opacity:.95">Your class, in one place. Money, schedule and contents, calm and clear.</p>
+    <div class="wide-only" style="display:flex;flex-direction:column;gap:12px;margin-top:12px">
+      <div class="preview-card"><span class="type-icon tone-income">${ic('income', 22)}</span><div><div class="semibold">Payment received</div><div class="muted small">₱200.00 from Ana Reyes</div></div></div>
+      <div class="preview-card"><span class="type-icon tone-primary">${ic('schedule', 22)}</span><div><div class="semibold">Quiz 3 is tomorrow</div><div class="muted small">CS 201 Data Structures</div></div></div>
+    </div></div></div>`;
+  const form = `<div class="auth-form"><div class="stack lg">
+    <div><h1 style="font-size:var(--ch-fs-headline);font-weight:var(--ch-fw-bold)">${create ? 'Create your account' : 'Welcome back'}</h1><p class="muted">${create ? 'It takes a minute. Your classmates will see your name.' : 'Sign in to see your classes.'}</p></div>
+    <div class="stack">
+      ${create ? `<div class="row top">${field('First name', '<input type="text" value="Lia" autocomplete="off">', '', 'grow')}${field('Last name', '<input type="text" value="Mendoza" autocomplete="off">', '', 'grow')}</div>` : ''}
+      ${field('Email', '<input type="email" value="lia.mendoza@example.com" autocomplete="off">')}
+      ${field('Password', '<input type="password" value="password123" autocomplete="off">', create ? 'Use at least 8 characters.' : '')}
+      ${create ? field('Confirm password', '<input type="password" value="password123" autocomplete="off">') : ''}
+    </div>
+    ${btn(create ? 'Create account' : 'Sign in', { kind: 'solid', big: true, block: true, go: 'classes' })}
+    ${create ? '' : `<div class="center">${btn('Forgot your password?', { toast: 'A reset link would be sent to your email.' })}</div>`}
+    <div class="center muted">${create ? 'Already have an account?' : 'New to ClassHub?'} ${btn(create ? 'Sign in' : 'Create account', { act: 'auth', val: create ? 'signin' : 'create' })}</div>
+  </div></div>`;
+  return frame('auth', '', art + form);
+} };
+
+/* ================================================================
+   My classes, create a class
+   ================================================================ */
+function classCard(name, color, meta, role, extra, go) {
+  return `<div class="card ch-accented" style="--ch-accent:${color};padding:0"><button type="button" class="class-card card" style="box-shadow:none;border:0;background:none"${go ? ` data-go="${go}"` : ''}>
+    <span class="class-logo" style="background:${color}">${initials(name)}</span>
+    <span class="grow"><span class="semibold ellipsis" style="font-size:var(--ch-fs-lead)">${name}</span><span class="muted small ellipsis">${meta}</span></span>${role || ''}${go ? ic('chev', 20, 'chev') : ''}</button>${extra || ''}</div>`;
+}
+SCREENS.classes = { label: 'My classes', render() {
+  const body = `<div class="stack lg"><div class="grid-auto">
+    ${classCard(S.className, S.accent, '31 members', roleTag(S.role), pend() ? `<div class="row" style="padding:0 16px 14px 82px">${tag(pend() + ' payment claims waiting', 'warning', 'clock')}</div>` : '', 'home')}
+    ${classCard('CS Organization Officers', '#6366F1', '12 members', roleTag('member'), '', 'home')}
+    ${classCard('BSIT 1C', '#DB2777', 'Sent today, 8:40 AM', tag('Waiting for approval', 'warning', 'hourglass'), `<div class="row" style="padding:0 16px 12px 82px;flex-wrap:wrap">${btn('Cancel request', { kind: 'outline', small: true, danger: false, dlg: 'cancelreq' })}<span class="muted small">An officer has to approve you.</span></div>`, '')}
+  </div>
+  <div class="row wrap">${btn('Join with a code', { kind: 'solid', icon: 'key', dlg: 'join' })}${btn('Create a class', { kind: 'outline', icon: 'plus', go: 'create' })}</div></div>`;
+  return frame('top', 'My classes', body, { actions: `<button type="button" class="icon-btn phone-only" data-go="account" aria-label="Account">${ic('user', 24)}</button>`, side: 'classes' });
+} };
+SCREENS.create = { label: 'Create a class', render() {
+  const body = `<div class="stack lg"><div class="stack">
+    ${field('Class name', '<input type="text" value="BSCS 2B">')}
+    ${field('Description (optional)', '<input type="text" value="Computer Science, section 2B">')}
+    <div class="field"><span class="lbl">Accent color</span>${swatches('#0F766E')}</div>
+    </div>
+    ${notice('info', 'info', '', 'You will be the Mayor. You can invite classmates with a code once the class exists, and you approve each request.')}
+    ${btn('Create class', { kind: 'solid', big: true, block: true, go: 'home', toast: 'Class created. This is only a mock.' })}</div>`;
+  return frame('top', 'Create a class', body, { back: true, backLabel: 'Classes', narrow: true, side: 'classes' });
+} };
+const ACCENTS = ['#0F766E', '#6366F1', '#DB2777', '#EA580C', '#2563EB', '#7C3AED'];
+function swatches(sel, live) {
+  return `<div class="swatches" role="radiogroup" aria-label="Accent color">${ACCENTS.map((h) => `<button type="button" role="radio" aria-checked="${h.toLowerCase() === sel.toLowerCase()}" aria-label="${h}" class="swatch${h.toLowerCase() === sel.toLowerCase() ? ' selected' : ''}" style="background:${h}"${live ? ` data-act="accent" data-val="${h}"` : ''}>${h.toLowerCase() === sel.toLowerCase() ? ic('check', 20) : ''}</button>`).join('')}</div>`;
+}
+
+/* ================================================================
+   Class Home
+   ================================================================ */
+function meetingRow(m, off) {
+  return `<div class="meeting${off ? ' off' : ''}"><div class="time">${hm(m.s)}<div class="muted caption" style="font-weight:400">${hm(m.e)}</div></div>
+    <div class="grow"><div class="cname semibold wrap-any">${m.c} ${m.name}</div><div class="muted small">${m.room}</div>${off ? `<div style="margin-top:4px">${tag('No classes', 'warning', 'ban')} <span class="small">${off}</span></div>` : ''}</div></div>`;
+}
+function hm(min) { const h = Math.floor(min / 60), m = min % 60; const ap = h >= 12 ? 'PM' : 'AM'; const hh = h % 12 === 0 ? 12 : h % 12; return `${hh}:${String(m).padStart(2, '0')} ${ap}`; }
+function balanceHero(withLink) {
+  const b = myBalance();
+  const owe = b < 0;
+  const word = owe ? 'You owe the class' : b > 0 ? 'Credit with the class' : 'All settled';
+  return `<div class="card hero${owe ? ' danger' : ''}"><div class="row"><div class="grow"><div class="soft semibold small">Your balance</div>${money(b, { big: true })}<div class="soft small" style="margin-top:2px">${ic(owe ? 'alert' : 'check', 14)} ${word}</div></div>
+    ${withLink ? `<button type="button" class="btn small outline" style="color:inherit;border-color:color-mix(in srgb,currentColor 55%,transparent)" data-go="statement">My statement</button>` : ''}</div></div>`;
+}
+SCREENS.home = { label: 'Class Home', render() {
+  const officer = isOfficer();
+  const header = card(`<div class="class-header"><span class="class-logo">${initials(S.className)}</span><div class="grow"><div class="class-name">${S.className}</div><div class="muted small" style="margin-top:2px">Computer Science, section 2B · 31 members</div><div style="margin-top:6px">${roleTag(S.role)}</div></div></div>`, 'tinted');
+  const todos = [];
+  if (can('MEMBERS_MANAGE')) todos.push(`<button type="button" class="todo" data-act="tab" data-val="members"><span class="n">${REQUESTS.length}</span><span class="grow"><span class="semibold">${REQUESTS.length} join requests waiting</span><span class="muted small" style="display:block">Approve or reject in Members</span></span>${ic('chev', 20, 'chev')}</button>`);
+  if (can('RECORDS_MANAGE')) todos.push(`<button type="button" class="todo" data-go="claims"><span class="n">${CLAIMS.length}</span><span class="grow"><span class="semibold">${CLAIMS.length} payment claims waiting</span><span class="muted small" style="display:block">Confirm or reject in the ledger</span></span>${ic('chev', 20, 'chev')}</button>`);
+  const todoCard = todos.length ? `<section class="stack" style="gap:8px" aria-label="Waiting for you">${sectionHead('Waiting for you')}${card(todos.join(''), 'flush')}</section>` : '';
+  const bal = S.modules.ledger ? `<section class="stack" style="gap:8px" aria-label="Your balance">${balanceHero(true)}</section>` : '';
+  const tt = S.modules.timetable ? `<section class="stack" style="gap:8px" aria-label="Timetable">${sectionHead('Today', `<span class="muted small">Tue, Nov 10</span>`)}${card(`${meetingRow(MEETINGS[2])}${meetingRow(MEETINGS[3], MEETINGS[3].off)}`, 'flush')}
+    ${sectionHead('Tomorrow', `<span class="muted small">Wed, Nov 11</span>`)}${card(`${meetingRow(MEETINGS[4])}${meetingRow(MEETINGS[5])}`, 'flush')}</section>` : '';
+  const up = S.modules.schedule ? `<section class="stack" style="gap:8px" aria-label="Coming up">${sectionHead('Coming up', btn('See all', { go: 'schedule' }))}${card(ITEMS.filter((i) => !i.overdue).slice(0, 3).map(itemRow).join(''), 'flush')}</section>` : '';
+  const pinned = S.modules.news ? `<section class="stack" style="gap:8px" aria-label="Pinned announcement">${sectionHead('Pinned', btn('All announcements', { act: 'tab', val: 'news' }))}${card(`<button type="button" class="list-row" data-go="post:a1"><span class="type-icon tone-primary">${ic('pin', 20)}</span><span class="grow"><span class="title">${POSTS[0].title}</span><span class="sub clamp-2">${POSTS[0].body.split('\n')[0]}</span></span>${ic('chev', 20, 'chev')}</button>`, 'flush')}</section>` : '';
+  const manage = officer ? `<section class="stack" style="gap:8px" aria-label="Manage">${sectionHead('Manage')}${card(`<div class="manage-grid">
+      ${can('RECORDS_MANAGE') ? btn('New record', { kind: 'outline', icon: 'plus', dlg: 'chooser' }) : ''}
+      ${can('SCHEDULE_MANAGE') ? btn('Mark no classes', { kind: 'outline', icon: 'ban', dlg: 'noclass' }) : ''}
+      ${can('ANNOUNCEMENTS_MANAGE') ? btn('New announcement', { kind: 'outline', icon: 'news', go: 'newpost' }) : ''}
+      ${can('MEMBERS_MANAGE') ? btn('Invite code', { kind: 'outline', icon: 'key', dlg: 'invite' }) : ''}
+      ${can('ROLES_MANAGE') ? btn('Roles', { kind: 'outline', icon: 'shield', go: 'roles' }) : ''}
+      ${can('CLASS_SETTINGS') ? btn('Class settings', { kind: 'outline', icon: 'sliders', go: 'settings' }) : can('RECORDS_MANAGE') ? btn('Ledger settings', { kind: 'outline', icon: 'sliders', go: 'settings' }) : ''}
+    </div>`)}</section>` : '';
+  const body = S.mode === 'wide'
+    ? `<div class="cols"><div class="col">${header}${bal}${todoCard}${up}${manage}</div><div class="col">${tt}${pinned}</div></div>`
+    : `<div class="stack lg">${header}${bal}${todoCard}${tt}${up}${pinned}${manage}</div>`;
+  return frame('tab', '', body, { tab: 'home' });
+} };
+function itemRow(i) {
+  const on = S.done[i.id];
+  const tone = i.kind === 'Exam' ? 'danger' : i.kind === 'Quiz' ? 'warning' : 'primary';
+  return `<div class="list-row${on ? ' item-done' : ''}"><button type="button" class="done-check${on ? ' on' : ''}" data-act="done" data-val="${i.id}" aria-pressed="${!!on}" aria-label="Mark ${i.title.split(':')[0]} as done">${on ? ic('check', 18) : ''}</button>
+    <div class="grow"><div class="title wrap-any">${i.title}</div><div class="sub">${i.course} · ${i.when}${i.overdue && !on ? ' ' + tag('Overdue', 'danger', 'alert') : ''}</div></div>${tag(i.kind, tone)}</div>`;
+}
+
+/* ================================================================
+   Ledger
+   ================================================================ */
+function fundCard() {
+  const avail = FUND.cash - FUND.waiting;
+  return card(`<div class="row"><h2 class="grow">Class fund</h2>${tag('Books balanced', 'success', 'check')}</div>
+    <div style="margin-top:8px"><div class="muted small semibold">Cash on hand</div>${money(FUND.cash, { big: true })}</div>
+    <div class="tiles"><div class="tile"><span class="lbl">Waiting to be paid out</span>${money(FUND.waiting, { mid: true })}</div><div class="tile"><span class="lbl">Available cash</span>${money(avail, { mid: true })}</div></div>`);
+}
+function chargeTag(c) { return c.paid ? tag('Paid out', 'success', 'check') : tag('Not yet paid out', 'warning', 'clock'); }
+function recRow(r) {
+  const T = TYPE[r.type];
+  const voided = !!r.voided;
+  const person = r.type === 'PAYMENT' || r.type === 'WITHDRAWAL' || r.type === 'OPENING';
+  const lead = person ? `<span class="avatar-typed tone-${T.tone}">${avatar(r.who, 40)}<span class="type-dot">${ic(T.icon, 12)}</span></span>` : `<span class="type-icon tone-${T.tone}">${ic(T.icon, 22)}</span>`;
+  const title = r.type === 'CHARGE' ? r.note : r.who;
+  let sub = r.type === 'CHARGE' ? `Charge · ${CHARGES[r.charge].count} students x ₱${fmt(CHARGES[r.charge].per)}` : r.type === 'EXPENSE' ? `Pay-out · ${r.note}` : `${T.label} · ${r.note}`;
+  const end = `${money(r.c, { plus: true, cls: 'c-' + T.tone })}${voided ? tag('Voided', 'neutral', 'ban') : r.type === 'CHARGE' ? chargeTag(CHARGES[r.charge]) : ''}`;
+  const go = r.type === 'CHARGE' ? 'charge:' + r.charge : 'record:' + r.id;
+  return `<button type="button" class="list-row rec${voided ? ' void' : ''}" data-go="${go}">${lead}<span class="grow"><span class="title wrap-any" style="display:block">${title}</span><span class="sub clamp-2" style="display:block">${sub}</span>${voided ? `<span class="small c-danger" style="display:block">Voided: ${r.voided.reason}</span>` : ''}</span><span class="end-col">${end}</span></button>`;
+}
+function filterIds(ids) {
+  const f = S.ui.filter;
+  return ids.filter((id) => { const r = REC[id]; return f === 'ALL' || (f === 'VOID' ? !!r.voided : r.type === f); });
+}
+function ledgerActions() {
+  const managers = can('RECORDS_MANAGE') || isMayor();
+  return `<div class="row wrap">${managers ? btn('Claims', { kind: 'solid', icon: 'list', go: 'claims', count: CLAIMS.length }) : btn('I paid', { kind: 'solid', icon: 'coins', go: 'pay' })}
+    ${managers ? btn('Payment info', { kind: 'outline', icon: 'info', go: 'pay' }) : ''}${btn('My statement', { kind: 'outline', icon: 'doc', go: 'statement' })}${canSeeAll() ? btn('Export CSV', { kind: 'outline', icon: 'download', toast: 'The ledger would download as a CSV file.' }) : ''}</div>`;
+}
+SCREENS.ledger = { label: 'Ledger (full view)', render() {
+  const managers = can('RECORDS_MANAGE') || isMayor();
+  if (!canSeeAll()) return limitedLedger();
+  const chips = `<div class="chips" role="group" aria-label="Filter records">${FILTERS.map((f) => `<button type="button" class="chip${S.ui.filter === f[0] ? ' selected' : ''}" data-act="filter" data-val="${f[0]}" aria-pressed="${S.ui.filter === f[0]}">${f[1]}</button>`).join('')}</div>`;
+  const groups = DAYS.map((g) => { const ids = filterIds(g.ids); return ids.length ? `<div class="section-label">${g.day}</div>${ids.map((id) => recRow(REC[id])).join('')}` : ''; }).join('');
+  const list = groups ? card(groups, 'flush') : card(empty('ledger', 'No records match', 'Try another filter.', btn('Show all', { kind: 'outline', act: 'filter', val: 'ALL' })));
+  const own = card(`<div class="muted small semibold">Your balance</div>${money(myBalance(), { mid: true, cls: myBalance() < 0 ? 'c-danger' : '' })}${myBalance() < 0 ? `<div class="small c-danger">${ic('alert', 14)} You owe the class</div>` : ''}`);
+  const body = `<div class="stack lg">${S.mode === 'wide' ? `<div class="cols"><div class="stack">${fundCard()}${own}</div><div class="stack">${ledgerActions()}</div></div>` : `${fundCard()}${own}${ledgerActions()}`}
+    <section class="stack" style="gap:4px" aria-label="Records">${sectionHead('Records')}${chips}${list}</section></div>`;
+  return frame('tab', '', body, { tab: 'ledger', fab: managers ? { label: 'New record', dlg: 'chooser' } : null });
+} };
+function limitedLedger() {
+  const vis = S.vis === 'TREASURERS' ? 'the Treasurer' : 'officers';
+  const chargeRows = Object.values(CHARGES).map((c) => `<button type="button" class="list-row" data-go="charge:${c.id}"><span class="type-icon tone-charge">${ic('charge', 22)}</span><span class="grow"><span class="title wrap-any" style="display:block">${c.note}</span><span class="sub" style="display:block">${c.count} students x ₱${fmt(c.per)} · ${c.id === 'cprint' ? 'Today' : 'Nov 5'}</span></span><span class="end-col">${money(c.total, { cls: 'c-charge' })}${chargeTag(c)}</span></button>`).join('');
+  const payouts = ['r3'].map((id) => recRow(REC[id])).join('');
+  const mine = OWN[S.role].slice().reverse().map((r) => { const T = TYPE[r.t]; return `<button type="button" class="list-row" data-go="statement"><span class="type-icon tone-${T.tone}">${ic(T.icon, 22)}</span><span class="grow"><span class="title wrap-any" style="display:block">${r.n}</span><span class="sub" style="display:block">${T.label} · ${r.d}</span></span><span class="end-col">${money(r.c, { plus: true, cls: 'c-' + T.tone })}</span></button>`; }).join('');
+  const lead = `${balanceHero(false)}${fundCard()}${notice('info', 'lock', 'Other balances are private', `In this class, only ${vis} can see other students' balances. You see your own records, the fund totals and the pay-outs from the fund.`)}`;
+  const lists = `${ledgerActions()}<section class="stack" style="gap:8px">${sectionHead('Your records')}${card(mine, 'flush')}</section>
+    <section class="stack" style="gap:8px">${sectionHead('Charges', `<span class="muted small">Names are not shown</span>`)}${card(chargeRows, 'flush')}</section>
+    <section class="stack" style="gap:8px">${sectionHead('Pay-outs from the fund')}${card(payouts, 'flush')}</section>`;
+  const body = S.mode === 'wide' ? `<div class="cols"><div class="col stack">${lead}</div><div class="col">${lists}</div></div>` : `<div class="stack lg">${lead}${lists}</div>`;
+  return frame('tab', '', body, { tab: 'ledger' });
+}
+SCREENS['ledger-limited'] = SCREENS.ledger;
+
+/* ================================================================
+   Record details, charge details
+   ================================================================ */
+const detail = (k, v) => `<div class="row top" style="padding:6px 0"><span class="muted small" style="width:96px;flex:none">${k}</span><span class="grow wrap-any">${v}</span></div>`;
+const managerOnly = (perm, body) => (can(perm) || isMayor() ? body : '');
+SCREENS.record = { label: 'Record details', render() {
+  const r = REC[S.params.id] || REC.r1;
+  if (r.type === 'CHARGE') return SCREENS.charge.render(r.charge);
+  const T = TYPE[r.type];
+  const person = r.type !== 'EXPENSE';
+  const void_ = r.voided;
+  const head = card(`<div class="row"><span class="type-icon tone-${T.tone}" style="width:48px;height:48px">${ic(T.icon, 26)}</span><div class="grow"><div class="muted small semibold">${T.label}</div><div class="semibold wrap-any" style="font-size:var(--ch-fs-lead)${void_ ? ';text-decoration:line-through' : ''}">${r.who}</div></div>${money(r.c, { plus: true, mid: true, cls: 'c-' + T.tone + (void_ ? ' struck' : '') })}</div>
+    ${void_ ? `<div style="margin-top:10px">${notice('danger', 'ban', 'Voided', `Voided by ${r.voided.by} on ${r.voided.at}.<br>Reason: ${r.voided.reason}<br><span class="muted small">This record stays in the list and is left out of every total.</span>`)}</div>` : ''}
+    <hr class="divider" style="margin-top:12px">
+    ${detail('Date', `${r.day}, ${r.time}`)}${detail('Note', r.note)}${detail('Recorded by', `${r.by}, ${r.day} ${r.time}`)}
+    ${r.settles ? detail('Settles', btn('Class shirts (charge)', { kind: 'outline', small: true, go: 'charge:' + r.settles })) : ''}
+    ${r.type === 'PAYMENT' && !void_ ? detail('Claim', 'Created from a payment claim') : ''}`);
+  const notes = r.type === 'EXPENSE' ? notice('info', 'info', '', 'Voiding this pay-out makes the charge "Not yet paid out" again, so it can be paid out once more.') : '';
+  const actions = !void_ && (can('RECORDS_MANAGE') || isMayor()) ? `<div class="stack">${notes}${btn('Void this record', { kind: 'outline', danger: true, cls: 'danger', icon: 'ban', block: true, dlg: r.type === 'EXPENSE' ? 'voidpayout' : 'void' })}<p class="muted small center">Records are never deleted. A voided record keeps its reason, who voided it and when.</p></div>` : '';
+  void person;
+  return frame('sub', 'Record details', `<div class="stack lg">${head}${actions}</div>`, { narrow: true, backLabel: 'Ledger' });
+} };
+SCREENS.charge = { label: 'Charge details', render(forcedId) {
+  const id = typeof forcedId === 'string' ? forcedId : (S.params.id || 'cprint');
+  const c = CHARGES[id] || CHARGES.cprint;
+  const mgr = can('RECORDS_MANAGE') || isMayor();
+  const head = card(`<div class="row top"><span class="type-icon tone-charge" style="width:48px;height:48px">${ic('charge', 26)}</span><div class="grow"><div class="muted small semibold">Charge to students</div><div class="semibold wrap-any" style="font-size:var(--ch-fs-lead)">${c.note}</div></div>${chargeTag(c)}</div>
+    <div style="margin:12px 0 4px" class="muted small semibold">Total</div>${money(c.total, { big: true, cls: 'c-charge' })}
+    <p class="small" style="margin-top:4px">₱${fmt(c.per)} x ${c.count} students = ₱${fmt(c.total)}${c.skipped ? `, ${c.skipped} skipped` : ''}</p>
+    <hr class="divider">${detail('Course', c.course)}${detail('Date', c.day)}${detail('Recorded by', c.by)}${c.paid ? detail('Pay-out', `₱${fmt(c.total)} paid to Kuya Rey Tailoring`) : ''}`);
+  let actions = '';
+  if (mgr) {
+    actions = c.paid
+      ? `<div class="stack">${notice('warning', 'lock', 'This charge has been paid out', 'To void the whole charge, void its pay-out first.')}${btn('Void the whole charge', { kind: 'outline', icon: 'ban', block: true, cls: 'danger', dlg: 'voidcharge' }).replace('<button', '<button disabled')}${btn('Go to the pay-out', { kind: 'outline', block: true, go: 'record:' + c.payout })}</div>`
+      : `<div class="stack">${btn('Record pay-out', { kind: 'solid', icon: 'payout', block: true, big: true, go: 'form-payout' })}${btn('Void the whole charge', { kind: 'outline', icon: 'ban', block: true, cls: 'danger', dlg: 'voidcharge' })}<p class="muted small center">Voiding removes the charge and every student share in one step.</p></div>`;
+  }
+  const names = canSeeAll()
+    ? `<section class="stack" style="gap:8px">${sectionHead(`Per student (${c.count})`)}${card(MEMBERS.slice(0, 7).map((m) => `<div class="list-row">${avatar(m.name, 36)}<span class="grow wrap-any">${m.name}</span>${money(-c.per, { cls: 'c-charge' })}</div>`).join('') + `<div class="list-row muted">and ${c.count - 7} more students</div>`, 'flush')}</section>`
+    : notice('info', 'lock', 'Names are private', 'You can see what was charged and the total. Which students were charged is only shown to people who can see every balance.');
+  return frame('sub', 'Charge details', `<div class="stack lg">${head}${actions}${names}</div>`, { narrow: true, backLabel: 'Ledger' });
+} };
+
+/* ================================================================
+   Forms
+   ================================================================ */
+const memberSelect = (sel) => `<select aria-label="Student">${MEMBERS.filter((m) => m.id !== 'm12').map((m) => `<option${m.name === sel ? ' selected' : ''}>${m.name}</option>`).join('')}<option>${LONG_NAME}</option></select>`;
+const dateField = () => field('Date', '<input type="date" value="2026-11-10">');
+const saveBar = (label, toast, go) => `<div class="stack">${btn(label, { kind: 'solid', big: true, block: true, back: true, toast })}${btn('Cancel', { kind: 'outline', block: true, back: true })}</div>`;
+SCREENS['form-payment'] = { label: 'Form: Payment', render() {
+  return frame('sub', 'Payment', `<div class="stack lg"><div class="stack">${field('Student', memberSelect('Elena Bautista'))}
+    ${field('Amount', peso('<input type="text" inputmode="decimal" value="200.00">'))}${dateField()}${field('Note (optional)', '<input type="text" value="Class fund for November">')}</div>
+    ${notice('info', 'info', 'Balance after this payment', `Elena Bautista would have ${money(24400 + 20000)}. This is only information.`)}
+    ${saveBar('Save payment', 'Payment saved. This is only a mock.')}</div>`, { narrow: true, backLabel: 'Ledger' });
+} };
+SCREENS['form-withdrawal'] = { label: 'Form: Withdrawal', render() {
+  return frame('sub', 'Withdrawal', `<div class="stack lg"><div class="stack">${field('Student', memberSelect('Ben Santos'))}
+    ${field('Amount', peso('<input type="text" inputmode="decimal" value="500.00">'))}${dateField()}${field('Note (optional)', '<input type="text" value="Refund for the cancelled trip">')}</div>
+    ${notice('warning', 'alert', 'Ben Santos would owe the class', `Balance after this withdrawal: ${money(-25600)}. A withdrawal can be larger than what a student has in. Nothing is blocked.`)}
+    ${saveBar('Save withdrawal', 'Withdrawal saved. This is only a mock.')}</div>`, { narrow: true, backLabel: 'Ledger' });
+} };
+SCREENS['form-charge'] = { label: 'Form: Charge students', render() {
+  return frame('sub', 'Charge students', `<div class="stack lg"><div class="stack">${field('What is it for?', '<input type="text" value="Printing: CS 201 handouts">')}
+    ${field('Charge students taking', `<select><option>All students</option>${COURSES.map((c, i) => `<option${i === 0 ? ' selected' : ''}>${c}</option>`).join('')}</select>`, 'Students who do not take the course are skipped.')}
+    ${field('Amount for each student', peso('<input type="text" inputmode="decimal" value="6.00">'))}${dateField()}</div>
+    ${card(`<div class="muted small semibold">Preview</div><div class="semibold" style="font-size:var(--ch-fs-lead);margin-top:2px"><span class="money">₱6.00</span> x 29 students = <span class="money">₱174.00</span>, 3 skipped</div><div class="muted small" style="margin-top:4px">Each student's balance goes down by ₱6.00. A student who has less than that will owe the class.</div>`, 'tinted')}
+    <div class="card flush">${switchRow('Also record the pay-out now', 'Pays the total out of the fund right away', true, 'data-reveal="payto"')}<div id="payto" style="padding:0 16px 14px">${field('Paid to', '<input type="text" value="Rizal Printing Shop">')}</div></div>
+    ${saveBar('Charge 29 students', 'Charge saved. This is only a mock.')}</div>`, { narrow: true, backLabel: 'Ledger' });
+} };
+SCREENS['form-payout'] = { label: 'Form: Pay out from fund', render() {
+  return frame('sub', 'Pay out from fund', `<div class="stack lg"><div class="stack">${field('Charge to pay out', `<select><option selected>Printing: CS 201 handouts – ₱174.00</option></select>`, 'A pay-out settles exactly one charge, for its full total.')}
+    ${field('Amount', peso('<input type="text" value="174.00" readonly>'))}${field('Paid to', '<input type="text" value="Rizal Printing Shop">')}${dateField()}${field('Note (optional)', '<input type="text" value="Receipt no. 4471">')}</div>
+    ${notice('info', 'info', 'Cash on hand after this pay-out', `${money(FUND.cash - FUND.waiting)}. This is only information. A pay-out is never blocked by the cash on hand.`)}
+    ${saveBar('Save pay-out', 'Pay-out saved. This is only a mock.')}</div>`, { narrow: true, backLabel: 'Ledger' });
+} };
+SCREENS['form-opening'] = { label: 'Form: Opening balance', render() {
+  return frame('sub', 'Opening balance', `<div class="stack lg"><div class="stack">${field('Student', memberSelect('Dan Cruz'))}
+    ${field('Amount', peso('<input type="text" inputmode="decimal" value="-45.00">'), 'May be negative. Use a negative amount if the student owed the class before.')}${dateField()}${field('Note (optional)', '<input type="text" value="Carried over from the first semester">')}</div>
+    ${notice('warning', 'alert', 'Check the old books first', 'Opening balances only match the real fund when every earlier charge has been paid out. 1 charge is still waiting to be paid out in this class.')}
+    ${saveBar('Save opening balance', 'Opening balance saved. This is only a mock.')}</div>`, { narrow: true, backLabel: 'Ledger' });
+} };
+
+/* ================================================================
+   Payment claims
+   ================================================================ */
+const PAYINFO = 'Send to Ana Reyes, GCash 0917 123 4567.\nAfter sending, tap "I paid" and enter the reference number from your receipt.';
+SCREENS.pay = { label: 'Pay the class (payment info)', render() {
+  const info = card(`<div class="row"><span class="type-icon tone-income">${ic('coins', 22)}</span><h2 class="grow">Where to pay</h2></div><p class="post-body" style="margin-top:10px">${PAYINFO}</p><div style="margin-top:14px">${btn('I paid', { kind: 'solid', big: true, block: true, icon: 'check', go: 'claim' })}</div>`);
+  const mine = card(`<div class="list-row"><span class="type-icon tone-warning">${ic('hourglass', 22)}</span><span class="grow"><span class="title" style="display:block">GCash · ref 7765 210 034</span><span class="sub" style="display:block">Sent today, 8:15 AM</span><span style="display:block;margin-top:4px">${tag('Waiting for the Treasurer', 'warning', 'clock')}</span></span><span class="end-col">${money(10000)}${btn('Cancel claim', { kind: 'text', small: true, cls: 'danger', dlg: 'cancelclaim' })}</span></div>
+    <div class="list-row"><span class="type-icon tone-success">${ic('check', 22)}</span><span class="grow"><span class="title" style="display:block">GCash · ref 6650 887 120</span><span class="sub" style="display:block">Nov 3</span><span style="display:block;margin-top:4px">${tag('Confirmed', 'success', 'check')}</span></span>${money(20000)}</div>
+    <div class="list-row"><span class="type-icon tone-danger">${ic('x', 22)}</span><span class="grow"><span class="title" style="display:block">Maya · ref MY-1033</span><span class="sub" style="display:block">Oct 30</span><span style="display:block;margin-top:4px">${tag('Rejected', 'danger', 'x')}</span><span class="small c-danger" style="display:block;margin-top:2px">Reason: The reference number does not match a payment.</span></span>${money(5000)}</div>`, 'flush');
+  return frame('sub', 'Pay the class', `<div class="stack lg">${info}<section class="stack" style="gap:8px">${sectionHead('Your claims')}${mine}</section></div>`, { narrow: true, backLabel: 'Ledger' });
+} };
+SCREENS.claim = { label: 'Claim form (I paid)', render() {
+  const methods = ['GCash', 'Maya', 'Bank', 'Other'];
+  return frame('sub', 'I paid', `<div class="stack lg"><div class="stack">${field('Amount you sent', peso('<input type="text" inputmode="decimal" value="200.00">'))}
+    <div class="field"><span class="lbl" id="m-l">Method</span><div class="segmented full" role="group" aria-labelledby="m-l">${methods.map((m, i) => `<button type="button" class="${i === 0 ? 'selected' : ''}" data-act="seg" aria-pressed="${i === 0}">${m}</button>`).join('')}</div></div>
+    ${field('Reference number', '<input type="text" value="8812 345 6789" inputmode="text">', 'Copy it from your GCash or bank receipt.')}
+    <div class="field"><span class="lbl">Screenshot (optional)</span><div class="proof">${ic('camera', 22)}<span>No screenshot attached</span></div><div class="row wrap">${btn('Attach screenshot', { kind: 'outline', icon: 'camera', toast: 'A file picker would open.' })}</div><span class="help">The screenshot is deleted as soon as the Treasurer decides your claim.</span></div>
+    ${field('Note (optional)', '<input type="text" value="November class fund">')}</div>
+    ${saveBar('Send claim', 'Claim sent. It now shows as waiting for the Treasurer.')}</div>`, { narrow: true, backLabel: 'Pay the class' });
+} };
+SCREENS.claims = { label: 'Claims list (Treasurer)', render() {
+  const tab = S.ui.claimsTab;
+  const seg = `<div class="segmented full" role="group" aria-label="Claims">${[['waiting', `Waiting (${CLAIMS.length})`], ['decided', 'Decided']].map((t) => `<button type="button" class="${tab === t[0] ? 'selected' : ''}" data-act="claimsTab" data-val="${t[0]}" aria-pressed="${tab === t[0]}">${t[1]}</button>`).join('')}</div>`;
+  const waiting = CLAIMS.map((k) => card(`<div class="row top">${avatar(k.who, 40)}<div class="grow"><div class="semibold wrap-any">${k.who}</div><div class="muted small">${k.when}</div></div>${money(k.c, { mid: true })}</div>
+    <div class="row wrap" style="margin-top:10px">${tag(k.method, 'info')}<span class="small">Reference <span class="money" style="font-weight:600">${k.ref}</span></span></div>
+    ${k.note ? `<div class="small" style="margin-top:6px">${k.note}</div>` : ''}
+    <div class="row" style="margin-top:10px">${k.proof ? `<span class="tag tone-neutral">${ic('camera', 14)}Screenshot attached</span>` : `<span class="muted small">No screenshot</span>`}</div>
+    ${k.dup ? `<div style="margin-top:10px">${notice('warning', 'alert', 'Same reference number', `${k.dup} sent a claim with this reference number. Check before you confirm.`)}</div>` : ''}
+    <div class="row wrap" style="margin-top:12px">${btn('Confirm', { kind: 'solid', icon: 'check', cls: 'grow', toast: 'Payment recorded. The student is notified.' })}${btn('Reject', { kind: 'outline', icon: 'x', cls: 'danger grow', dlg: 'reject' })}</div>`)).join('');
+  const decided = card(`<div class="list-row"><span class="type-icon tone-success">${ic('check', 22)}</span><span class="grow"><span class="title" style="display:block">Isabel Navarro</span><span class="sub" style="display:block">GCash · Confirmed Nov 9</span></span>${money(30000)}</div>
+    <div class="list-row"><span class="type-icon tone-danger">${ic('x', 22)}</span><span class="grow"><span class="title" style="display:block">Hector Ramos</span><span class="sub" style="display:block">Bank · Rejected Nov 8</span><span class="small c-danger" style="display:block">Reason: No such payment in the account.</span></span>${money(10000)}</div>`, 'flush');
+  const body = `<div class="stack lg">${seg}${tab === 'waiting' ? `<div class="grid-auto">${waiting}</div>` : decided}</div>`;
+  return frame('sub', 'Payment claims', body, { backLabel: 'Ledger', narrow: S.mode === 'phone' });
+} };
+
+/* ================================================================
+   My statement
+   ================================================================ */
+SCREENS.statement = { label: 'My statement', render() {
+  let run = 0;
+  const rows = OWN[S.role].map((r) => { run += r.c; const T = TYPE[r.t]; return { r, run, T }; });
+  const list = rows.map((x) => `<div class="stmt-row"><span class="type-icon tone-${x.T.tone}">${ic(x.T.icon, 22)}</span><span class="grow"><span class="semibold wrap-any" style="display:block">${x.r.n}</span><span class="muted small" style="display:block">${x.T.label} · ${x.r.d}</span></span><span class="end-col">${money(x.r.c, { plus: true, cls: 'c-' + x.T.tone })}<span class="muted caption">Balance ${money(x.run)}</span></span></div>`).join('');
+  const body = `<div class="stack lg">${card(`<div class="row"><div class="grow"><div class="muted small semibold">Statement for</div><div class="semibold" style="font-size:var(--ch-fs-lead)">${me().name}</div><div class="muted small">${S.className} · up to Nov 10, 2026</div></div><div class="end-col"><span class="muted small semibold">Balance now</span>${money(myBalance(), { mid: true })}</div></div>`)}
+    <div class="row wrap">${btn('Print or save as PDF', { kind: 'solid', icon: 'printer', act: 'print' })}${canSeeAll() ? btn('Export CSV', { kind: 'outline', icon: 'download', toast: 'The ledger would download as a CSV file.' }) : ''}</div>
+    ${card(list, 'flush')}<p class="muted small center">Voided records are left out of this statement.</p></div>`;
+  return frame('sub', 'My statement', body, { narrow: true, backLabel: 'Ledger' });
+} };
+
+/* ================================================================
+   Schedule and timetable
+   ================================================================ */
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+function weekStrip() {
+  const sel = S.ui.selDay;
+  return `<div class="week" role="group" aria-label="This week">${WEEKDAYS.map((d, i) => {
+    const its = ITEMS.filter((x) => x.dayIdx === i);
+    return `<button type="button" class="day${i === 1 ? ' today' : ''}${sel === i ? ' selected' : ''}" data-act="day" data-val="${i}" aria-pressed="${sel === i}" aria-label="${d} Nov ${9 + i}${its.length ? ', ' + its.length + ' due' : ''}"><span class="dow">${d}</span><span class="num">${9 + i}</span><span class="dots">${its.map((x) => `<i class="${x.kind === 'Exam' ? 'exam' : ''}"></i>`).join('')}</span></button>`;
+  }).join('')}</div>`;
+}
+function deadlinesView() {
+  const sel = S.ui.selDay;
+  const list = sel === null || sel === undefined ? ITEMS : ITEMS.filter((x) => x.dayIdx === sel);
+  const title = sel === null || sel === undefined ? 'All deadlines' : `${WEEKDAYS[sel]}, Nov ${9 + sel}`;
+  const rows = list.length ? card(list.map(itemRow).join(''), 'flush') : card(empty('schedule', 'Nothing due on this day', 'Pick another day, or tap the day again to see everything.', btn('Show all', { kind: 'outline', act: 'day', val: 'all' })));
+  return `<div class="stack lg">${card(`<div class="row" style="margin-bottom:4px"><h2 class="grow">Week of Nov 9</h2><span class="muted small">Tap a day</span></div>${weekStrip()}`)}<section class="stack" style="gap:8px">${sectionHead(title, `<span class="muted small">${list.length} item${list.length === 1 ? '' : 's'}</span>`)}${rows}</section></div>`;
+}
+const topPx = (min) => ((min - 480) / 60) * 56;
+function timetableView() {
+  const mgr = can('SCHEDULE_MANAGE') || isMayor();
+  const head = `<div class="row wrap">${mgr ? btn('Mark no classes', { kind: 'solid', icon: 'ban', dlg: 'noclass' }) : ''}<span class="muted small grow">Week of Nov 9 · Philippine time</span></div>`;
+  let grid;
+  if (S.mode === 'wide') {
+    const hours = Array.from({ length: 10 }, (_, i) => `<span style="top:${i * 56}px">${hm(480 + i * 60).replace(':00', '')}</span>`).join('');
+    const cols = DAY_NAMES.map((d, di) => {
+      const whole = WHOLE_OFF.d === di;
+      const blocks = whole ? `<div class="dayoff">${tag('No classes', 'warning', 'ban')}<b>${WHOLE_OFF.reason}</b><span class="muted">Whole day</span></div>`
+        : MEETINGS.filter((m) => m.d === di).map((m) => `<div class="blk${m.off ? ' off' : ''}" style="top:${topPx(m.s)}px;height:${((m.e - m.s) / 60) * 56 - 3}px"><b>${m.c}</b>${hm(m.s).replace(' ', '')} – ${hm(m.e).replace(' ', '')}<br>${m.room}${m.off ? `<br>${tag('No classes', 'warning', 'ban')}` : ''}</div>`).join('');
+      return `<div class="dcol" style="height:560px">${blocks}</div>`;
+    }).join('');
+    grid = `<div class="card tt-wrap" style="padding:0"><div class="tt"><div class="th"></div>${DAY_NAMES.map((d, i) => `<div class="th${i === 1 ? ' today' : ''}">${d}<small>Nov ${DAY_NUMS[i]}</small></div>`).join('')}<div class="hours" style="height:560px">${hours}</div>${cols}</div></div>`;
+  } else {
+    grid = DAY_NAMES.map((d, di) => {
+      const whole = WHOLE_OFF.d === di;
+      const ms = MEETINGS.filter((m) => m.d === di);
+      return `<section class="stack" style="gap:8px">${sectionHead(`${d}, Nov ${DAY_NUMS[di]}${di === 1 ? ' (today)' : ''}`)}${whole ? card(`<div class="row">${tag('No classes', 'warning', 'ban')}<span class="semibold">${WHOLE_OFF.reason}</span></div><div class="muted small" style="margin-top:4px">No classes for the whole day.</div>`) : ms.length ? card(ms.map((m) => meetingRow(m, m.off)).join(''), 'flush') : card('<div class="muted center small">No meetings</div>')}</section>`;
+    }).join('');
+    grid = `<div class="stack">${grid}</div>`;
+  }
+  return `<div class="stack lg">${head}${grid}</div>`;
+}
+SCREENS.schedule = { label: 'Schedule (deadlines)', render() {
+  const both = S.modules.schedule && S.modules.timetable;
+  const cur = both ? S.ui.sched : (S.modules.timetable ? 'timetable' : 'deadlines');
+  const seg = both ? `<div class="segmented full" role="group" aria-label="Schedule view" style="margin-bottom:16px;max-width:420px">${[['deadlines', 'Deadlines'], ['timetable', 'Timetable']].map((t) => `<button type="button" class="${cur === t[0] ? 'selected' : ''}" data-act="sched" data-val="${t[0]}" aria-pressed="${cur === t[0]}">${t[1]}</button>`).join('')}</div>` : '';
+  const mgr = can('SCHEDULE_MANAGE') || isMayor();
+  const fab = mgr && cur === 'deadlines' ? { label: 'Add', toast: 'The add form is not part of this mockup.' } : null;
+  return frame('tab', '', seg + (cur === 'deadlines' ? deadlinesView() : timetableView()), { tab: 'schedule', fab });
+} };
+SCREENS.timetable = SCREENS.schedule;
+
+/* ================================================================
+   Contents
+   ================================================================ */
+const TYPE_ICON = { pdf: 'pdf', slides: 'slides', link: 'link', video: 'video', doc: 'doc' };
+SCREENS.contents = { label: 'Contents', render() {
+  const mgr = can('CONTENTS_MANAGE') || isMayor();
+  const cards = CONTENTS.map((c) => `<div class="card flush" style="padding:6px 0 8px"><div class="content-head">${ic('book', 20)}<h3 class="wrap-any">${c.course}</h3><span class="count">${c.items.length}</span></div>
+    ${c.items.length ? c.items.map((i) => `<div class="list-row clickable content-row" data-q="${(i.n + ' ' + c.course).toLowerCase()}" role="link" tabindex="0" data-toast="This would open the link."><span class="type-icon tone-primary">${ic(TYPE_ICON[i.t], 22)}</span><span class="grow"><span class="title wrap-any" style="display:block">${i.n}</span><span class="sub" style="display:block">Added by ${i.by} · ${i.d}</span>${i.isNew ? `<span style="display:block;margin-top:4px">${tag('New this week', 'primary', 'plus')}</span>` : ''}</span>${mgr ? `<button type="button" class="icon-btn" aria-label="More options for ${i.n.slice(0, 30)}" data-toast="Edit and delete would show here.">${ic('dots', 22)}</button>` : ''}</div>`).join('') : `<div class="muted small center" style="padding:18px 16px">Nothing here yet.${mgr ? ' Use Add content.' : ''}</div>`}</div>`).join('');
+  const body = `<div class="stack lg"><div class="field search"><span class="sr-only">Search contents</span>${ic('search', 20)}<input type="search" placeholder="Search contents" data-search="1" aria-label="Search contents"></div>
+    <div class="grid-auto" id="contents-grid">${cards}</div><div id="no-match" hidden>${empty('search', 'No match', 'Try a shorter word or another course.')}</div></div>`;
+  return frame('tab', '', body, { tab: 'contents', fab: mgr ? { label: 'Add content', toast: 'The add form is not part of this mockup.' } : null });
+} };
+
+/* ================================================================
+   Announcements
+   ================================================================ */
+function postRow(p) {
+  return `<button type="button" class="list-row" data-go="post:${p.id}"><span class="type-icon tone-${p.pinned ? 'primary' : 'neutral'}">${ic(p.pinned ? 'pin' : 'news', 20)}</span><span class="grow"><span class="title wrap-any clamp-2" style="display:block">${p.title}</span><span class="sub clamp-2" style="display:block">${p.body.split('\n')[0]}</span><span class="sub" style="display:block;margin-top:2px">${p.by} · ${p.when}${p.pinned ? ' ' + tag('Pinned', 'primary', 'pin') : ''}</span></span>${ic('chev', 20, 'chev')}</button>`;
+}
+SCREENS.news = { label: 'Announcements', render() {
+  const mgr = can('ANNOUNCEMENTS_MANAGE') || isMayor();
+  const ordered = POSTS.slice().sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+  const body = `<div class="stack lg">${card(ordered.map(postRow).join(''), 'flush')}<p class="muted small center">Officers post, members read. There are no comments.</p></div>`;
+  return frame('tab', '', body, { tab: 'news', fab: mgr ? { label: 'New announcement', go: 'newpost' } : null });
+} };
+SCREENS.post = { label: 'Announcement', render() {
+  const p = POSTS.find((x) => x.id === S.params.id) || POSTS[0];
+  const mgr = can('ANNOUNCEMENTS_MANAGE') || isMayor();
+  const seen = mgr ? `<section class="stack" style="gap:8px">${sectionHead('Seen by 24 of 31')}${card(`<div class="row" style="margin-bottom:10px"><div class="grow" style="height:8px;border-radius:999px;background:var(--ch-surface-2);overflow:hidden"><div style="width:77%;height:100%;background:var(--ch-primary)"></div></div><span class="money small">77%</span></div>
+    <div class="section-label" style="padding-left:0">Seen</div>${SEEN.map((n) => `<div class="row" style="padding:6px 0">${avatar(n, 32)}<span class="grow wrap-any">${n}</span><span class="muted small">${ic('check', 14)} Seen</span></div>`).join('')}<div class="muted small" style="padding:4px 0">and 16 more</div>
+    <div class="section-label" style="padding-left:0">Not seen yet (7)</div>${NOT_SEEN.map((n) => `<div class="row" style="padding:6px 0">${avatar(n, 32)}<span class="grow wrap-any">${n}</span></div>`).join('')}<div class="muted small" style="padding:4px 0">and 3 more</div>`)}</section>` : '';
+  const acts = mgr ? `<div class="row wrap">${btn(p.pinned ? 'Unpin' : 'Pin', { kind: 'outline', icon: 'pin', toast: p.pinned ? 'Unpinned.' : 'Pinned to the top.' })}${btn('Edit', { kind: 'outline', icon: 'edit', go: 'newpost' })}${btn('Delete', { kind: 'outline', icon: 'trash', cls: 'danger', dlg: 'deletepost' })}</div>` : '';
+  const body = `<div class="stack lg">${card(`<div class="row" style="margin-bottom:8px">${p.pinned ? tag('Pinned', 'primary', 'pin') : ''}</div><h2 class="wrap-any" style="font-size:var(--ch-fs-headline);line-height:1.25">${p.title}</h2><div class="row" style="margin-top:10px">${avatar(p.by, 32)}<span class="small muted">${p.by} · ${p.when}</span></div><hr class="divider" style="margin:14px 0"><p class="post-body">${p.body}</p>`)}${acts}${seen}</div>`;
+  return frame('sub', 'Announcement', body, { narrow: true, backLabel: 'Announcements' });
+} };
+SCREENS.newpost = { label: 'New announcement', perm: 'ANNOUNCEMENTS_MANAGE', render() {
+  const body = `<div class="stack lg"><div class="stack">${field('Title', '<input type="text" value="Library card validation drive">')}${field('Message', '<textarea>The library validates cards this Friday from 1:00 PM to 4:00 PM. Bring your school ID.</textarea>')}</div>
+    <div class="card flush">${switchRow('Pin to the top', 'Pinned posts stay above newer ones', false)}</div>
+    ${notice('info', 'bell', '', 'The whole class is notified when you post. Members cannot reply.')}
+    ${saveBar('Post announcement', 'Posted. This is only a mock.')}</div>`;
+  return frame('sub', 'New announcement', body, { narrow: true, backLabel: 'Announcements' });
+} };
+
+/* ================================================================
+   Members, member page
+   ================================================================ */
+SCREENS.members = { label: 'Members', render() {
+  const showBal = canSeeAll();
+  const reqs = can('MEMBERS_MANAGE') ? `<section class="stack" style="gap:8px" aria-label="Join requests">${sectionHead(`Join requests (${REQUESTS.length})`)}${card(REQUESTS.map((r) => `<div class="list-row">${avatar(r.name, 40)}<span class="grow"><span class="title" style="display:block">${r.name}</span><span class="sub" style="display:block">Asked ${r.when}</span></span>${btn('Reject', { kind: 'outline', small: true, cls: 'danger', toast: 'Request rejected.' })}${btn('Approve', { kind: 'solid', small: true, toast: 'Approved. They joined as Member.' })}</div>`).join(''), 'flush')}</section>` : '';
+  const rows = MEMBERS.map((m) => `<button type="button" class="list-row" data-go="member:${m.id}">${avatar(m.name, 40)}<span class="grow"><span class="title wrap-any" style="display:block">${m.name}</span><span style="display:block;margin-top:2px">${roleTag(m.role)}</span></span>${showBal ? `<span class="end-col">${money(m.bal, { cls: m.bal < 0 ? 'c-danger' : '' })}${m.bal < 0 ? `<span class="caption c-danger">${ic('alert', 12)} Owes</span>` : ''}</span>` : ''}${ic('chev', 20, 'chev')}</button>`).join('');
+  const list = `<section class="stack" style="gap:8px">${sectionHead('Members (31)')}${card(rows + `<div class="list-row muted">${btn('Show 19 more members', { kind: 'text', toast: 'The rest of the list would load.' })}</div>`, 'flush')}${showBal ? '' : `<p class="muted small" style="padding:0 4px">${ic('lock', 14)} Balances are private in this class.</p>`}</section>`;
+  return frame('tab', '', `<div class="stack lg">${reqs}${list}</div>`, { tab: 'members' });
+} };
+SCREENS.member = { label: 'Member page', render() {
+  const m = memberById(S.params.id || 'm5');
+  const mgr = can('MEMBERS_MANAGE');
+  const self = m.name === me().name;
+  const taken = COURSES.map((c, i) => `<div class="list-row"><span class="grow wrap-any">${c}</span>${i === 4 ? tag('Not taking', 'neutral', 'x') : tag('Taking', 'success', 'check')}</div>`).join('');
+  const body = `<div class="stack lg">${card(`<div class="row" style="gap:16px">${avatar(m.name, 64)}<div class="grow"><h2 class="wrap-any" style="font-size:var(--ch-fs-title)">${m.name}</h2><div style="margin-top:6px">${roleTag(m.role)}</div><div class="muted small" style="margin-top:6px">Joined Oct 5, approved by Carlo Dizon</div></div></div>`)}
+    ${mgr && !self ? card(`<div class="stack">${field('Role', `<select>${Object.keys(ROLES).map((k) => `<option${k === m.role ? ' selected' : ''}>${ROLES[k].label}</option>`).join('')}</select>`)}${btn('Save role', { kind: 'solid', toast: 'Role saved. This is only a mock.' })}</div>`) : ''}
+    ${canSeeAll() ? card(`<div class="row"><div class="grow"><div class="muted small semibold">Balance</div>${money(m.bal, { mid: true, cls: m.bal < 0 ? 'c-danger' : '' })}${m.bal < 0 ? `<div class="small c-danger">${ic('alert', 14)} Owes the class</div>` : ''}</div>${btn('See records', { kind: 'outline', go: 'ledger' })}</div>`) : ''}
+    <section class="stack" style="gap:8px">${sectionHead('Courses taken')}${card(taken, 'flush')}</section>
+    ${mgr && !self ? btn('Remove from class', { kind: 'outline', icon: 'trash', block: true, cls: 'danger', dlg: 'removemember' }) : ''}</div>`;
+  return frame('sub', 'Member', body, { narrow: true, backLabel: 'Members' });
+} };
+
+/* ================================================================
+   Roles, role editor
+   ================================================================ */
+SCREENS.roles = { label: 'Roles', perm: 'ROLES_MANAGE', render() {
+  const counts = { mayor: 7, treasurer: 1, secretary: 3, member: 0 };
+  const rows = Object.keys(ROLES).map((k) => `<button type="button" class="list-row" data-go="role:${k}"><span class="class-dot" style="background:${ROLES[k].color};width:14px;height:14px;border-radius:50%"></span><span class="grow"><span class="title" style="display:block">${ROLES[k].label}</span><span class="sub" style="display:block">${counts[k]} permission${counts[k] === 1 ? '' : 's'}${k === 'mayor' ? ' · locked' : ''}${k === 'member' ? ' · default for new members' : ''}</span></span>${k === 'mayor' ? ic('lock', 18, 'chev') : ''}${ic('chev', 20, 'chev')}</button>`).join('');
+  return frame('sub', 'Roles', `<div class="stack lg">${card(rows, 'flush')}${btn('New role', { kind: 'solid', icon: 'plus', toast: 'The new role form is the role editor.' })}${notice('info', 'info', '', 'An officer is anyone whose role has at least one permission.')}</div>`, { narrow: true, backLabel: 'Home' });
+} };
+SCREENS.role = { label: 'Role editor', perm: 'ROLES_MANAGE', render() {
+  const k = ROLES[S.params.id] ? S.params.id : 'secretary';
+  const r = ROLES[k];
+  const locked = k === 'mayor';
+  const sw = PERMS.map((p) => `<label class="switch-row" style="padding-left:0;padding-right:0"><span class="grow"><span class="semibold">${PERM_INFO[p][0]}</span><span class="muted small" style="display:block">${PERM_INFO[p][1]}</span></span><input type="checkbox" class="switch" role="switch" ${r.perms.indexOf(p) >= 0 ? 'checked' : ''} ${locked ? 'disabled' : ''}></label>`).join('<hr class="divider" style="margin:0">');
+  const body = `<div class="stack lg">${locked ? notice('info', 'lock', 'The Mayor role is locked', 'It always has every permission and cannot be changed or deleted.') : ''}
+    ${card(`<div class="stack">${field('Role name', `<input type="text" value="${r.label}" ${locked ? 'disabled' : ''}>`)}<div class="field"><span class="lbl">Color</span><div class="swatches" role="radiogroup" aria-label="Role color">${['#15803D', '#3730A3', '#BE123C', '#EA580C', '#0369A1', '#A21CAF', '#6B768A'].map((h) => `<button type="button" role="radio" aria-checked="${h.toLowerCase() === r.color.toLowerCase()}" aria-label="${h}" class="swatch${h.toLowerCase() === r.color.toLowerCase() ? ' selected' : ''}" style="background:${h}">${h.toLowerCase() === r.color.toLowerCase() ? ic('check', 20) : ''}</button>`).join('')}</div></div></div>`)}
+    <section class="stack" style="gap:8px">${sectionHead('Permissions')}${card(sw, 'perm-card')}</section>
+    ${locked ? '' : `<div class="stack">${btn('Save role', { kind: 'solid', big: true, block: true, back: true, toast: 'Role saved. This is only a mock.' })}${k === 'member' ? '' : btn('Delete role', { kind: 'outline', block: true, cls: 'danger', toast: 'People with this role would become Members.' })}</div>`}</div>`;
+  return frame('sub', locked ? 'Mayor' : 'Edit role', body, { narrow: true, backLabel: 'Roles' });
+} };
+
+/* ================================================================
+   Class settings, my settings
+   ================================================================ */
+SCREENS.settings = { label: 'Class settings', perm: 'RECORDS_MANAGE|CLASS_SETTINGS', render() {
+  const cs = can('CLASS_SETTINGS') || isMayor();
+  const rm = can('RECORDS_MANAGE') || isMayor();
+  const MODS = [['ledger', 'Ledger', 'Balances, payments and charges'], ['schedule', 'Schedule', 'Deadlines, quizzes and exams'], ['timetable', 'Timetable', 'Weekly meetings and no-classes marks'], ['contents', 'Contents', 'Links and files by course'], ['news', 'Announcements', 'Posts from officers']];
+  const classPart = cs ? `${card(`<div class="stack">${field('Class name', `<input type="text" value="${S.className}">`)}${field('Description', '<input type="text" value="Computer Science, section 2B">')}<div class="field"><span class="lbl">Accent color</span>${swatches(S.accent, true)}<span class="help">Everything in this class uses this color.</span></div></div>`)}
+    <section class="stack" style="gap:8px">${sectionHead('Modules')}<div class="card flush">${MODS.map((m, i) => `${i ? '<hr class="divider" style="margin:0 16px">' : ''}${switchRow(m[1], m[2], S.modules[m[0]], `data-mod="${m[0]}"`)}`).join('')}</div></section>
+    <section class="stack" style="gap:8px">${sectionHead('Courses', btn('Add course', { icon: 'plus', small: true, toast: 'A course name field would open.' }))}${card(COURSES.map((c) => `<div class="list-row"><span class="grow wrap-any">${c}</span><button type="button" class="icon-btn" aria-label="Edit ${c}" data-toast="Rename or delete the course.">${ic('edit', 20)}</button></div>`).join(''), 'flush')}</section>` : '';
+  const ledgerPart = rm ? `<section class="stack" style="gap:8px">${sectionHead('Ledger')}${card(`<div class="semibold" style="padding:0 16px">Who can see balances</div><div class="muted small" style="padding:0 16px 4px">Everyone always sees their own records, the fund totals and the pay-outs. The Mayor always sees everything.</div>${['EVERYONE', 'OFFICERS', 'TREASURERS'].map((v) => `<label class="radio-row"><input type="radio" name="vis" value="${v}" data-vis="1" ${S.vis === v ? 'checked' : ''}><span><span class="semibold">${VIS_LABEL[v]}</span><span class="muted small" style="display:block">${v === 'EVERYONE' ? 'Every member sees every record and balance.' : v === 'OFFICERS' ? 'Anyone whose role has a permission sees them.' : 'Only roles that manage the ledger see them.'}</span></span></label>`).join('')}`, 'flush')}
+    ${card(`<div class="stack">${field('Payment info', `<textarea style="min-height:140px">${PAYINFO}</textarea>`, 'Students see this when they tap "I paid". Plain text only.')}${btn('Save', { kind: 'solid', toast: 'Saved. This is only a mock.' })}</div>`)}</section>` : '';
+  const danger = isMayor() ? `<section class="stack" style="gap:8px">${sectionHead('Danger zone')}${card(`<div class="stack"><p class="small">Deleting the class removes every record, charge and member. It is only allowed when everyone is settled and the fund is empty.</p>${btn('Delete class', { kind: 'outline', icon: 'trash', cls: 'danger', dlg: 'deleteclass' })}</div>`)}</section>` : '';
+  return frame('sub', 'Class settings', `<div class="stack lg">${classPart}${ledgerPart}${danger}</div>`, { narrow: true, backLabel: 'Home' });
+} };
+SCREENS.mine = { label: 'My settings for this class', render() {
+  const body = `<div class="stack lg">${card(`<div class="semibold" style="padding:0 16px">Open on this tab</div>${TABS.map((t, i) => `<label class="radio-row"><input type="radio" name="start" ${i === 0 ? 'checked' : ''}><span class="semibold">${t[1]}</span></label>`).join('')}`, 'flush')}
+    <section class="stack" style="gap:8px">${sectionHead('Courses I take')}${card(COURSES.map((c, i) => `<label class="switch-row"><span class="grow wrap-any">${c}</span><input type="checkbox" class="check" ${i === 4 ? '' : 'checked'} aria-label="${c}"></label>`).join(''), 'flush')}<p class="muted small" style="padding:0 4px">Charges and deadlines only reach students who take the course.</p></section>
+    ${card(switchRow('Pin this class to the top', 'It shows first in My classes', true), 'flush')}</div>`;
+  return frame('sub', 'My settings', body, { narrow: true, backLabel: 'Home' });
+} };
+
+/* ================================================================
+   Account
+   ================================================================ */
+SCREENS.account = { label: 'Account', render() {
+  const th = S.ui.theme;
+  const body = `<div class="stack lg">${card(`<div class="row" style="gap:16px">${avatar(me().name, 64)}<div class="grow"><div class="semibold" style="font-size:var(--ch-fs-lead)">${me().name}</div><div class="muted small ellipsis">${me().name.split(' ')[0].toLowerCase()}.${me().name.split(' ')[1].toLowerCase()}@example.com</div><div style="margin-top:6px">${btn('Change photo', { kind: 'outline', small: true, icon: 'camera', toast: 'A photo picker would open.' })}</div></div></div>`)}
+    ${card(`<div class="stack"><div class="row top">${field('First name', `<input type="text" value="${me().name.split(' ')[0]}">`, '', 'grow')}${field('Last name', `<input type="text" value="${me().name.split(' ')[1]}">`, '', 'grow')}</div>${btn('Save name', { kind: 'solid', toast: 'Saved. This is only a mock.' })}</div>`)}
+    <section class="stack" style="gap:8px">${sectionHead('Appearance')}${card(`<div class="field"><span class="lbl" id="th-l">Theme</span><div class="segmented full" role="group" aria-labelledby="th-l">${[['SYSTEM', 'System'], ['LIGHT', 'Light'], ['DARK', 'Dark']].map((t) => `<button type="button" class="${th === t[0] ? 'selected' : ''}" data-act="theme" data-val="${t[0]}" aria-pressed="${th === t[0]}">${t[1]}</button>`).join('')}</div></div>`)}</section>
+    <section class="stack" style="gap:8px">${sectionHead('Notifications')}<div class="card flush">${NOTIFS.map((n, i) => `${i ? '<hr class="divider" style="margin:0 16px">' : ''}${switchRow(n[0], n[1], n[2])}`).join('')}</div><p class="muted small" style="padding:0 4px">On iPhone, notifications only arrive when ClassHub is added to the home screen.</p></section>
+    ${card(`<div class="row"><span class="type-icon tone-primary">${ic('phone', 22)}</span><div class="grow"><div class="semibold">Get the Android app</div><div class="muted small">Install it for notifications and offline use.</div></div>${btn('Get', { kind: 'outline', small: true, dlg: 'android' })}</div>`)}
+    <div class="stack">${btn('Sign out', { kind: 'outline', icon: 'logout', block: true, go: 'signin' })}${btn('Delete account', { kind: 'text', icon: 'trash', block: true, cls: 'danger', dlg: 'deleteacct' })}</div></div>`;
+  return frame('top', 'Account', body, { back: true, backLabel: 'Classes', narrow: true, side: 'account' });
+} };
+
+/* ================================================================
+   Dialogs
+   ================================================================ */
+const reasonField = (label, help) => `<label class="field"><span class="lbl">${label}</span><textarea data-gate="1" placeholder="Write the reason" aria-required="true"></textarea><span class="help">${help || 'A reason is required.'}</span></label>`;
+const dlg = (title, body, actions) => `<div class="scrim"><div class="scrim-in"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title"><h2 id="dlg-title">${title}</h2>${body}<div class="dialog-actions">${actions}</div></div></div></div>`;
+const cancelBtn = (label) => btn(label || 'Cancel', { kind: 'text', close: true });
+const gated = (label, o) => btn(label, o).replace('<button', '<button disabled data-gated="1"');
+const OPT = (icon, tone, title, sub, go) => `<button type="button" class="list-row" style="border:1px solid var(--ch-border);border-radius:var(--ch-radius-md);min-height:64px" data-close="1" data-go="${go}"><span class="type-icon tone-${tone}">${ic(icon, 22)}</span><span class="grow"><span class="title" style="display:block">${title}</span><span class="sub" style="display:block">${sub}</span></span>${ic('chev', 20, 'chev')}</button>`;
+const DIALOGS = {
+  join: () => dlg('Join with a code', `<p class="muted">Ask your class officers for the code. An officer has to approve your request.</p>${field('Invite code', '<input type="text" value="K7Q2-MX9A" autocapitalize="characters" style="font-family:var(--ch-font-mono);letter-spacing:2px">')}`, `${cancelBtn()}${btn('Send request', { kind: 'solid', close: true, toast: 'Request sent. You will see it as waiting for approval.' })}`),
+  cancelreq: () => dlg('Cancel your request?', '<p>You asked to join BSIT 1C. If you cancel, you can ask again with the code.</p>', `${cancelBtn('Keep request')}${btn('Cancel request', { kind: 'solid', cls: 'danger', close: true, toast: 'Request cancelled.' })}`),
+  chooser: () => dlg('New record', `<div class="stack" style="gap:8px">${OPT('income', 'income', 'Payment', 'A student paid money in', 'form-payment')}${OPT('charge', 'charge', 'Charge students', 'Charge many students at once', 'form-charge')}${OPT('withdrawal', 'withdrawal', 'Withdrawal', 'A student takes money out', 'form-withdrawal')}${OPT('payout', 'payout', 'Pay out from fund', 'Pay a charge to its supplier', 'form-payout')}${OPT('flag', 'opening', 'Opening balance', 'What a student had before the class started', 'form-opening')}</div>`, cancelBtn('Close')),
+  void: () => dlg('Void this payment?', `<p>Ana Reyes, ${money(20000)}. The record stays in the list, crossed out, with your name and this reason. It is left out of every total.</p>${reasonField('Reason for voiding')}<div class="notice tone-warning"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON.alert}"/></svg><div>This cannot be undone.</div></div>`, `${cancelBtn()}${gated('Void record', { kind: 'solid', cls: 'danger', close: true, go: 'record:r4', toast: 'Record voided.' })}`),
+  voidpayout: () => dlg('Void this pay-out?', `<p>${money(775000)} to Kuya Rey Tailoring. The charge "Class shirts" becomes "Not yet paid out" again.</p>${reasonField('Reason for voiding')}`, `${cancelBtn()}${gated('Void pay-out', { kind: 'solid', cls: 'danger', close: true, toast: 'Pay-out voided.' })}`),
+  voidcharge: () => dlg('Void the whole charge?', `<p>"Printing: CS 201 handouts" and all 29 student shares are voided together. Balances go back to what they were.</p>${reasonField('Reason for voiding')}`, `${cancelBtn()}${gated('Void charge', { kind: 'solid', cls: 'danger', close: true, back: true, toast: 'Charge voided.' })}`),
+  reject: () => dlg('Reject this claim?', `<p>Joshua Pascual, ${money(20000)}. The student is told why.</p>${reasonField('Reason for rejecting', 'A reason is required. The student sees it.')}`, `${cancelBtn()}${gated('Reject claim', { kind: 'solid', cls: 'danger', close: true, toast: 'Claim rejected. The student is notified.' })}`),
+  cancelclaim: () => dlg('Cancel this claim?', `<p>Your claim for ${money(10000)} has not been checked yet. You can send a new one later.</p>`, `${cancelBtn('Keep claim')}${btn('Cancel claim', { kind: 'solid', cls: 'danger', close: true, toast: 'Claim cancelled.' })}`),
+  noclass: () => dlg('Mark no classes', `<div class="stack">${field('Date', '<input type="date" value="2026-11-12">')}
+    <div class="field"><span class="lbl" id="nc-l">What is cancelled</span><div class="segmented full" role="group" aria-labelledby="nc-l"><button type="button" class="selected" data-act="seg" aria-pressed="true">One course</button><button type="button" data-act="seg" aria-pressed="false">Whole day</button></div></div>
+    ${field('Course', `<select>${COURSES.map((c) => `<option>${c}</option>`).join('')}</select>`)}${field('Reason (optional)', '<input type="text" value="Teacher is at a seminar">')}</div><p class="muted small">The meeting shows as cancelled and the class is notified.</p>`, `${cancelBtn()}${btn('Mark no classes', { kind: 'solid', close: true, toast: 'Marked. The class is notified.' })}`),
+  invite: () => dlg('Invite code', `<div class="center stack" style="gap:6px"><div class="code">K7Q2MX9A</div><div class="muted small">People who use it still need your approval.</div></div>`, `${btn('New code', { kind: 'text', toast: 'The old code would stop working.' })}${btn('Share', { kind: 'solid', icon: 'share', close: true, toast: 'The invite message was copied.' })}`),
+  deleteclass: () => dlg('Delete this class?', `${notice('danger', 'alert', 'Not possible yet', 'The class can only be deleted when everyone is settled and the fund is empty.')}<ul style="margin:0;padding-left:20px"><li>The fund still has ${money(FUND.cash)}.</li><li>3 students still have a balance other than zero.</li></ul>${field('Type the class name to confirm', `<input type="text" placeholder="${S.className}">`)}`, `${cancelBtn()}${btn('Delete class', { kind: 'solid', cls: 'danger', close: true }).replace('<button', '<button disabled')}`),
+  removemember: () => dlg('Remove Dan Cruz?', '<p>Dan Cruz loses access to the class. Their records stay in the ledger.</p>', `${cancelBtn()}${btn('Remove', { kind: 'solid', cls: 'danger', close: true, back: true, toast: 'Member removed.' })}`),
+  deletepost: () => dlg('Delete this announcement?', '<p>It disappears for everyone. This cannot be undone.</p>', `${cancelBtn()}${btn('Delete', { kind: 'solid', cls: 'danger', close: true, back: true, toast: 'Announcement deleted.' })}`),
+  deleteacct: () => dlg('Delete your account?', `${notice('danger', 'alert', '', 'You will be removed from every class. Your records in classes stay with the class.')}${field('Type your password to confirm', '<input type="password" placeholder="Password">')}`, `${cancelBtn()}${btn('Delete account', { kind: 'solid', cls: 'danger', close: true, go: 'signin' })}`),
+  android: () => dlg('Get the Android app', '<ol style="margin:0;padding-left:20px"><li>Download the APK file.</li><li>Open it and allow installs from this source.</li><li>Sign in with your account.</li></ol><p class="muted small">Updates arrive by themselves after the first install.</p>', `${cancelBtn()}${btn('Download', { kind: 'solid', icon: 'download', close: true, toast: 'The APK would download.' })}`)
+};
+
+/* ================================================================
+   Components page
+   ================================================================ */
+const TOKEN_SWATCHES = ['--ch-bg', '--ch-surface', '--ch-surface-2', '--ch-text', '--ch-text-muted', '--ch-border', '--ch-primary', '--ch-primary-soft', '--ch-income', '--ch-charge', '--ch-withdrawal', '--ch-payout', '--ch-opening', '--ch-success', '--ch-warning', '--ch-danger', '--ch-info'];
+SCREENS.components = { label: 'Components', render() {
+  const sec = (t, html) => `<section class="stack" style="gap:8px">${sectionHead(t)}${html}</section>`;
+  const sw = `<div class="component-grid" style="gap:12px">${TOKEN_SWATCHES.map((t) => `<div class="swatch-tok"><i style="background:var(${t})"></i><span>${t.slice(5)}</span></div>`).join('')}</div>`;
+  const type = card(`<div class="stack" style="gap:6px"><div style="font-size:var(--ch-fs-display);font-weight:800;line-height:1.2">Display 32 / 800</div><div style="font-size:var(--ch-fs-headline);font-weight:700">Headline 24 / 700</div><div style="font-size:var(--ch-fs-title);font-weight:700">Title 20 / 700</div><div style="font-size:var(--ch-fs-lead);font-weight:600">Lead 16 / 600</div><div>Body 15 / 400. The quick brown fox jumps over the lazy dog.</div><div class="small muted">Small 13 / 400, muted</div><div class="caption muted">Caption 12, labels and badges</div><div class="row wrap">${money(123456789, { big: true })}<span class="muted small">tabular figures, never wraps</span></div><div class="money mid">₱1,111.11 ₱8,888.88</div></div>`);
+  const buttons = card(`<div class="component-grid">${btn('Solid', { kind: 'solid' })}${btn('Outline', { kind: 'outline' })}${btn('Text')}${btn('Danger', { kind: 'outline', cls: 'danger' })}${btn('Delete', { kind: 'solid', cls: 'danger' })}${btn('Disabled', { kind: 'solid' }).replace('<button', '<button disabled')}${btn('With icon', { kind: 'solid', icon: 'plus' })}${btn('Claims', { kind: 'solid', count: 3 })}${btn('Small', { kind: 'outline', small: true })}</div><div style="margin-top:12px">${btn('Big block button', { kind: 'solid', big: true, block: true })}</div><div class="row" style="margin-top:12px"><button type="button" class="icon-btn" aria-label="Settings">${ic('sliders', 24)}</button><button type="button" class="fab" style="position:static;box-shadow:var(--ch-shadow-2)">${ic('plus', 24)}<span>New record</span></button></div>`);
+  const inputs = card(`<div class="stack">${field('Text', '<input type="text" value="Elena Bautista">')}${field('Amount', peso('<input type="text" value="1,250.00">'), 'Money uses tabular figures.')}<label class="field invalid"><span class="lbl">With an error</span><input type="text" value="abc" aria-invalid="true"><span class="help c-danger">${ic('alert', 12)} Enter an amount greater than zero.</span></label>${field('Select', '<select><option>CS 201 Data Structures</option></select>')}${field('Textarea', '<textarea>A note for the record</textarea>')}<div class="field search">${ic('search', 20)}<input type="search" placeholder="Search" aria-label="Search sample"></div>
+    <div class="card flush" style="box-shadow:none;border:1px solid var(--ch-border)">${switchRow('Switch on', 'With a short description', true)}${switchRow('Switch off', '', false)}<label class="radio-row"><input type="radio" name="cx" checked><span class="semibold">Radio selected</span></label><label class="radio-row"><input type="radio" name="cx"><span class="semibold">Radio</span></label><label class="switch-row"><span class="grow">Checkbox</span><input type="checkbox" class="check" checked></label></div>
+    <div class="segmented"><button type="button" class="selected" aria-pressed="true">GCash</button><button type="button" aria-pressed="false">Maya</button><button type="button" aria-pressed="false">Bank</button></div>
+    <div class="chips"><button type="button" class="chip selected">All</button><button type="button" class="chip">Payments</button><button type="button" class="chip">Charges</button></div>
+    <div class="swatches">${ACCENTS.map((h, i) => `<button type="button" class="swatch${i === 0 ? ' selected' : ''}" style="background:${h}" aria-label="${h}">${i === 0 ? ic('check', 20) : ''}</button>`).join('')}</div>
+    <button type="button" class="input picker">${avatar('Ana Reyes', 28)}<span class="grow">Ana Reyes</span>${ic('chev', 18)}</button></div>`);
+  const cards = `<div class="grid-auto">${card('<div class="semibold">Plain card</div><div class="muted small">Surface, radius 16, soft shadow.</div>')}${card('<div class="semibold">Tinted card</div><div class="muted small">Used for the class header.</div>', 'tinted')}${card(`<div class="soft small semibold">Hero card</div>${money(12345, { big: true })}`, 'hero')}${card(`<div class="soft small semibold">Hero, owing</div>${money(-3500, { big: true })}`, 'hero danger')}</div>`;
+  const rows = card(`${recRow(REC.r1)}${recRow(REC.cprint)}${recRow(REC.r2)}${recRow(REC.r3)}${recRow(REC.r5)}${recRow(REC.r4)}`, 'flush');
+  const tones = [['income', 'Payment'], ['charge', 'Charge'], ['withdrawal', 'Withdrawal'], ['payout', 'Pay-out'], ['opening', 'Opening'], ['success', 'Paid out'], ['warning', 'Not yet paid out'], ['danger', 'Overdue'], ['info', 'GCash'], ['neutral', 'Voided'], ['primary', 'New this week']];
+  const badges = card(`<div class="component-grid">${tones.map((t) => tag(t[1], t[0], { success: 'check', warning: 'clock', danger: 'alert', neutral: 'ban', primary: 'plus' }[t[0]])).join('')}${roleTag('mayor')}${roleTag('treasurer')}${roleTag('secretary')}${roleTag('member')}</div>`);
+  const notices = `<div class="stack">${notice('info', 'info', 'Information', 'Something worth knowing. Nothing is blocked.')}${notice('warning', 'alert', 'Check this', 'Ben Santos would owe the class ₱256.00.')}${notice('danger', 'ban', 'Voided', 'Voided by Ana Reyes on Nov 6, 2:41 PM.')}${notice('success', 'check', 'Done', 'The payment was recorded.')}</div>`;
+  const dialogSample = `<div class="dialog" role="group" aria-label="Dialog sample" style="max-width:100%"><h2>Void this record?</h2><p>The record stays in the list, crossed out.</p>${reasonField('Reason for voiding')}<div class="dialog-actions">${btn('Cancel')}${btn('Void record', { kind: 'solid', cls: 'danger' })}</div></div>`;
+  const states = `<div class="grid-auto">${card(empty('ledger', 'No records yet', 'Payments and charges show here.', btn('New record', { kind: 'solid', icon: 'plus' })))}${card(`<div class="stack"><div class="row"><span class="spinner" role="status" aria-label="Loading"></span><span class="muted">Loading the ledger</span></div><div class="row"><span class="skeleton" style="width:40px;height:40px;border-radius:50%"></span><div class="grow stack" style="gap:6px"><span class="skeleton" style="height:14px;width:70%"></span><span class="skeleton" style="height:12px;width:45%"></span></div></div><div class="row"><span class="skeleton" style="width:40px;height:40px;border-radius:50%"></span><div class="grow stack" style="gap:6px"><span class="skeleton" style="height:14px;width:55%"></span><span class="skeleton" style="height:12px;width:35%"></span></div></div></div>`)}</div>`;
+  const tabsSample = card(`<nav class="tabs" style="margin-bottom:0" aria-label="Tabs sample"><button type="button" class="tab selected">${ic('home', 20)}Home</button><button type="button" class="tab">${ic('ledger', 20)}Ledger</button><button type="button" class="tab">${ic('schedule', 20)}Schedule</button></nav><div class="snackbar" style="position:static;height:auto;margin-top:12px;display:block"><div style="position:static;display:inline-flex">Payment saved.</div></div>`);
+  return frame('top', 'Components', `<div class="stack lg">${sec('Color tokens', card(sw))}${sec('Type', type)}${sec('Buttons', buttons)}${sec('Inputs and pickers', inputs)}${sec('Cards', cards)}${sec('List rows', rows)}${sec('Badges', badges)}${sec('Notices', notices)}${sec('Dialog', dialogSample)}${sec('Empty and loading states', states)}${sec('Tabs and snackbar', tabsSample)}</div>`, { back: true, backLabel: 'Classes', side: 'account' });
+} };
+
+/* ================================================================
+   Router, rendering, events
+   ================================================================ */
+const dev = document.getElementById('dev');
+const OUTSIDE = ['signin', 'classes', 'create', 'account', 'components'];
+const TAB_IDS = TABS.map((t) => t[0]);
+function allowed(sc) { return !sc.perm || sc.perm.split('|').some((p) => can(p) || isMayor()); }
+function denied() {
+  return frame('sub', 'Not available', card(empty('lock', 'You do not have access', 'Only officers with the matching permission can open this screen. Switch the viewer role in the control bar to see it.', btn('Back to Home', { kind: 'solid', go: 'home' }))), { narrow: true, backLabel: 'Home' });
+}
+function render(keepScroll) {
+  const y = window.scrollY;
+  const sc = SCREENS[S.screen] || SCREENS.home;
+  document.documentElement.dataset.theme = S.theme;
+  dev.className = 'dev ch-accented is-' + S.mode;
+  dev.style.setProperty('--ch-accent', OUTSIDE.indexOf(S.screen) >= 0 ? '#0F766E' : S.accent);
+  let html = allowed(sc) ? sc.render() : denied();
+  if (S.dialog && DIALOGS[S.dialog]) html += DIALOGS[S.dialog]();
+  dev.innerHTML = html;
+  document.title = 'ClassHub v2 mockup';
+  syncControls();
+  if (keepScroll) window.scrollTo(0, y);
+  const d = dev.querySelector('.dialog[role="dialog"]');
+  if (d) { const f = d.querySelector('textarea,input,button'); if (f) f.focus({ preventScroll: true }); }
+  const sch = dev.querySelector('[data-search]');
+  if (sch && S.ui.q) { sch.value = S.ui.q; filterContents(S.ui.q); }
+}
+function go(target, noPush) {
+  const parts = String(target).split(':');
+  if (!noPush && S.screen) S.history.push({ screen: S.screen, params: S.params });
+  S.screen = parts[0];
+  S.params = parts[1] ? { id: parts[1] } : {};
+  S.dialog = null;
+  if (TAB_IDS.indexOf(S.screen) >= 0 || OUTSIDE.indexOf(S.screen) >= 0) S.history = [];
+  render(false);
+  window.scrollTo(0, 0);
+}
+function back() {
+  const h = S.history.pop();
+  if (!h) { go(OUTSIDE.indexOf(S.screen) >= 0 ? 'classes' : 'home', true); return; }
+  S.screen = h.screen; S.params = h.params; S.dialog = null;
+  render(false); window.scrollTo(0, 0);
+}
+function toast(msg) {
+  const old = dev.querySelector('.snackbar'); if (old) old.remove();
+  const el = document.createElement('div');
+  el.className = 'snackbar'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+  el.innerHTML = `<div>${ic('check', 18)}<span>${msg}</span></div>`;
+  dev.appendChild(el);
+  clearTimeout(toast.t); toast.t = setTimeout(() => el.remove(), 3200);
+}
+function filterContents(q) {
+  q = q.trim().toLowerCase();
+  let any = false;
+  dev.querySelectorAll('[data-q]').forEach((r) => { const m = !q || r.dataset.q.indexOf(q) >= 0; r.hidden = !m; if (m) any = true; });
+  const nm = dev.querySelector('#no-match'); if (nm) nm.hidden = any;
+}
+function act(name, val) {
+  if (name === 'tab') { S.screen = val; S.params = {}; S.history = []; S.dialog = null; render(false); window.scrollTo(0, 0); return; }
+  if (name === 'filter') S.ui.filter = val;
+  else if (name === 'sched') S.ui.sched = val;
+  else if (name === 'claimsTab') S.ui.claimsTab = val;
+  else if (name === 'auth') S.ui.authMode = val;
+  else if (name === 'done') S.done[val] = !S.done[val];
+  else if (name === 'day') S.ui.selDay = val === 'all' || S.ui.selDay === +val ? null : +val;
+  else if (name === 'accent') S.accent = val;
+  else if (name === 'theme') { S.ui.theme = val; S.theme = val === 'DARK' ? 'dark' : 'light'; }
+  else if (name === 'print') { toast('The print dialog would open here.'); return; }
+  else if (name === 'seg') return;
+  render(true);
+}
+dev.addEventListener('click', (e) => {
+  const sc = e.target.closest('.scrim-in');
+  if (sc && e.target === sc) { S.dialog = null; render(true); return; }
+  const t = e.target.closest('[data-go],[data-act],[data-dlg],[data-back],[data-close],[data-toast]');
+  if (!t || t.disabled) return;
+  if (t.tagName === 'A') e.preventDefault();
+  if (t.dataset.act === 'seg') { const g = t.parentElement; g.querySelectorAll('button').forEach((b) => { b.classList.toggle('selected', b === t); b.setAttribute('aria-pressed', b === t ? 'true' : 'false'); }); const nc = g.getAttribute('aria-labelledby') === 'nc-l'; if (nc) { const sel = dev.querySelector('.dialog select'); if (sel) sel.closest('label').hidden = t.textContent === 'Whole day'; } return; }
+  if (t.dataset.toast) toast(t.dataset.toast);
+  if (t.dataset.close) { S.dialog = null; if (!t.dataset.go && !t.dataset.back) render(true); }
+  if (t.dataset.back) { back(); return; }
+  if (t.dataset.go) { go(t.dataset.go); return; }
+  if (t.dataset.dlg) { S.dialog = t.dataset.dlg; render(true); return; }
+  if (t.dataset.act) act(t.dataset.act, t.dataset.val);
+});
+dev.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && S.dialog) { S.dialog = null; render(true); return; }
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[role="link"]')) { e.preventDefault(); toast('This would open the link.'); return; }
+  if (e.key === 'Tab' && S.dialog) {
+    const d = dev.querySelector('.dialog[role="dialog"]'); if (!d) return;
+    const f = Array.from(d.querySelectorAll('button,input,select,textarea,a[href]')).filter((x) => !x.disabled && !x.hidden && x.offsetParent !== null);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
+dev.addEventListener('change', (e) => {
+  const t = e.target;
+  if (t.dataset.mod) { S.modules[t.dataset.mod] = t.checked; render(true); }
+  else if (t.dataset.vis) { S.vis = t.value; syncControls(); }
+  else if (t.dataset.reveal) { const el = dev.querySelector('#' + t.dataset.reveal); if (el) el.hidden = !t.checked; }
+});
+dev.addEventListener('input', (e) => {
+  const t = e.target;
+  if (t.dataset.gate) { const b = dev.querySelector('[data-gated]'); if (b) b.disabled = !t.value.trim(); }
+  if (t.dataset.search) { S.ui.q = t.value; filterContents(t.value); }
+});
+
+/* ================================================================
+   Control bar (not part of the design) and jump list
+   ================================================================ */
+const JUMPS = [
+  ['signin', 'Sign in', 'signin', {}, null, { authMode: 'signin' }],
+  ['create-account', 'Create account', 'signin', {}, null, { authMode: 'create' }],
+  ['classes', 'My classes', 'classes'],
+  ['join', 'Join with a code (dialog)', 'classes', {}, 'join'],
+  ['create-class', 'Create a class', 'create'],
+  ['home', 'Class Home', 'home'],
+  ['ledger-full', 'Ledger, full view', 'ledger', {}, null, { filter: 'ALL' }],
+  ['ledger-limited', 'Ledger, limited view (member, officers only)', 'ledger', {}, null, null, { role: 'member', vis: 'OFFICERS' }],
+  ['record', 'Record details', 'record', { id: 'r1' }],
+  ['record-void-dialog', 'Void a record (dialog)', 'record', { id: 'r1' }, 'void'],
+  ['record-voided', 'Voided record', 'record', { id: 'r4' }],
+  ['charge', 'Charge details, not paid out', 'charge', { id: 'cprint' }],
+  ['charge-paid', 'Charge details, paid out', 'charge', { id: 'cshirt' }],
+  ['void-charge-dialog', 'Void a charge (dialog)', 'charge', { id: 'cprint' }, 'voidcharge'],
+  ['form-payment', 'Form: Payment', 'form-payment'],
+  ['form-withdrawal', 'Form: Withdrawal', 'form-withdrawal'],
+  ['form-charge', 'Form: Charge students', 'form-charge'],
+  ['form-payout', 'Form: Pay out from fund', 'form-payout'],
+  ['form-opening', 'Form: Opening balance', 'form-opening'],
+  ['chooser', 'New record chooser (dialog)', 'ledger', {}, 'chooser'],
+  ['pay', 'Pay the class: payment info and my claims', 'pay', {}, null, null, { role: 'member', vis: 'OFFICERS' }],
+  ['claim', 'Claim form (I paid)', 'claim', {}, null, null, { role: 'member', vis: 'OFFICERS' }],
+  ['claims', 'Claims list (Treasurer)', 'claims'],
+  ['reject-dialog', 'Reject a claim (dialog)', 'claims', {}, 'reject'],
+  ['statement', 'My statement', 'statement'],
+  ['schedule', 'Schedule: deadlines', 'schedule', {}, null, { sched: 'deadlines', selDay: null }],
+  ['schedule-day', 'Schedule: empty day selected', 'schedule', {}, null, { sched: 'deadlines', selDay: 1 }],
+  ['timetable', 'Schedule: timetable', 'schedule', {}, null, { sched: 'timetable' }, { role: 'secretary' }],
+  ['noclass-dialog', 'Mark no classes (dialog)', 'schedule', {}, 'noclass', { sched: 'timetable' }, { role: 'secretary' }],
+  ['contents', 'Contents', 'contents'],
+  ['news', 'Announcements', 'news'],
+  ['post', 'Announcement, pinned', 'post', { id: 'a1' }, null, null, { role: 'secretary' }],
+  ['post-long', 'Announcement, long title', 'post', { id: 'a2' }, null, null, { role: 'secretary' }],
+  ['newpost', 'New announcement', 'newpost', {}, null, null, { role: 'secretary' }],
+  ['members', 'Members', 'members', {}, null, null, { role: 'mayor' }],
+  ['members-limited', 'Members, balances hidden (member)', 'members', {}, null, null, { role: 'member', vis: 'OFFICERS' }],
+  ['member', 'Member page', 'member', { id: 'm5' }, null, null, { role: 'mayor' }],
+  ['roles', 'Roles', 'roles', {}, null, null, { role: 'mayor' }],
+  ['role-editor', 'Role editor', 'role', { id: 'secretary' }, null, null, { role: 'mayor' }],
+  ['settings', 'Class settings (Mayor)', 'settings', {}, null, null, { role: 'mayor' }],
+  ['settings-treasurer', 'Class settings (Treasurer: ledger part)', 'settings', {}],
+  ['delete-class', 'Delete class (dialog)', 'settings', {}, 'deleteclass', null, { role: 'mayor' }],
+  ['mine', 'My settings for this class', 'mine'],
+  ['account', 'Account', 'account'],
+  ['components', 'Components', 'components']
+];
+function show(id, opt) {
+  opt = opt || {};
+  const j = JUMPS.find((x) => x[0] === id); if (!j) throw new Error('No screen ' + id);
+  if (opt.theme) S.theme = opt.theme;
+  if (opt.mode) S.mode = opt.mode;
+  S.role = opt.role || (j[6] && j[6].role) || (opt.keepRole ? S.role : 'treasurer');
+  S.vis = opt.vis || (j[6] && j[6].vis) || (opt.keepRole ? S.vis : 'OFFICERS');
+  Object.assign(S.ui, { filter: 'ALL', claimsTab: 'waiting', selDay: null, sched: 'deadlines', q: '' }, j[5] || {});
+  S.modules = { ledger: true, schedule: true, timetable: true, contents: true, news: true };
+  S.accent = '#0F766E';
+  S.history = []; S.screen = j[2]; S.params = j[3] || {}; S.dialog = j[4] || null; S.jump = id;
+  render(false); window.scrollTo(0, 0);
+}
+const ctl = document.getElementById('controls');
+ctl.innerHTML = `<strong>ClassHub 2.0 mockup</strong>
+  <span class="grp" role="group" aria-label="Theme"><button type="button" data-c="theme" data-v="light">Light</button><button type="button" data-c="theme" data-v="dark">Dark</button></span>
+  <span class="grp" role="group" aria-label="Width"><button type="button" data-c="mode" data-v="phone">Phone 390</button><button type="button" data-c="mode" data-v="wide">Desktop 1280</button></span>
+  <label>Viewer <select id="c-role" aria-label="Viewer role">${Object.keys(ROLES).map((k) => `<option value="${k}">${ROLES[k].label} (${ROLES[k].name})</option>`).join('')}</select></label>
+  <label>Balances visible to <select id="c-vis" aria-label="Who can see balances">${Object.keys(VIS_LABEL).map((k) => `<option value="${k}">${VIS_LABEL[k]}</option>`).join('')}</select></label>
+  <label>Screen <select id="c-jump" aria-label="Jump to a screen">${JUMPS.map((j) => `<option value="${j[0]}">${j[1]}</option>`).join('')}</select></label>`;
+function syncControls() {
+  ctl.querySelectorAll('[data-c="theme"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === S.theme)));
+  ctl.querySelectorAll('[data-c="mode"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === S.mode)));
+  document.getElementById('c-role').value = S.role;
+  document.getElementById('c-vis').value = S.vis;
+  if (S.jump) document.getElementById('c-jump').value = S.jump;
+}
+ctl.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-c]'); if (!b) return;
+  if (b.dataset.c === 'theme') S.theme = b.dataset.v;
+  if (b.dataset.c === 'mode') S.mode = b.dataset.v;
+  render(true);
+});
+document.getElementById('c-role').addEventListener('change', (e) => { S.role = e.target.value; render(true); });
+document.getElementById('c-vis').addEventListener('change', (e) => { S.vis = e.target.value; render(true); });
+document.getElementById('c-jump').addEventListener('change', (e) => show(e.target.value, { keepRole: true }));
+
+window.CH = { show, jumps: JUMPS.map((j) => ({ id: j[0], label: j[1], role: j[6] && j[6].role, vis: j[6] && j[6].vis })), state: S };
+show('signin', { keepRole: true });
+})();
+</script>
+</body>
+</html>
