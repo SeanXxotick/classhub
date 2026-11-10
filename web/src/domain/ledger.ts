@@ -24,7 +24,7 @@ export const Ledger = {
    * Effect on the member's own balance. An EXPENSE has no member, so it is 0.
    * OPENING carries a balance in from before: its amount is signed (negative = owes) and it moves the cash by the
    * same amount, so cash on hand still equals all balances plus charges not yet paid out. That is only true to the
-   * real fund when the earlier books had no charge waiting to be paid out, so those are paid out before carrying over.
+   * real fund when the earlier books had no charge waiting to be paid out, so those are paid out before the balances are brought in.
    */
   memberDelta(record: LedgerRecord): number {
     switch (record.type) {

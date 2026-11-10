@@ -22,7 +22,7 @@ Agreed with the project lead on 2026-11-10.
 | Payment claims | Amount, method (GCash, Maya, bank, other), reference number, optional screenshot. The screenshot is deleted when the claim is decided. |
 | Announcements | Officers post, members read. Pins and "Seen by X of Y". No comments. |
 | Timetable | Weekly meetings per course. An officer can mark one course or the whole day as "no classes" on a date, with a reason. |
-| Semesters | A new class each semester. Balances move over as opening balances. |
+| Semesters | A new class each semester, created by hand like any other class. There is no carry-over tool. A records manager enters each student's opening balance. |
 | Notifications | Real push on phone and browser, with a free sender (no Blaze plan). |
 | Android delivery | APK, as now. No Play Store. |
 | Schedule | No fixed date. Release in stages, each one solid before the next. |
@@ -68,7 +68,6 @@ classes/{classId}
     ledgerEnabled, scheduleEnabled, contentsEnabled, announcementsEnabled, timetableEnabled,
     balanceVisibility (EVERYONE|OFFICERS|TREASURERS),
     paymentInfo (text: where to send GCash and so on),
-    archivedAtMillis (0 = active), carriedOverTo (classId or empty),
     icon and color maps, createdAtMillis
 
 classes/{classId}/roles/{roleId}            name, colorHex, permissions, locked
@@ -78,7 +77,7 @@ classes/{classId}/members/{uid}
 classes/{classId}/joinRequests/{uid}
     uid, name, className, joinCode, requestedAtMillis
 classes/{classId}/openingBalances/{uid}
-    amountCentavos (signed), note           (applied as an OPENING record when that student is approved)
+    amountCentavos (signed), note           (written by the go-live import; applied as an OPENING record when that student is approved)
 
 classes/{classId}/records/{id}
     type (PAYMENT|CHARGE|WITHDRAWAL|EXPENSE|OPENING), amountCentavos, memberId, memberName, note,
@@ -121,7 +120,7 @@ clientErrors/{id}                           message, stack, appVersion, platform
 - The forms show the balance that will result, as information only. Nothing is blocked.
 - The security rules do not check balances.
 - What stays: an amount must be greater than zero and at most ₱1,000,000 (a typo guard), every pay-out settles exactly one charge for its total, and the books check must still balance.
-- Deleting a class, starting the next semester and the go-live import are the only steps that look at balances, because they close or move the books.
+- Deleting a class and the go-live import are the only steps that look at balances, because they close or move the books.
 
 ### Balance visibility
 
@@ -196,11 +195,10 @@ Default roles: Mayor (all, locked), Treasurer (`RECORDS_MANAGE`), Secretary (`SC
 - Android shell: ClassHub appears in the share sheet for links; the Add content form opens with the link filled in.
 - Installed web app on Android: the same through the manifest's share target.
 
-### New class each semester
-- **Start next semester** (Mayor): creates a new class copied from the current one (roles, settings, payment info), writes each student's closing balance to the new class's `openingBalances`, and archives the old class.
-- An archived class is read-only (enforced by the rules) and stays in "My classes" under Past classes.
-- Students join the new class with its code; on approval their opening balance is applied.
-- The same `openingBalances` step is used at go-live to bring in the balances from the class spreadsheet.
+### Opening balances
+- A records manager can add an **Opening balance** for a student from the Ledger: the amount the student already had in (or owed) before the class started using ClassHub. It may be negative.
+- At go-live, an admin script writes the balances from the class spreadsheet to `openingBalances`; each one is applied when that student is approved into the class.
+- A new class the next semester is started the same way: create it, share the code, and enter the opening balances.
 
 ## Looking after the app
 
@@ -218,21 +216,20 @@ Each phase ends with all tests passing. Work happens on a `v2` branch against th
 | 0. Prepare | Tag `native-1.3.2`, create `v2`, remove the Kotlin app from the branch, set up CI | Clean branch with CI |
 | 1. Foundation | v2 models, rules and rules tests; domain changes (void, `OPENING`, visibility, summary); join requests; "My classes" query | Data layer and rules done and tested |
 | 2. Design | Tokens and shared components; clickable mockups of Home, Ledger, Schedule, Contents, Members, Account in light and dark, phone and desktop | Mockups approved by the project lead |
-| 3. Rebuild | Every existing screen on the new design and data layer; void with reason; balance visibility; join approval; files split by feature | Feature parity with v1, new look |
+| 3. Rebuild | Every existing screen on the new design and data layer; void with reason; opening balance form; balance visibility; join approval; files split by feature | Feature parity with v1, new look |
 | 4. Shell and offline | Capacitor Android shell, invite links, share target, service worker, update dialog | Installable APK and offline web app |
 | **2.0 go-live** | Wipe test classes (script run by the project lead), deploy rules and site, publish the APK, raise `minVersionCode`, import opening balances | The class starts using it |
 | 5. Payments | Payment claims, statements, CSV export | 2.1 |
 | 6. Notifications | Device tokens, outbox, sender, per-kind switches | 2.2 |
 | 7. Announcements | Feed, pins, seen marks | 2.3 |
 | 8. Timetable | Weekly meetings, "no classes" | 2.4 |
-| 9. Next semester | Start next semester, archived classes | 2.5 |
 
 **Where the strongest model matters:** phases 1 and 5 and the go-live (security rules, money math, live data), and the sender in phase 6. Phases 2, 3, 7 and 8 are mostly screens and are fine on a cheaper model.
 
 ## Testing
 
 - Unit tests (Vitest) for every domain rule, including void, opening balances, the summary totals and the visibility decision.
-- Rules tests for every permission, each visibility setting, join approval, void-once, archived classes and claims.
+- Rules tests for every permission, each visibility setting, join approval, void-once and claims.
 - Browser tests (Playwright on the emulators) for each flow, with several users.
 - Before go-live: a full run on the Oppo A16 with the APK, and on an iPhone browser if a classmate can lend one.
 
@@ -247,7 +244,6 @@ Each phase ends with all tests passing. Work happens on a `v2` branch against th
 ## Open points
 
 1. The Cloudflare Worker sender has to be proven in a small experiment before phase 6 relies on it.
-2. "Start next semester" as described above was designed from the "new class each semester" decision and has not been reviewed in detail.
-3. Payment info is plain text for now; a QR image can be added later if the class wants it.
-4. Opening balances only match the real fund when the earlier books have no charge waiting to be paid out. "Start next semester" and the go-live import must refuse to run until every charge is paid out (or voided).
-5. A pay-out gets a fixed document id made from its charge (`payout-{batchId}`), so two treasurers cannot pay the same charge out twice, and the rules can refuse to void a charge whose pay-out still stands. A replacement after a voided pay-out needs a numbered id; settle the exact scheme with the rules in phase 1.
+2. Payment info is plain text for now; a QR image can be added later if the class wants it.
+3. Opening balances only match the real fund when the earlier books have no charge waiting to be paid out. The go-live import must refuse to run until every charge in the spreadsheet is paid out, and the Opening balance form says the same.
+4. A pay-out gets a fixed document id made from its charge (`payout-{batchId}`), so two treasurers cannot pay the same charge out twice, and the rules can refuse to void a charge whose pay-out still stands. A replacement after a voided pay-out needs a numbered id; settle the exact scheme with the rules in phase 1.

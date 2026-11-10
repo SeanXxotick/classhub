@@ -35,7 +35,7 @@ export const LedgerForms = {
       case 'CHARGE':
         return 'Use the Charge students form for charges.';
       case 'OPENING':
-        return 'Opening balances are added by an officer when a student joins.';
+        return 'Use the Opening balance form for opening balances.';
     }
   },
 

@@ -84,10 +84,6 @@ export interface ClassRoom {
   balanceVisibility: BalanceVisibility;
   /** Where students send money (for example a GCash number), shown next to the I paid button. */
   paymentInfo: string;
-  /** 0 while the class is active. An archived class is read-only. */
-  archivedAtMillis: number;
-  /** The class that continued this one the next semester, or empty. */
-  carriedOverTo: string;
   /** Icon chosen per schedule type (type name to icon key); types not listed use the default icon. */
   scheduleIcons: Record<string, string>;
   /** Color chosen per schedule type (type name to #RRGGBB); others use the default color. */
@@ -227,6 +223,6 @@ export const newContentItem = (c: Partial<ContentItem>): ContentItem => ({
 export const newClassRoom = (c: Partial<ClassRoom>): ClassRoom => ({
   id: '', name: '', description: '', ownerUid: '', accentColor: '#0F766E', inviteCode: '', defaultRoleId: ROLE_MEMBER,
   ledgerEnabled: true, scheduleEnabled: true, contentsEnabled: true, announcementsEnabled: true, timetableEnabled: true,
-  balanceVisibility: 'EVERYONE', paymentInfo: '', archivedAtMillis: 0, carriedOverTo: '', scheduleIcons: {}, scheduleColors: {},
+  balanceVisibility: 'EVERYONE', paymentInfo: '', scheduleIcons: {}, scheduleColors: {},
   contentIcons: {}, contentColors: {}, createdAtMillis: 0, ...c,
 });
