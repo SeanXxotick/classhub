@@ -12,7 +12,7 @@ Agreed with the project lead on 2026-11-10.
 | Native Kotlin app | Tagged `native-1.3.2`, then removed from `main`. |
 | Existing data | Every class and its data is deleted at go-live (they were tests). Sign-in accounts, names and photos are kept. |
 | Data model | A new v2 structure. No compatibility with v1 is needed. |
-| Design | Refine the current look: teal `#0F766E`, the four-tile logo, Roboto, cards. Make it consistent everywhere. |
+| Design | Refine the current look: teal `#0F766E`, the four-tile logo, Roboto, cards. Make it consistent everywhere. The mockups in `design/mockup-v2.html` were shown to the project lead on 2026-11-11 and accepted with one change (indigo and orange accents deepened so white text stays readable): six tabs on the phone, the darker text colors and the grey opening-balance color stay. |
 | Joining | Invite code or link, then an officer with `MEMBERS_MANAGE` approves the request. |
 | Balances | A ledger setting, changed by anyone with `RECORDS_MANAGE`: whole class, officers only, or treasurers only. The Mayor always sees everything. |
 | "Officer" | Anyone whose role has at least one permission. |
@@ -169,6 +169,20 @@ Security rules cannot filter a list, so the queries change with the setting:
 | `ANNOUNCEMENTS_MANAGE` | Post, edit, pin and delete announcements | new |
 
 Default roles: Mayor (all, locked), Treasurer (`RECORDS_MANAGE`), Secretary (`SCHEDULE_MANAGE`, `CONTENTS_MANAGE`, `ANNOUNCEMENTS_MANAGE`), Member (none).
+
+### Decided while writing the rules
+
+- **Nobody edits the role they hold.** Someone with `ROLES_MANAGE` may edit every unlocked role except their own, so they cannot switch on every permission for themselves. The Mayor's role is locked, so the Mayor edits all the others.
+- **An invite document is only `{classId, className}`.** It shows a class name to someone holding the code and nothing else.
+- **Times are checked.** A time written with a record, a void or a request must be within 24 hours before and 10 minutes after the server's clock, so a phone with a wrong date cannot write records dated last year.
+- **Deleting a class cannot be cancelled.** Once `deletingAtMillis` is set it cannot be cleared, and the books are closed for writing from that moment.
+- **Voiding a paid-out charge takes two steps:** void the pay-out (which clears `payoutRecordId`), then void the charge and its shares. The app does both in order and can finish the second step later if it was interrupted.
+- **A charge has at most 497 students in the app** (the rules accept 1 to 500; the app keeps one batch at 500 writes with the charge document and the summary included), and its total is at most ₱1,000,000.
+- **Offline changes must sync within 24 hours.** This follows from the time check: a record written offline and sent more than a day later is refused, and the app must say so instead of losing it silently.
+- **`claimId` stays empty** on every record until phase 5 writes the rules for payment claims.
+- **What the rules cannot check and the app must guarantee:** that the shares of a charge add up to its total, that every share is voided together with its charge, the values in the summary (hence the self-repair), and that everyone is settled before a class is deleted.
+- **Indexes:** the "My classes" queries need collection-group index exemptions on `members.uid` and `joinRequests.uid` (`firestore.indexes.json`), deployed with the rules at go-live.
+- **To try on the live project after go-live, on a throwaway class:** a charge to 40 students, because the emulator does not enforce every production limit on rule evaluation.
 
 ## Features
 
