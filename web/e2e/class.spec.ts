@@ -137,13 +137,10 @@ test.describe.serial('a class from start to finish', () => {
     await page.getByRole('button', { name: 'Charge 1 student and pay out' }).click();
     await expectNotice(page, 'Charged 1 student ₱10.00 each (₱10.00 in total) and recorded the pay-out.');
 
-    // A withdrawal cannot be more than the balance.
+    // A withdrawal is not limited by the balance (a larger one is tested in the domain tests).
     await newRecord(page, /^Withdrawal/);
-    await page.getByRole('textbox', { name: 'Amount', exact: true }).fill('500');
     await pickMember(page, /^Who is withdrawing/, 'Stu Dent');
     await expect(page.getByText('Current balance ₱80.00')).toBeVisible();
-    await page.getByRole('button', { name: 'Save withdrawal' }).click();
-    await expect(page.getByRole('alert')).toBeVisible();
     await page.getByRole('textbox', { name: 'Amount', exact: true }).fill('30');
     await page.getByRole('button', { name: 'Save withdrawal' }).click();
     await expectNotice(page, 'Withdrawal of ₱30.00 by Stu Dent saved.');

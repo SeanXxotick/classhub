@@ -165,15 +165,14 @@ describe('LedgerForms', () => {
   });
 
   it('payments and withdrawals', () => {
-    expect(LedgerForms.checkRecord('PAYMENT', 10_000, '', null)).toBe('Choose who paid.');
-    expect(LedgerForms.checkRecord('PAYMENT', 10_000, 'ana', 0)).toBeNull();
-    expect(LedgerForms.checkRecord('WITHDRAWAL', 5_001, 'ana', 5_000)).not.toBeNull();
-    expect(LedgerForms.checkRecord('WITHDRAWAL', 5_000, 'ana', 5_000)).toBeNull();
-    expect(LedgerForms.checkRecord('WITHDRAWAL', 100, 'lito', -800)).not.toBeNull();
-    expect(LedgerForms.checkRecord('WITHDRAWAL', 100, '', null)).toBe('Choose who is withdrawing.');
-    expect(LedgerForms.checkRecord('EXPENSE', 100, '', null)).not.toBeNull();
-    expect(LedgerForms.checkRecord('CHARGE', 100, 'ana', null)).not.toBeNull();
-    expect(LedgerForms.checkRecord('PAYMENT', null, '', null)).toBe(LedgerForms.checkAmount(null));
+    expect(LedgerForms.checkRecord('PAYMENT', 10_000, '')).toBe('Choose who paid.');
+    expect(LedgerForms.checkRecord('PAYMENT', 10_000, 'ana')).toBeNull();
+    // Balances are not limited: any amount may be withdrawn, whatever the student has in.
+    expect(LedgerForms.checkRecord('WITHDRAWAL', 5_001, 'ana')).toBeNull();
+    expect(LedgerForms.checkRecord('WITHDRAWAL', 100, '')).toBe('Choose who is withdrawing.');
+    expect(LedgerForms.checkRecord('EXPENSE', 100, '')).not.toBeNull();
+    expect(LedgerForms.checkRecord('CHARGE', 100, 'ana')).not.toBeNull();
+    expect(LedgerForms.checkRecord('PAYMENT', null, '')).toBe(LedgerForms.checkAmount(null));
   });
 
   it('pay-outs and charges', () => {

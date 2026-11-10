@@ -17,6 +17,7 @@ Agreed with the project lead on 2026-11-10.
 | Balances | A ledger setting, changed by anyone with `RECORDS_MANAGE`: whole class, officers only, or treasurers only. The Mayor always sees everything. |
 | "Officer" | Anyone whose role has at least one permission. |
 | Hidden balances | A member still sees their own records, the fund totals and the pay-outs from the fund. |
+| Ledger balances | No limits. Any balance may go below zero: a student can withdraw more than they have in, and the cash on hand can go negative. |
 | Ledger history | Records are never deleted. They are voided with a reason, and show who made them and when. |
 | Payment claims | Amount, method (GCash, Maya, bank, other), reference number, optional screenshot. The screenshot is deleted when the claim is decided. |
 | Announcements | Officers post, members read. Pins and "Seen by X of Y". No comments. |
@@ -111,6 +112,16 @@ clientErrors/{id}                           message, stack, appVersion, platform
 - **Joining needs approval.** A code creates a `joinRequests` entry. An officer approves it, which creates the member entry (default role only), applies any opening balance and deletes the request in one batch. Rejecting deletes the request.
 - **The ledger keeps its history.** Records cannot be deleted or edited. Voiding sets the three `voided` fields once; voided records are left out of every total and stay visible, crossed out, with the reason. A paid-out charge still cannot be voided before its pay-out.
 - **Opening balances.** `OPENING` moves a student's balance and the cash on hand by the same signed amount, so the books check still holds.
+
+### No limits on balances
+
+- The ledger records what happened; it does not refuse a transaction because of a balance.
+- A withdrawal may be larger than the student's balance. They then show as owing the class.
+- Charges and pay-outs are not limited by a balance or by the cash on hand either, so cash on hand can be negative.
+- The forms show the balance that will result, as information only. Nothing is blocked.
+- The security rules do not check balances.
+- What stays: an amount must be greater than zero and at most ₱1,000,000 (a typo guard), every pay-out settles exactly one charge for its total, and the books check must still balance.
+- Deleting a class, starting the next semester and the go-live import are the only steps that look at balances, because they close or move the books.
 
 ### Balance visibility
 

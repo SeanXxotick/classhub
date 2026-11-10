@@ -170,3 +170,19 @@ describe('fund summary when voiding', () => {
     expect(Ledger.summaryMatches(stored, [payment, { ...opening, voidedAtMillis: 9 }])).toBe(true);
   });
 });
+
+describe('balances are not limited', () => {
+  it('a withdrawal larger than the balance leaves the student owing, and the books still balance', () => {
+    const records = [rec('PAYMENT', 5000), rec('WITHDRAWAL', 8000)];
+    expect(Ledger.memberBalances([newMember({ id: 'ana' })], records).get('ana')).toBe(-3000);
+    expect(Ledger.cashOnHand(records)).toBe(-3000);
+    expect(Ledger.booksDifference(records)).toBe(0);
+    expect(Ledger.status(-3000)).toBe('OWES');
+  });
+
+  it('a pay-out may take the cash on hand below zero', () => {
+    const records = [rec('CHARGE', 600, { batchId: 'b1' }), rec('EXPENSE', 600, { settlesBatchId: 'b1' })];
+    expect(Ledger.cashOnHand(records)).toBe(-600);
+    expect(Ledger.booksDifference(records)).toBe(0);
+  });
+});

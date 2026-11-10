@@ -58,7 +58,7 @@ function RecordFormScreen({ type }: { type: Extract<RecordType, 'PAYMENT' | 'WIT
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    const problem = LedgerForms.checkRecord(type, amount, memberId, member ? state.balanceOf(member.id) : null);
+    const problem = LedgerForms.checkRecord(type, amount, memberId);
     setError(problem);
     if (problem || amount === null) return;
     actions.addRecord(newRecord({ type, amountCentavos: amount, memberId, memberName: member?.name ?? '', note: note.trim(), dateMillis }), back);
@@ -69,7 +69,7 @@ function RecordFormScreen({ type }: { type: Extract<RecordType, 'PAYMENT' | 'WIT
       <form className="card stack" onSubmit={submit} noValidate>
         <p className="small muted" style={{ margin: 0 }}>
           {type === 'WITHDRAWAL'
-            ? 'A student takes part of their balance out, like a savings account. It cannot be more than their balance.'
+            ? 'Money a student takes out of the class fund. It lowers their balance, and it may be more than they have in.'
             : 'Money a student pays into the class fund. Adds to their balance.'}
         </p>
         <AmountField value={amountText} onChange={(v) => (setAmountText(v), setError(null))} label="Amount" />

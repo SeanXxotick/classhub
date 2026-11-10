@@ -18,20 +18,18 @@ export const LedgerForms = {
     return null;
   },
 
-  /** Payment and Withdrawal. memberBalanceCentavos is the chosen member's current balance (needed for a withdrawal). */
-  checkRecord(type: RecordType, amountCentavos: number | null, memberId: string, memberBalanceCentavos: number | null): string | null {
+  /**
+   * Payment and Withdrawal. Balances are not limited: a withdrawal may be larger than the student's balance,
+   * which simply leaves them owing the class.
+   */
+  checkRecord(type: RecordType, amountCentavos: number | null, memberId: string): string | null {
     const amountError = LedgerForms.checkAmount(amountCentavos);
     if (amountError) return amountError;
-    const amount = amountCentavos as number;
     switch (type) {
       case 'PAYMENT':
         return memberId.trim() ? null : 'Choose who paid.';
       case 'WITHDRAWAL':
-        if (!memberId.trim()) return 'Choose who is withdrawing.';
-        if ((memberBalanceCentavos ?? 0) < amount) {
-          return `That is more than this member's balance of ${formatMoney(memberBalanceCentavos ?? 0)}.`;
-        }
-        return null;
+        return memberId.trim() ? null : 'Choose who is withdrawing.';
       case 'EXPENSE':
         return 'Use the Pay out from fund form for pay-outs.';
       case 'CHARGE':

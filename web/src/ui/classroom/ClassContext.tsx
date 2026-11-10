@@ -358,7 +358,6 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
           record.type,
           record.amountCentavos > 0 ? record.amountCentavos : null,
           record.memberId,
-          record.memberId ? c.balanceOf(record.memberId) : null,
         );
         if (error) return deny(error);
         const label =
