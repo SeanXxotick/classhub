@@ -1,14 +1,26 @@
 rules_version = '2';
 
-// ClassHub security rules.
-// Every permission the app shows is enforced here, so it cannot be bypassed by
-// editing data outside the app. Roles live in classes/{classId}/roles and hold a
-// list of permission names; the locked Mayor role has every permission.
+// ClassHub 2.0 security rules (see docs/PLAN-V2.md).
+// Every permission the app shows is enforced here, so it cannot be bypassed by writing to the database
+// outside the app. Roles live in classes/{classId}/roles and hold a list of permission names; the locked
+// Mayor role has every permission, and the class owner always holds it.
+//
+// Not open yet, so refused by default until their phase writes rules for them: claims, announcements,
+// seen, meetings, noClass, outbox and users/{uid}/devices.
+//
+// Limits: a rule may read at most 10 documents for one write and 20 for a whole batch, and reading the same
+// document twice counts once. No rule reads a different document per ledger record. A batch that charges
+// 40 students and pays out reads only the writer's member and role entries, the class, the charge
+// document (before and after) and the pay-out record (before and after).
+//
+// Timestamps written by the app (createdAtMillis, voidedAtMillis, requestedAtMillis, joinedAtMillis of an
+// approval, deletingAtMillis) must be within 24 hours before and 10 minutes after the server's clock: the
+// small margin ahead covers phone clocks, the larger one behind covers writes queued while offline.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ------------------------------------------------------------ Helpers
+    // ============================================================ Helpers
 
     function signedIn() {
       return request.auth != null;
@@ -28,6 +40,18 @@ service cloud.firestore {
 
     function rolePath(c, r) {
       return /databases/$(database)/documents/classes/$(c)/roles/$(r);
+    }
+
+    function requestPath(c, u) {
+      return /databases/$(database)/documents/classes/$(c)/joinRequests/$(u);
+    }
+
+    function recordPath(c, r) {
+      return /databases/$(database)/documents/classes/$(c)/records/$(r);
+    }
+
+    function chargePath(c, b) {
+      return /databases/$(database)/documents/classes/$(c)/charges/$(b);
     }
 
     function invitePath(code) {
@@ -58,17 +82,58 @@ service cloud.firestore {
       return signedIn() && get(classPath(c)).data.ownerUid == uid();
     }
 
-    // The owner deletes the whole class. The app first deletes the records, schedule, contents, courses
-    // and photo (already allowed for the Mayor), then the members, roles, done marks and the class itself
-    // in one last batch. Members, roles and done marks may only go in that batch, so a class is never
-    // left without its Mayor or roles. The app checks that everyone is settled before it starts.
+    // ---- Deleting a class
+    // The Mayor's app checks that everyone is settled and the fund is empty, then sets deletingAtMillis.
+    // From then on the books are closed: no new records, voids, charges, join requests or approvals, and
+    // the owner may delete the class's documents. It is never cleared: the class can only go on to be deleted.
+
+    function isOpen(c) {
+      return get(classPath(c)).data.get('deletingAtMillis', 0) == 0;
+    }
+
+    function isOwnerClosing(c) {
+      return isOwner(c) && get(classPath(c)).data.get('deletingAtMillis', 0) > 0;
+    }
+
+    // The last batch: it deletes the class itself, so members, roles and done marks may go with it.
     function isOwnerDeletingClass(c) {
       return isOwner(c) && !existsAfter(classPath(c));
     }
 
-    // A per-type style setting (icons or colors): a map with at most one entry per type.
-    function isSmallMap(field) {
-      return request.resource.data.get(field, {}) is map && request.resource.data.get(field, {}).size() <= 5;
+    // ---- Values
+
+    function isText(v, max) {
+      return v is string && v.size() <= max;
+    }
+
+    function isFilled(v, max) {
+      return isText(v, max) && v.trim().size() > 0;
+    }
+
+    // An id that is used to build a document path (charge batch ids, record ids, invite codes).
+    function isId(v) {
+      return v is string && v.matches('[A-Za-z0-9_-]{1,128}');
+    }
+
+    // Whole centavos, more than zero and at most 1,000,000 pesos (a typo guard).
+    function isAmount(a) {
+      return a is int && a > 0 && a <= 100000000;
+    }
+
+    // An opening balance: signed (negative means the student owes), never zero.
+    function isSignedAmount(a) {
+      return a is int && a != 0 && a >= -100000000 && a <= 100000000;
+    }
+
+    function isRecentMillis(t) {
+      return t is int
+        && t > request.time.toMillis() - 86400000
+        && t < request.time.toMillis() + 600000;
+    }
+
+    // Exactly these fields, plus an optional 'id' that must be empty (the app keeps the id in the path).
+    function hasFields(d, keys) {
+      return d.keys().hasAll(keys) && d.keys().hasOnly(keys.concat(['id'])) && d.get('id', '') == '';
     }
 
     // True when an update changes only the listed fields.
@@ -76,18 +141,19 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
     }
 
-    // ------------------------------------------------------------ Users
-
-    match /users/{userId} {
-      allow read, write: if signedIn() && userId == uid();
-
-      // The "My classes" list.
-      match /memberships/{classId} {
-        allow read, write: if signedIn() && userId == uid();
-      }
+    // A per-type style setting (icons or colors): a map with at most one entry per type.
+    function isSmallMap(field) {
+      return request.resource.data.get(field, {}) is map && request.resource.data.get(field, {}).size() <= 5;
     }
 
-    // ------------------------------------------------------------ Photos
+    // ============================================================ Users
+
+    // The profile. Only the owner reads or writes it. Its subcollections (devices) are not open yet.
+    match /users/{userId} {
+      allow read, write: if signedIn() && userId == uid();
+    }
+
+    // ============================================================ Photos
 
     // A small square JPEG stored as Base64 text (the app makes them about 30 KB; the limit allows some room).
     function isValidPhoto() {
@@ -106,7 +172,8 @@ service cloud.firestore {
       allow delete: if signedIn() && userId == uid();
     }
 
-    // Class pictures: members may see them; officers with class settings may change or remove them.
+    // Class pictures: members may see them; officers with class settings may change or remove them
+    // (the Mayor has class settings, so this also covers deleting the class).
     match /classPhotos/{classId} {
       allow get: if isMember(classId);
       allow list: if false;
@@ -114,7 +181,7 @@ service cloud.firestore {
       allow delete: if can(classId, 'CLASS_SETTINGS');
     }
 
-    // ------------------------------------------------------------ App updates
+    // ============================================================ App updates
 
     // The newest published version. Signed-in users read it; only the admin scripts write it.
     match /appConfig/{docId} {
@@ -122,36 +189,192 @@ service cloud.firestore {
       allow list, write: if false;
     }
 
-    // ------------------------------------------------------------ Invite codes
+    // ============================================================ Error log
 
+    // Unexpected errors from the app. Anyone signed in may add one; nobody reads them from the app.
+    match /clientErrors/{errorId} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll(['message', 'stack', 'appVersion', 'platform', 'atMillis'])
+        && request.resource.data.keys().hasOnly(['message', 'stack', 'appVersion', 'platform', 'atMillis'])
+        && isText(request.resource.data.message, 1000)
+        && isText(request.resource.data.stack, 8000)
+        && isText(request.resource.data.appVersion, 40)
+        && isText(request.resource.data.platform, 20)
+        && request.resource.data.atMillis is int;
+      allow read, update, delete: if false;
+    }
+
+    // ============================================================ Invite codes
+
+    // { classId, className }. The class name is copied here because someone who is not in the class yet
+    // cannot read the class itself. New members always get the class's default role, which the approver's
+    // app reads from the class, so the invite does not carry a role.
     match /invites/{code} {
       // Anyone signed in may look up one code they were given, but nobody can list all codes.
       allow get: if signedIn();
       allow list: if false;
 
       allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(['classId', 'className', 'defaultRoleId'])
+        && request.resource.data.keys().hasAll(['classId', 'className'])
+        && request.resource.data.keys().hasOnly(['classId', 'className'])
+        && isFilled(request.resource.data.className, 100)
         && (isNewClassOwner(request.resource.data.classId)
             || can(request.resource.data.classId, 'MEMBERS_MANAGE'));
 
       // Renaming the class keeps the invite's class name in step.
-      allow update: if can(resource.data.classId, 'CLASS_SETTINGS') && changesOnly(['className']);
+      allow update: if can(resource.data.classId, 'CLASS_SETTINGS')
+        && changesOnly(['className'])
+        && isFilled(request.resource.data.className, 100);
 
-      // Making a new code deletes the old one.
+      // Making a new code deletes the old one; deleting the class deletes it too (the Mayor has MEMBERS_MANAGE).
       allow delete: if can(resource.data.classId, 'MEMBERS_MANAGE');
     }
 
-    // ------------------------------------------------------------ Classes
+    // ============================================================ "My classes"
 
-    function isValidJoin(c) {
+    // The list of a user's classes is a collection-group query on members (and on joinRequests for the
+    // classes still waiting) filtered to their own uid. These rules only allow that exact query: nobody can
+    // read other people's entries this way. They match a members or joinRequests collection anywhere, but
+    // the app can only write those under classes/{classId}, where uid always equals the document id.
+    // (A plain query on one class's members or requests filtered to one's own uid is allowed by these too;
+    // it can only ever return one's own entry.)
+    match /{path=**}/members/{memberId} {
+      allow list: if signedIn() && resource.data.uid == uid();
+    }
+
+    match /{path=**}/joinRequests/{requesterId} {
+      allow list: if signedIn() && resource.data.uid == uid();
+    }
+
+    // ============================================================ Classes
+
+    function settingsKeys() {
+      return ['name', 'description', 'accentColor', 'ledgerEnabled', 'scheduleEnabled', 'contentsEnabled',
+              'announcementsEnabled', 'timetableEnabled', 'scheduleIcons', 'scheduleColors', 'contentIcons', 'contentColors'];
+    }
+
+    // Changed by RECORDS_MANAGE, not by CLASS_SETTINGS.
+    function ledgerSettingKeys() {
+      return ['balanceVisibility', 'paymentInfo'];
+    }
+
+    function classKeys() {
+      return settingsKeys().concat(ledgerSettingKeys())
+        .concat(['ownerUid', 'inviteCode', 'defaultRoleId', 'deletingAtMillis', 'createdAtMillis']);
+    }
+
+    function isVisibility(v) {
+      return v in ['EVERYONE', 'OFFICERS', 'TREASURERS'];
+    }
+
+    function hasSmallMaps() {
+      return isSmallMap('scheduleIcons') && isSmallMap('scheduleColors')
+        && isSmallMap('contentIcons') && isSmallMap('contentColors');
+    }
+
+    // The settings fields keep their types, so a bad write cannot break the class for everyone.
+    function hasValidSettings() {
       let d = request.resource.data;
-      return d.keys().hasOnly(['name', 'roleId', 'joinedAtMillis', 'excludedCourseIds', 'joinCode'])
-        && d.joinCode is string
-        && exists(invitePath(d.joinCode))
-        && get(invitePath(d.joinCode)).data.classId == c
-        && d.roleId == get(classPath(c)).data.defaultRoleId
+      return isFilled(d.name, 100)
+        && isText(d.description, 200)
+        && isText(d.accentColor, 9)
+        && d.ledgerEnabled is bool
+        && d.scheduleEnabled is bool
+        && d.contentsEnabled is bool
+        && d.announcementsEnabled is bool
+        && d.timetableEnabled is bool
+        && hasSmallMaps();
+    }
+
+    // The creator becomes the owner and joins as Mayor in the same batch.
+    function isNewClass(c) {
+      let d = request.resource.data;
+      return signedIn()
+        && hasFields(d, classKeys())
+        && d.ownerUid == uid()
+        && d.defaultRoleId == 'member'
+        && isVisibility(d.balanceVisibility)
+        && isText(d.paymentInfo, 500)
+        && d.deletingAtMillis == 0
+        && d.createdAtMillis is int
+        && isId(d.inviteCode)
+        && hasValidSettings()
+        && getAfter(memberPath(c, uid())).data.roleId == 'mayor';
+    }
+
+    // Each group of fields needs its own permission: settings need CLASS_SETTINGS, balance visibility and
+    // payment info need RECORDS_MANAGE, the invite code needs MEMBERS_MANAGE. One write may change several
+    // groups when the user holds every permission involved.
+    function isOfficerClassUpdate(c) {
+      let d = request.resource.data;
+      let changed = d.diff(resource.data).affectedKeys();
+      return changed.hasOnly(settingsKeys().concat(ledgerSettingKeys()).concat(['inviteCode']))
+        && (can(c, 'CLASS_SETTINGS') || can(c, 'RECORDS_MANAGE') || can(c, 'MEMBERS_MANAGE'))
+        && (!changed.hasAny(settingsKeys()) || (can(c, 'CLASS_SETTINGS') && hasValidSettings()))
+        && (!changed.hasAny(ledgerSettingKeys())
+            || (can(c, 'RECORDS_MANAGE') && isVisibility(d.balanceVisibility) && isText(d.paymentInfo, 500)))
+        && (!changed.hasAny(['inviteCode']) || (can(c, 'MEMBERS_MANAGE') && isId(d.inviteCode)));
+    }
+
+    // Leaving: the Mayor (owner) hands the class to another member and leaves, all in one batch.
+    // The class's new owner must hold the Mayor role after the batch, and the old owner must be gone.
+    function isMayorHandover(c) {
+      let newOwner = request.resource.data.ownerUid;
+      return signedIn()
+        && resource.data.ownerUid == uid()
+        && newOwner != uid()
+        && changesOnly(['ownerUid'])
+        && exists(memberPath(c, newOwner))
+        && getAfter(memberPath(c, newOwner)).data.roleId == 'mayor'
+        && !existsAfter(memberPath(c, uid()));
+    }
+
+    // The first step of deleting a class: only the owner, only once.
+    function isStartingDelete() {
+      return signedIn()
+        && resource.data.ownerUid == uid()
+        && resource.data.deletingAtMillis == 0
+        && changesOnly(['deletingAtMillis'])
+        && isRecentMillis(request.resource.data.deletingAtMillis);
+    }
+
+    // ---- Members
+
+    // { uid, name, roleId, joinedAtMillis, excludedCourseIds, approvedByUid }; uid is the document id.
+    function isMemberShape(d, memberId) {
+      return hasFields(d, ['uid', 'name', 'roleId', 'joinedAtMillis', 'excludedCourseIds', 'approvedByUid'])
+        && d.uid == memberId
+        && isFilled(d.name, 90)
+        && d.joinedAtMillis is int
         && d.excludedCourseIds is list
         && d.excludedCourseIds.size() == 0;
+    }
+
+    // The class creator's own entry, in the create-class batch.
+    function isCreatorJoining(c, memberId) {
+      let d = request.resource.data;
+      return signedIn()
+        && memberId == uid()
+        && isNewClassOwner(c)
+        && isMemberShape(d, memberId)
+        && d.roleId == 'mayor'
+        && d.approvedByUid == '';
+    }
+
+    // Approving a join request: in one batch, someone with MEMBERS_MANAGE creates the member entry
+    // (default role, the name the student asked with) and deletes the request.
+    function isApproval(c, memberId) {
+      let d = request.resource.data;
+      return can(c, 'MEMBERS_MANAGE')
+        && memberId != uid()
+        && isOpen(c)
+        && exists(requestPath(c, memberId))
+        && !existsAfter(requestPath(c, memberId))
+        && isMemberShape(d, memberId)
+        && d.name == get(requestPath(c, memberId)).data.name
+        && d.roleId == get(classPath(c)).data.defaultRoleId
+        && d.approvedByUid == uid()
+        && isRecentMillis(d.joinedAtMillis);
     }
 
     // A members manager gives someone else a role (never the locked Mayor role, never their own, never the owner's).
@@ -179,20 +402,7 @@ service cloud.firestore {
         && !existsAfter(rolePath(c, resource.data.roleId));
     }
 
-    // Leaving: the Mayor (owner) hands the class to another member and leaves, all in one batch.
-    // The class's new owner must hold the Mayor role after the batch, and the old owner must be gone.
-    function isMayorHandover(c) {
-      let newOwner = request.resource.data.ownerUid;
-      return signedIn()
-        && resource.data.ownerUid == uid()
-        && newOwner != uid()
-        && changesOnly(['ownerUid'])
-        && exists(memberPath(c, newOwner))
-        && getAfter(memberPath(c, newOwner)).data.roleId == 'mayor'
-        && !existsAfter(memberPath(c, uid()));
-    }
-
-    // The member who receives the Mayor role in that same batch.
+    // The member who receives the Mayor role in the handover batch.
     function isNewMayorInHandover(c, memberId) {
       return signedIn()
         && get(classPath(c)).data.ownerUid == uid()
@@ -214,46 +424,237 @@ service cloud.firestore {
         && name.size() <= 90;
     }
 
-    function isValidRecord() {
+    // ---- Join requests
+
+    // { uid, name, className, joinCode, requestedAtMillis }, at classes/{classId}/joinRequests/{uid}.
+    function isNewJoinRequest(c, requesterId) {
       let d = request.resource.data;
-      return d.createdByUid == uid()
-        && d.amountCentavos is int
-        && d.amountCentavos > 0
-        && d.amountCentavos <= 100000000
-        && d.type in ['PAYMENT', 'CHARGE', 'WITHDRAWAL', 'EXPENSE']
-        && (d.type != 'CHARGE' || (d.batchId is string && d.batchId.size() > 0))
-        && (d.type != 'EXPENSE' || (d.settlesBatchId is string && d.settlesBatchId.size() > 0));
+      return signedIn()
+        && requesterId == uid()
+        && hasFields(d, ['uid', 'name', 'className', 'joinCode', 'requestedAtMillis'])
+        && d.uid == uid()
+        && isFilled(d.name, 90)
+        && isFilled(d.className, 100)
+        && isId(d.joinCode)
+        && isRecentMillis(d.requestedAtMillis)
+        && exists(invitePath(d.joinCode))
+        && get(invitePath(d.joinCode)).data.classId == c
+        && !exists(memberPath(c, uid()))
+        && isOpen(c);
+    }
+
+    // ---- Ledger: who reads every record
+
+    // The locked Mayor role, anyone with RECORDS_MANAGE, any member when the class shows balances to
+    // EVERYONE, and any officer (a role with at least one permission) when it shows them to OFFICERS.
+    // Matches canSeeAllBalances in web/src/domain/permissions.ts.
+    function seesAllRecords(c) {
+      let role = myRole(c);
+      let visibility = get(classPath(c)).data.balanceVisibility;
+      return isMember(c)
+        && (role.get('locked', false) == true
+            || 'RECORDS_MANAGE' in role.permissions
+            || visibility == 'EVERYONE'
+            || (visibility == 'OFFICERS' && role.permissions.size() > 0));
+    }
+
+    // Everyone else in the class reads their own records and every pay-out. Their queries must say so:
+    // where('memberId', '==', uid) or where('type', '==', 'EXPENSE').
+    function seesOwnRecord(c) {
+      return isMember(c) && (resource.data.memberId == uid() || resource.data.type == 'EXPENSE');
+    }
+
+    // ---- Ledger: records
+
+    function recordKeys() {
+      return ['type', 'amountCentavos', 'memberId', 'memberName', 'note', 'dateMillis', 'batchId', 'courseId',
+              'settlesBatchId', 'paidTo', 'claimId', 'createdByUid', 'createdAtMillis',
+              'voidedAtMillis', 'voidedByUid', 'voidReason'];
+    }
+
+    // A record is history: created once with its author and time, never edited except to void it.
+    // No rule looks at a balance (see "No limits on balances" in the plan), and no rule checks that the
+    // member exists, so a charge to many students reads no document per student.
+    function isNewRecord(c, recordId) {
+      let d = request.resource.data;
+      return hasFields(d, recordKeys())
+        && d.type in ['PAYMENT', 'CHARGE', 'WITHDRAWAL', 'EXPENSE', 'OPENING']
+        && (d.type == 'OPENING' ? isSignedAmount(d.amountCentavos) : isAmount(d.amountCentavos))
+        && (d.type == 'EXPENSE' ? d.memberId == '' : isFilled(d.memberId, 128))
+        && isText(d.memberName, 90)
+        && isText(d.note, 200)
+        && d.dateMillis is int
+        && isText(d.courseId, 128)
+        && isText(d.paidTo, 100)
+        && d.claimId == ''
+        && d.createdByUid == uid()
+        && isRecentMillis(d.createdAtMillis)
+        && d.voidedAtMillis == 0
+        && d.voidedByUid == ''
+        && d.voidReason == ''
+        && (d.type == 'CHARGE' ? isNewChargeShare(c, d) : d.batchId == '')
+        && (d.type == 'EXPENSE' ? isNewPayout(c, recordId, d) : d.settlesBatchId == '');
+    }
+
+    // A CHARGE share is only created in the batch that creates its charge document, so nobody adds a share
+    // to an old charge later. When the charge has one amount per student, every share is that amount.
+    function isNewChargeShare(c, d) {
+      return isId(d.batchId)
+        && !exists(chargePath(c, d.batchId))
+        && existsAfter(chargePath(c, d.batchId))
+        && getAfter(chargePath(c, d.batchId)).data.perMemberCentavos in [0, d.amountCentavos];
+    }
+
+    // An EXPENSE (pay-out) settles exactly one charge, for exactly its total, and becomes that charge's one
+    // standing pay-out in the same batch. The charge may be created in this batch too (charge and pay out).
+    function isNewPayout(c, recordId, d) {
+      let charge = getAfter(chargePath(c, d.settlesBatchId)).data;
+      return isId(d.settlesBatchId)
+        && (!exists(chargePath(c, d.settlesBatchId))
+            || get(chargePath(c, d.settlesBatchId)).data.payoutRecordId == '')
+        && charge.payoutRecordId == recordId
+        && charge.voidedAtMillis == 0
+        && d.amountCentavos == charge.totalCentavos;
+    }
+
+    // Voiding sets the three void fields once. A CHARGE share is voided only with its whole charge (the
+    // charge document is voided in the same batch, or already was). A pay-out is voided only together with
+    // clearing its charge's payoutRecordId, so the charge can be paid out again.
+    function isVoidingRecord(c, recordId) {
+      let d = request.resource.data;
+      let r = resource.data;
+      return r.voidedAtMillis == 0
+        && changesOnly(['voidedAtMillis', 'voidedByUid', 'voidReason'])
+        && isRecentMillis(d.voidedAtMillis)
+        && d.voidedByUid == uid()
+        && isFilled(d.voidReason, 200)
+        && (r.type != 'CHARGE' || getAfter(chargePath(c, r.batchId)).data.voidedAtMillis > 0)
+        && (r.type != 'EXPENSE' || isPayoutBeingVoided(c, recordId, r.settlesBatchId));
+    }
+
+    function isPayoutBeingVoided(c, recordId, batchId) {
+      return get(chargePath(c, batchId)).data.payoutRecordId == recordId
+        && getAfter(chargePath(c, batchId)).data.payoutRecordId == '';
+    }
+
+    // ---- Ledger: charge documents (classes/{classId}/charges/{batchId})
+
+    function chargeKeys() {
+      return ['note', 'courseId', 'dateMillis', 'count', 'totalCentavos', 'perMemberCentavos', 'payoutRecordId',
+              'voidedAtMillis', 'voidedByUid', 'voidReason', 'createdByUid', 'createdAtMillis'];
+    }
+
+    // A record created in this same batch that pays charge b out. The record's own rule checks the rest
+    // (its amount is the charge's total, it is not voided, it was made by the writer).
+    function isNewPayoutRecord(c, b, recordId) {
+      return isId(recordId)
+        && !exists(recordPath(c, recordId))
+        && getAfter(recordPath(c, recordId)).data.type == 'EXPENSE'
+        && getAfter(recordPath(c, recordId)).data.settlesBatchId == b;
+    }
+
+    // The total must be payable by one pay-out, so it is at most 1,000,000 pesos like any amount.
+    // perMemberCentavos is 0 when the students were charged different amounts.
+    function isNewCharge(c, b) {
+      let d = request.resource.data;
+      return hasFields(d, chargeKeys())
+        && isId(b)
+        && isFilled(d.note, 200)
+        && isText(d.courseId, 128)
+        && d.dateMillis is int
+        && d.count is int
+        && d.count > 0
+        && d.count <= 500
+        && isAmount(d.totalCentavos)
+        && d.perMemberCentavos is int
+        && (d.perMemberCentavos == 0 || d.totalCentavos == d.perMemberCentavos * d.count)
+        && d.createdByUid == uid()
+        && isRecentMillis(d.createdAtMillis)
+        && d.voidedAtMillis == 0
+        && d.voidedByUid == ''
+        && d.voidReason == ''
+        && (d.payoutRecordId == '' || isNewPayoutRecord(c, b, d.payoutRecordId));
+    }
+
+    // Paying out a charge that has no standing pay-out and is not voided.
+    function isPayingOutCharge(c, b) {
+      return resource.data.voidedAtMillis == 0
+        && resource.data.payoutRecordId == ''
+        && changesOnly(['payoutRecordId'])
+        && isNewPayoutRecord(c, b, request.resource.data.payoutRecordId);
+    }
+
+    // Clearing the pay-out: only together with voiding that pay-out record in the same batch.
+    function isClearingPayout(c) {
+      let old = resource.data.payoutRecordId;
+      return old != ''
+        && request.resource.data.payoutRecordId == ''
+        && changesOnly(['payoutRecordId'])
+        && get(recordPath(c, old)).data.voidedAtMillis == 0
+        && getAfter(recordPath(c, old)).data.voidedAtMillis > 0;
+    }
+
+    // Voiding the whole charge, never while its pay-out stands. Its shares are voided in the same batch
+    // (the rules cannot count them; the app voids every share with the document).
+    function isVoidingCharge() {
+      let d = request.resource.data;
+      return resource.data.voidedAtMillis == 0
+        && resource.data.payoutRecordId == ''
+        && changesOnly(['voidedAtMillis', 'voidedByUid', 'voidReason'])
+        && isRecentMillis(d.voidedAtMillis)
+        && d.voidedByUid == uid()
+        && isFilled(d.voidReason, 200);
+    }
+
+    // ---- Ledger: fund summary and opening balances
+
+    function summaryKeys() {
+      return ['cashOnHandCentavos', 'waitingPayoutCentavos', 'balancesTotalCentavos', 'recordCount', 'updatedAtMillis'];
+    }
+
+    function isFundSummary() {
+      let d = request.resource.data;
+      return d.keys().hasAll(summaryKeys())
+        && d.keys().hasOnly(summaryKeys())
+        && d.cashOnHandCentavos is int
+        && d.waitingPayoutCentavos is int
+        && d.balancesTotalCentavos is int
+        && d.recordCount is int
+        && d.updatedAtMillis is int;
+    }
+
+    function isOpeningBalance() {
+      let d = request.resource.data;
+      return d.keys().hasAll(['amountCentavos', 'note'])
+        && d.keys().hasOnly(['amountCentavos', 'note'])
+        && isSignedAmount(d.amountCentavos)
+        && isText(d.note, 200);
     }
 
     match /classes/{classId} {
       allow get: if isMember(classId);
       allow list: if false;
 
-      // The creator becomes the owner and joins as Mayor in the same batch.
-      allow create: if signedIn()
-        && request.resource.data.ownerUid == uid()
-        && request.resource.data.defaultRoleId == 'member'
-        && getAfter(memberPath(classId, uid())).data.roleId == 'mayor';
+      allow create: if isNewClass(classId);
 
-      allow update: if (request.resource.data.ownerUid == resource.data.ownerUid
-        && ((can(classId, 'CLASS_SETTINGS')
-              && changesOnly(['name', 'description', 'accentColor', 'ledgerEnabled', 'scheduleEnabled', 'contentsEnabled',
-                              'scheduleIcons', 'scheduleColors', 'contentIcons', 'contentColors'])
-              && isSmallMap('scheduleIcons') && isSmallMap('scheduleColors')
-              && isSmallMap('contentIcons') && isSmallMap('contentColors'))
-            || (can(classId, 'MEMBERS_MANAGE') && changesOnly(['inviteCode']))))
-        || isMayorHandover(classId);
+      allow update: if isOfficerClassUpdate(classId)
+        || isMayorHandover(classId)
+        || isStartingDelete();
 
-      // Only the owner, and only in the last batch, which also removes the owner's own member entry.
-      allow delete: if isOwner(classId) && !existsAfter(memberPath(classId, uid()));
+      // Only the owner, only after starting the delete, and only in the last batch, which also removes the
+      // owner's own member entry.
+      allow delete: if isOwnerClosing(classId) && !existsAfter(memberPath(classId, uid()));
 
       match /roles/{roleId} {
         allow read: if isMember(classId);
         allow create: if isNewClassOwner(classId)
           || (can(classId, 'ROLES_MANAGE') && request.resource.data.get('locked', false) != true);
+        // Nobody edits the role they hold themselves: otherwise anyone who manages roles could switch on
+        // every permission for themselves. (The Mayor's role is locked, so the Mayor edits all the others.)
         allow update: if can(classId, 'ROLES_MANAGE')
           && resource.data.get('locked', false) != true
-          && request.resource.data.get('locked', false) != true;
+          && request.resource.data.get('locked', false) != true
+          && get(memberPath(classId, uid())).data.roleId != roleId;
         allow delete: if (can(classId, 'ROLES_MANAGE')
             && resource.data.get('locked', false) != true
             && roleId != get(classPath(classId)).data.defaultRoleId)
@@ -261,27 +662,40 @@ service cloud.firestore {
       }
 
       match /members/{memberId} {
-        // A user may always check their own membership, so the app can tell when they were removed.
+        // A user may always check their own entry, so the app can tell when they were approved or removed.
         allow get: if (signedIn() && memberId == uid()) || isMember(classId);
         allow list: if isMember(classId);
 
-        allow create: if signedIn() && memberId == uid()
-          && ((isNewClassOwner(classId) && request.resource.data.roleId == 'mayor')
-              || isValidJoin(classId));
+        // Nobody adds themselves: the creator joins as Mayor with the new class, everyone else is approved.
+        allow create: if isCreatorJoining(classId, memberId) || isApproval(classId, memberId);
 
+        // No update changes uid or approvedByUid.
         allow update: if isRoleChangeByManager(classId, memberId)
           || isCoursesChangeByManager(classId)
           || isReassignAfterRoleDelete(classId)
           || isNewMayorInHandover(classId, memberId)
           || isOwnRename(memberId);
 
-        // A members manager removes someone else, or a member leaves on their own.
-        // The owner can only leave in the batch that hands the class to a new Mayor.
+        // A members manager removes someone else, or a member leaves on their own. The owner can only
+        // leave in the batch that hands the class to a new Mayor, or with the class itself. A member
+        // entry left behind by a deleted class can be removed by its owner.
         allow delete: if (can(classId, 'MEMBERS_MANAGE')
             && memberId != uid()
             && memberId != get(classPath(classId)).data.ownerUid)
-          || (signedIn() && memberId == uid() && getAfter(classPath(classId)).data.ownerUid != uid())
+          || (signedIn() && memberId == uid()
+              && (!existsAfter(classPath(classId)) || getAfter(classPath(classId)).data.ownerUid != uid()))
           || isOwnerDeletingClass(classId);
+      }
+
+      match /joinRequests/{requesterId} {
+        // The requester and the people who approve requests. A plain member, or the student while waiting
+        // for someone else's request, cannot read them.
+        allow get: if (signedIn() && requesterId == uid()) || can(classId, 'MEMBERS_MANAGE');
+        allow list: if can(classId, 'MEMBERS_MANAGE');
+        allow create: if isNewJoinRequest(classId, requesterId);
+        allow update: if false;
+        // Cancelled by the requester, or rejected (or approved) by a members manager.
+        allow delete: if (signedIn() && requesterId == uid()) || can(classId, 'MEMBERS_MANAGE');
       }
 
       match /courses/{courseId} {
@@ -290,11 +704,38 @@ service cloud.firestore {
       }
 
       match /records/{recordId} {
-        allow read: if isMember(classId);
-        allow create: if can(classId, 'RECORDS_MANAGE') && isValidRecord();
-        // Records are history: they are added or deleted, never edited.
-        allow update: if false;
-        allow delete: if can(classId, 'RECORDS_MANAGE');
+        allow get, list: if seesAllRecords(classId) || seesOwnRecord(classId);
+        allow create: if can(classId, 'RECORDS_MANAGE') && isOpen(classId) && isNewRecord(classId, recordId);
+        allow update: if can(classId, 'RECORDS_MANAGE') && isOpen(classId) && isVoidingRecord(classId, recordId);
+        allow delete: if isOwnerClosing(classId);
+      }
+
+      // Every member reads charge documents: they carry no names, only what was charged and whether it was paid out.
+      match /charges/{batchId} {
+        allow get, list: if isMember(classId);
+        allow create: if can(classId, 'RECORDS_MANAGE') && isOpen(classId) && isNewCharge(classId, batchId);
+        allow update: if can(classId, 'RECORDS_MANAGE') && isOpen(classId)
+          && (isPayingOutCharge(classId, batchId) || isClearingPayout(classId) || isVoidingCharge());
+        allow delete: if isOwnerClosing(classId);
+      }
+
+      // summary/fund: the fund totals every member may read. Written with increments in the same batch as
+      // each record write, or rewritten whole when the app repairs it.
+      match /summary/{docId} {
+        allow get, list: if isMember(classId);
+        allow create, update: if docId == 'fund'
+          && can(classId, 'RECORDS_MANAGE')
+          && isOpen(classId)
+          && isFundSummary();
+        allow delete: if isOwnerClosing(classId);
+      }
+
+      // Opening balances waiting for their student to join (written by the go-live import). A records
+      // manager's app turns each one into the OPENING record 'opening-{uid}' and deletes it in one batch.
+      match /openingBalances/{studentId} {
+        allow get, list: if can(classId, 'RECORDS_MANAGE');
+        allow create, update: if can(classId, 'RECORDS_MANAGE') && isOpen(classId) && isOpeningBalance();
+        allow delete: if can(classId, 'RECORDS_MANAGE') || isOwnerClosing(classId);
       }
 
       match /schedule/{itemId} {
@@ -313,8 +754,8 @@ service cloud.firestore {
         allow create, update: if signedIn() && studentId == uid() && isMember(classId)
           && request.resource.data.keys().hasOnly(['done'])
           && request.resource.data.done is map;
-        // Removed with the account when a student deletes it, or with the whole class.
-        allow delete: if (signedIn() && studentId == uid()) || isOwnerDeletingClass(classId);
+        // Removed with the account when a student deletes it, or while the owner deletes the class.
+        allow delete: if (signedIn() && studentId == uid()) || isOwnerClosing(classId) || isOwnerDeletingClass(classId);
       }
     }
   }
