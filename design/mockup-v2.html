@@ -869,7 +869,7 @@ function sidebar(active) {
     <div class="brand">${LOGO(34)}ClassHub</div>
     <div class="side-label">My classes</div>
     ${cls('bscs', S.className, S.accent)}
-    ${cls('org', 'CS Organization Officers', '#6366F1')}
+    ${cls('org', 'CS Organization Officers', '#585BE8')}
     ${cls('it', 'BSIT 1C', '#DB2777')}
     <button type="button" class="side-item" data-dlg="join"><span class="side-plus">${ic('plus', 16)}</span><span class="grow">Join with a code</span></button>
     <button type="button" class="side-item" data-go="create"><span class="side-plus">${ic('plus', 16)}</span><span class="grow">Create a class</span></button>
@@ -936,7 +936,7 @@ function classCard(name, color, meta, role, extra, go) {
 SCREENS.classes = { label: 'My classes', render() {
   const body = `<div class="stack lg"><div class="grid-auto">
     ${classCard(S.className, S.accent, '31 members', roleTag(S.role), pend() ? `<div class="row" style="padding:0 16px 14px 82px">${tag(pend() + ' payment claims waiting', 'warning', 'clock')}</div>` : '', 'home')}
-    ${classCard('CS Organization Officers', '#6366F1', '12 members', roleTag('member'), '', 'home')}
+    ${classCard('CS Organization Officers', '#585BE8', '12 members', roleTag('member'), '', 'home')}
     ${classCard('BSIT 1C', '#DB2777', 'Sent today, 8:40 AM', tag('Waiting for approval', 'warning', 'hourglass'), `<div class="row" style="padding:0 16px 12px 82px;flex-wrap:wrap">${btn('Cancel request', { kind: 'outline', small: true, danger: false, dlg: 'cancelreq' })}<span class="muted small">An officer has to approve you.</span></div>`, '')}
   </div>
   <div class="row wrap">${btn('Join with a code', { kind: 'solid', icon: 'key', dlg: 'join' })}${btn('Create a class', { kind: 'outline', icon: 'plus', go: 'create' })}</div></div>`;
@@ -952,7 +952,7 @@ SCREENS.create = { label: 'Create a class', render() {
     ${btn('Create class', { kind: 'solid', big: true, block: true, go: 'home', toast: 'Class created. This is only a mock.' })}</div>`;
   return frame('top', 'Create a class', body, { back: true, backLabel: 'Classes', narrow: true, side: 'classes' });
 } };
-const ACCENTS = ['#0F766E', '#6366F1', '#DB2777', '#EA580C', '#2563EB', '#7C3AED'];
+const ACCENTS = ['#0F766E', '#585BE8', '#DB2777', '#CC4A0A', '#2563EB', '#7C3AED'];
 function swatches(sel, live) {
   return `<div class="swatches" role="radiogroup" aria-label="Accent color">${ACCENTS.map((h) => `<button type="button" role="radio" aria-checked="${h.toLowerCase() === sel.toLowerCase()}" aria-label="${h}" class="swatch${h.toLowerCase() === sel.toLowerCase() ? ' selected' : ''}" style="background:${h}"${live ? ` data-act="accent" data-val="${h}"` : ''}>${h.toLowerCase() === sel.toLowerCase() ? ic('check', 20) : ''}</button>`).join('')}</div>`;
 }

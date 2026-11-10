@@ -14,7 +14,7 @@ export function hexColor(hex: string | undefined | null, fallback = '#0F766E'): 
 }
 
 /** Accent choices offered when creating a class or editing its settings. */
-export const ACCENT_CHOICES = ['#0F766E', '#6366F1', '#DB2777', '#EA580C', '#2563EB', '#7C3AED'];
+export const ACCENT_CHOICES = ['#0F766E', '#585BE8', '#DB2777', '#CC4A0A', '#2563EB', '#7C3AED'];
 
 /** Color choices for roles in the role editor. */
 export const ROLE_COLOR_CHOICES = ['#15803D', '#3730A3', '#BE123C', '#EA580C', '#0369A1', '#A21CAF', '#6B768A'];
