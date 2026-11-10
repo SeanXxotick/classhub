@@ -65,8 +65,8 @@ const darkQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-color-
 export function applyTheme() {
   const mode = themeMode();
   const dark = mode === 'DARK' || (mode === 'SYSTEM' && !!darkQuery?.matches);
-  if (dark) document.documentElement.dataset.theme = 'dark';
-  else delete document.documentElement.dataset.theme;
+  // Always set explicitly: tokens.css only ignores the OS dark preference when data-theme is "light".
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0f141c' : '#0F766E');
 }
 

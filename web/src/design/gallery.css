@@ -1,0 +1,10 @@
+/* Layout for the dev-only gallery page. Not used by the app. */
+.gg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--ch-space-4); align-items: start; }
+@media (max-width: 899.98px) { .gg-grid { grid-template-columns: minmax(0, 1fr); } }
+.gg-wrap { display: flex; flex-wrap: wrap; gap: var(--ch-space-3); align-items: center; }
+.gg-tok { width: 84px; }
+.gg-tok i { display: block; height: 40px; border-radius: var(--ch-radius-sm); border: 1px solid var(--ch-border); }
+.gg-tok span { display: block; font-size: 11px; color: var(--ch-text-muted); margin-top: 2px; overflow-wrap: anywhere; }
+.gg-icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: var(--ch-space-2); }
+.gg-icon { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: var(--ch-text-muted); text-align: center; overflow-wrap: anywhere; }
+.gg-icon svg { color: var(--ch-text); }

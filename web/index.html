@@ -13,7 +13,8 @@
       // Apply the saved theme before the first paint, so dark mode never flashes white.
       try {
         var t = localStorage.getItem('classhub.theme');
-        if (t === 'DARK' || (t !== 'LIGHT' && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.dataset.theme = 'dark';
+        var dark = t === 'DARK' || (t !== 'LIGHT' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
       } catch (e) {}
     </script>
   </head>
