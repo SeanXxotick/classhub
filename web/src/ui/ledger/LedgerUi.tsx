@@ -24,6 +24,8 @@ export function recordLabel(type: RecordType): string {
       return 'Withdrawal';
     case 'EXPENSE':
       return 'Pay out from fund';
+    case 'OPENING':
+      return 'Opening balance';
   }
 }
 
@@ -37,6 +39,8 @@ function recordColor(type: RecordType): string {
       return WITHDRAW_COLOR;
     case 'EXPENSE':
       return PAYOUT_COLOR;
+    case 'OPENING':
+      return 'var(--income)';
   }
 }
 
@@ -90,6 +94,7 @@ const TYPE_MARKS: Record<RecordType, string[]> = {
   CHARGE: ['M6 12h12'],
   WITHDRAWAL: ['M7 17L17 7', 'M9 7h8v8'],
   EXPENSE: ['M3 7h18v10H3z', 'M12 9.5a2.5 2.5 0 1 1 0 5a2.5 2.5 0 1 1 0-5z'],
+  OPENING: ['M6 12h12', 'M12 6v12'],
 };
 
 function TypeMark({ type, size }: { type: RecordType; size: number }) {

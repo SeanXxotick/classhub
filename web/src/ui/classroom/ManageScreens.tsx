@@ -45,6 +45,8 @@ export function permissionLabel(p: Permission): [string, string] {
       return ['Class settings and courses', 'Name, color, modules and the course list'];
     case 'CONTENTS_MANAGE':
       return ['Manage class contents', 'Add, edit and remove links to files, videos and websites'];
+    case 'ANNOUNCEMENTS_MANAGE':
+      return ['Manage announcements', 'Post, pin, edit and delete announcements'];
   }
 }
 

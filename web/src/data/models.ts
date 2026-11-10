@@ -17,6 +17,7 @@ export const PERMISSIONS = [
   'ROLES_MANAGE',
   'CLASS_SETTINGS',
   'CONTENTS_MANAGE',
+  'ANNOUNCEMENTS_MANAGE',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -29,14 +30,19 @@ export type ContentKind = (typeof CONTENT_KINDS)[number];
  * CHARGE     a per-member deduction such as a quiz fee (member balance -, cash unchanged)
  * WITHDRAWAL a member takes part of their balance out (member balance -, cash -)
  * EXPENSE    the class pays for something, no member involved (cash -)
+ * OPENING    a balance carried in from before the class used ClassHub (member balance and cash, both by the signed amount)
  *
  * On screen these read "Payment", "Charge students", "Withdrawal" and "Pay out from fund".
  */
-export const RECORD_TYPES = ['PAYMENT', 'CHARGE', 'WITHDRAWAL', 'EXPENSE'] as const;
+export const RECORD_TYPES = ['PAYMENT', 'CHARGE', 'WITHDRAWAL', 'EXPENSE', 'OPENING'] as const;
 export type RecordType = (typeof RECORD_TYPES)[number];
 
 export const SCHEDULE_KINDS = ['DEADLINE', 'QUIZ', 'EXAM', 'RECITATION', 'FCO'] as const;
 export type ScheduleKind = (typeof SCHEDULE_KINDS)[number];
+
+/** Who may see every member's balance. */
+export const BALANCE_VISIBILITIES = ['EVERYONE', 'OFFICERS', 'TREASURERS'] as const;
+export type BalanceVisibility = (typeof BALANCE_VISIBILITIES)[number];
 
 export type ScheduleStatus = 'PENDING' | 'SUBMITTED' | 'CANCELLED';
 
@@ -72,6 +78,16 @@ export interface ClassRoom {
   ledgerEnabled: boolean;
   scheduleEnabled: boolean;
   contentsEnabled: boolean;
+  announcementsEnabled: boolean;
+  timetableEnabled: boolean;
+  /** Who may see other students' balances. The Mayor and people who manage records always can. */
+  balanceVisibility: BalanceVisibility;
+  /** Where students send money (for example a GCash number), shown next to the I paid button. */
+  paymentInfo: string;
+  /** 0 while the class is active. An archived class is read-only. */
+  archivedAtMillis: number;
+  /** The class that continued this one the next semester, or empty. */
+  carriedOverTo: string;
   /** Icon chosen per schedule type (type name to icon key); types not listed use the default icon. */
   scheduleIcons: Record<string, string>;
   /** Color chosen per schedule type (type name to #RRGGBB); others use the default color. */
@@ -97,10 +113,22 @@ export interface Role {
  */
 export interface Member {
   id: string;
+  /** The account's uid, repeated inside the document so one query can find every class a person is in. */
+  uid: string;
   name: string;
   roleId: string;
   joinedAtMillis: number;
   excludedCourseIds: string[];
+  approvedByUid: string;
+}
+
+/** Firestore: classes/{classId}/joinRequests/{uid}. A student who used the code and waits for an officer. */
+export interface JoinRequest {
+  id: string;
+  uid: string;
+  name: string;
+  joinCode: string;
+  requestedAtMillis: number;
 }
 
 /** Firestore: classes/{classId}/courses/{id}. A subject the class takes. */
@@ -128,6 +156,13 @@ export interface LedgerRecord {
   createdByUid: string;
   settlesBatchId: string;
   paidTo: string;
+  /** The payment claim this PAYMENT confirms, if any. */
+  claimId: string;
+  createdAtMillis: number;
+  /** Records are never deleted. A voided record stays in the history and counts toward nothing. 0 = not voided. */
+  voidedAtMillis: number;
+  voidedByUid: string;
+  voidReason: string;
 }
 
 /** Firestore: classes/{classId}/contents/{id}. courseId is empty for general class material. */
@@ -167,11 +202,12 @@ export interface StudentProgress {
 
 export const newRecord = (r: Partial<LedgerRecord>): LedgerRecord => ({
   id: '', type: 'PAYMENT', amountCentavos: 0, memberId: '', memberName: '', note: '', dateMillis: 0,
-  batchId: '', courseId: '', createdByUid: '', settlesBatchId: '', paidTo: '', ...r,
+  batchId: '', courseId: '', createdByUid: '', settlesBatchId: '', paidTo: '', claimId: '', createdAtMillis: 0,
+  voidedAtMillis: 0, voidedByUid: '', voidReason: '', ...r,
 });
 
 export const newMember = (m: Partial<Member>): Member => ({
-  id: '', name: '', roleId: ROLE_MEMBER, joinedAtMillis: 0, excludedCourseIds: [], ...m,
+  id: '', uid: '', name: '', roleId: ROLE_MEMBER, joinedAtMillis: 0, excludedCourseIds: [], approvedByUid: '', ...m,
 });
 
 export const newRole = (r: Partial<Role>): Role => ({
@@ -188,6 +224,7 @@ export const newContentItem = (c: Partial<ContentItem>): ContentItem => ({
 
 export const newClassRoom = (c: Partial<ClassRoom>): ClassRoom => ({
   id: '', name: '', description: '', ownerUid: '', accentColor: '#0F766E', inviteCode: '', defaultRoleId: ROLE_MEMBER,
-  ledgerEnabled: true, scheduleEnabled: true, contentsEnabled: true, scheduleIcons: {}, scheduleColors: {},
+  ledgerEnabled: true, scheduleEnabled: true, contentsEnabled: true, announcementsEnabled: true, timetableEnabled: true,
+  balanceVisibility: 'EVERYONE', paymentInfo: '', archivedAtMillis: 0, carriedOverTo: '', scheduleIcons: {}, scheduleColors: {},
   contentIcons: {}, contentColors: {}, createdAtMillis: 0, ...c,
 });

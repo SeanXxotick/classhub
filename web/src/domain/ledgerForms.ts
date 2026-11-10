@@ -36,6 +36,8 @@ export const LedgerForms = {
         return 'Use the Pay out from fund form for pay-outs.';
       case 'CHARGE':
         return 'Use the Charge students form for charges.';
+      case 'OPENING':
+        return 'Opening balances are added by an officer when a student joins.';
     }
   },
 

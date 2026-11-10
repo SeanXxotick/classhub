@@ -1,5 +1,6 @@
 import {
   PERMISSIONS,
+  type BalanceVisibility,
   ROLE_MAYOR,
   ROLE_MEMBER,
   ROLE_SECRETARY,
@@ -23,7 +24,7 @@ export const DefaultRoles = {
     return [
       newRole({ id: ROLE_MAYOR, name: 'Mayor', colorHex: '#7C3AED', permissions: [...PERMISSIONS], locked: true }),
       newRole({ id: ROLE_TREASURER, name: 'Treasurer', colorHex: '#15803D', permissions: ['RECORDS_MANAGE'] }),
-      newRole({ id: ROLE_SECRETARY, name: 'Secretary', colorHex: '#3730A3', permissions: ['SCHEDULE_MANAGE', 'CONTENTS_MANAGE'] }),
+      newRole({ id: ROLE_SECRETARY, name: 'Secretary', colorHex: '#3730A3', permissions: ['SCHEDULE_MANAGE', 'CONTENTS_MANAGE', 'ANNOUNCEMENTS_MANAGE'] }),
       newRole({ id: ROLE_MEMBER, name: 'Member', colorHex: '#6B768A', permissions: [] }),
     ];
   },
@@ -53,3 +54,19 @@ export const RoleRules = {
     return [...new Set([...permissions].filter((p) => known.has(p)))];
   },
 };
+
+/** An officer is anyone whose role switches on at least one permission. Plain members are not officers. */
+export function isOfficer(role: Role | null | undefined): boolean {
+  return !!role && (role.locked || role.permissions.length > 0);
+}
+
+/**
+ * Whether this person may read every member's records and balances.
+ * The Mayor and anyone who manages records always can; otherwise the class setting decides.
+ * Everyone else still reads their own records and the fund totals.
+ */
+export function canSeeAllBalances(role: Role | null | undefined, visibility: BalanceVisibility): boolean {
+  if (!role) return false;
+  if (role.locked || can(role, 'RECORDS_MANAGE')) return true;
+  return visibility === 'EVERYONE' || (visibility === 'OFFICERS' && isOfficer(role));
+}

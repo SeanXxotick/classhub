@@ -1,15 +1,35 @@
 import type { LedgerRecord, Member, RecordType } from '../data/models';
 
+/** The fund totals every member may read, kept in classes/{classId}/summary/fund. */
+export interface FundSummary {
+  cashOnHandCentavos: number;
+  waitingPayoutCentavos: number;
+  balancesTotalCentavos: number;
+  recordCount: number;
+}
+
 export type BalanceStatus = 'OWES' | 'CREDIT' | 'SETTLED';
 
 const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
 
+/** Voided records stay in the history but count toward nothing. */
+const live = (records: LedgerRecord[]) => records.filter((r) => !r.voidedAtMillis);
+
 /** Pure ledger math, kept free of the browser and Firebase so it can be unit tested. */
 export const Ledger = {
+  /** The records that count: everything except voided ones. */
+  live,
+
+  /**
+   * OPENING carries a student's balance in from before. It is signed (negative = owes) and moves the cash by the
+   * same amount, which keeps cash on hand = all balances + charges not yet paid out, as it was in the earlier class.
+   */
+
   /** Effect on the member's own balance. An EXPENSE has no member, so it is 0. */
   memberDelta(record: LedgerRecord): number {
     switch (record.type) {
       case 'PAYMENT':
+      case 'OPENING':
         return record.amountCentavos;
       case 'CHARGE':
       case 'WITHDRAWAL':
@@ -23,6 +43,7 @@ export const Ledger = {
   cashDelta(record: LedgerRecord): number {
     switch (record.type) {
       case 'PAYMENT':
+      case 'OPENING':
         return record.amountCentavos;
       case 'WITHDRAWAL':
       case 'EXPENSE':
@@ -33,11 +54,11 @@ export const Ledger = {
   },
 
   cashOnHand(records: LedgerRecord[]): number {
-    return sum(records.map(Ledger.cashDelta));
+    return sum(live(records).map(Ledger.cashDelta));
   },
 
   total(records: LedgerRecord[], type: RecordType): number {
-    return sum(records.filter((r) => r.type === type).map((r) => r.amountCentavos));
+    return sum(live(records).filter((r) => r.type === type).map((r) => r.amountCentavos));
   },
 
   /** Payments minus what members withdrew back out. Charges and expenses do not count. */
@@ -48,7 +69,7 @@ export const Ledger = {
   /** Balance per member id. Members with no records are included at zero. */
   memberBalances(members: Member[], records: LedgerRecord[]): Map<string, number> {
     const byMember = new Map<string, number>();
-    for (const r of records) {
+    for (const r of live(records)) {
       if (!r.memberId) continue;
       byMember.set(r.memberId, (byMember.get(r.memberId) ?? 0) + Ledger.memberDelta(r));
     }
@@ -57,13 +78,13 @@ export const Ledger = {
 
   /** Batch ids of charges that a pay-out has settled. */
   paidOutBatchIds(records: LedgerRecord[]): Set<string> {
-    return new Set(records.filter((r) => r.type === 'EXPENSE' && r.settlesBatchId).map((r) => r.settlesBatchId));
+    return new Set(live(records).filter((r) => r.type === 'EXPENSE' && r.settlesBatchId).map((r) => r.settlesBatchId));
   },
 
   /** Money charged to students that has not been paid out yet (still owed to professors and others). */
   awaitingPayout(records: LedgerRecord[]): number {
     const paid = Ledger.paidOutBatchIds(records);
-    return sum(records.filter((r) => r.type === 'CHARGE' && r.batchId && !paid.has(r.batchId)).map((r) => r.amountCentavos));
+    return sum(live(records).filter((r) => r.type === 'CHARGE' && r.batchId && !paid.has(r.batchId)).map((r) => r.amountCentavos));
   },
 
   /** Cash that is not already owed for a charge. */
@@ -77,7 +98,7 @@ export const Ledger = {
    * including people who were later removed from the class.
    */
   booksDifference(records: LedgerRecord[]): number {
-    const allBalances = sum(records.filter((r) => r.memberId).map(Ledger.memberDelta));
+    const allBalances = sum(live(records).filter((r) => r.memberId).map(Ledger.memberDelta));
     return Ledger.cashOnHand(records) - allBalances - Ledger.awaitingPayout(records);
   },
 
@@ -99,7 +120,7 @@ export const Ledger = {
    */
   unsettled(records: LedgerRecord[]): { memberId: string; name: string; balanceCentavos: number }[] {
     const people = new Map<string, { memberId: string; name: string; balanceCentavos: number }>();
-    for (const r of records) {
+    for (const r of live(records)) {
       if (!r.memberId) continue;
       const person = people.get(r.memberId) ?? { memberId: r.memberId, name: r.memberName, balanceCentavos: 0 };
       person.balanceCentavos += Ledger.memberDelta(r);
@@ -114,6 +135,35 @@ export const Ledger = {
   /** A class can be deleted only when every balance is zero and no money is left in the fund. */
   canCloseBooks(records: LedgerRecord[]): boolean {
     return Ledger.unsettled(records).length === 0 && Ledger.cashOnHand(records) === 0;
+  },
+
+  /** The totals to store in the fund summary. Voided records are left out. */
+  summarize(records: LedgerRecord[]): FundSummary {
+    const active = live(records);
+    return {
+      cashOnHandCentavos: Ledger.cashOnHand(active),
+      waitingPayoutCentavos: Ledger.awaitingPayout(active),
+      balancesTotalCentavos: sum(active.filter((r) => r.memberId).map(Ledger.memberDelta)),
+      recordCount: active.length,
+    };
+  },
+
+  /** True when the stored summary matches what the records add up to. */
+  summaryMatches(stored: Partial<FundSummary> | null | undefined, records: LedgerRecord[]): boolean {
+    if (!stored) return false;
+    const wanted = Ledger.summarize(records);
+    return (Object.keys(wanted) as (keyof FundSummary)[]).every((k) => stored[k] === wanted[k]);
+  },
+
+  /** Changes to the stored summary for one new record, written as increments in the same batch as the record. */
+  summaryDelta(record: LedgerRecord): FundSummary {
+    const waiting = record.type === 'CHARGE' ? record.amountCentavos : record.type === 'EXPENSE' ? -record.amountCentavos : 0;
+    return {
+      cashOnHandCentavos: Ledger.cashDelta(record),
+      waitingPayoutCentavos: waiting,
+      balancesTotalCentavos: record.memberId ? Ledger.memberDelta(record) : 0,
+      recordCount: 1,
+    };
   },
 
   status(balanceCentavos: number): BalanceStatus {
