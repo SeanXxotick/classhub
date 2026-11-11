@@ -248,7 +248,7 @@ const photo = (size = 30000) => ({ photo: 'A'.repeat(size), updatedAtMillis: 1 }
 
 async function main() {
   env = await initializeTestEnvironment({
-    projectId: 'demo-classhub',
+    projectId: process.env.EMU_PROJECT || 'demo-classhub',
     // RULES_FILE lets a check run the same tests against a deliberately broken copy of the rules.
     firestore: { rules: fs.readFileSync(process.env.RULES_FILE || path.join(__dirname, '..', 'firestore.rules'), 'utf8'), host: '127.0.0.1', port: 8080 },
   });

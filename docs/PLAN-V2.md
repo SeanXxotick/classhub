@@ -301,7 +301,7 @@ Still open:
 4. The old data files `classRepo.ts` and `classDataRepo.ts` are still used for courses, schedule, contents and photos; fold them into the new layer.
 5. CI has never run on GitHub (nothing is pushed yet).
 6. The Android shell builds with Gradle 9.6 and the Android plugin 9.4.1 on Java 25, newer than Capacitor 7 expects.
-7. The screens are not rebuilt on the shared components, and a claim has no screenshot.
+7. The screens are not rebuilt on the shared components, and a claim has no screenshot. The project lead asked on 2026-11-11 to improve the UI for readability later; the attendance, claims, timetable and statement cards are the plainest and should go first.
 
 Phase 6 needs three things from the project lead before it can be built and tried: the web push key from the Firebase console, `google-services.json` for the Android shell, and a place for the sender's service account key (a Cloudflare or GitHub secret).
 
