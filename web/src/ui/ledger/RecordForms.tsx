@@ -30,12 +30,12 @@ export function RecordRoute() {
   const { type } = useParams();
   const [params] = useSearchParams();
   if (type === 'EXPENSE') return <PayoutFormScreen preselectedBatchId={params.get('batch') ?? ''} />;
-  return <RecordFormScreen type={type === 'WITHDRAWAL' ? 'WITHDRAWAL' : 'PAYMENT'} />;
+  return <RecordFormScreen type={type === 'WITHDRAWAL' ? 'WITHDRAWAL' : type === 'OPENING' ? 'OPENING' : 'PAYMENT'} />;
 }
 
 // ---------------------------------------------------------------- Payment, Withdrawal
 
-function RecordFormScreen({ type }: { type: Extract<RecordType, 'PAYMENT' | 'WITHDRAWAL'> }) {
+function RecordFormScreen({ type }: { type: Extract<RecordType, 'PAYMENT' | 'WITHDRAWAL' | 'OPENING'> }) {
   const { state, actions } = useClass();
   const back = useBack(`/class/${state.classId}?tab=LEDGER`);
   const [amountText, setAmountText] = useState('');
@@ -43,6 +43,7 @@ function RecordFormScreen({ type }: { type: Extract<RecordType, 'PAYMENT' | 'WIT
   const [note, setNote] = useState('');
   const [dateMillis, setDateMillis] = useState(() => Date.now());
   const [picking, setPicking] = useState(false);
+  const [owes, setOwes] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!state.can('RECORDS_MANAGE')) {
@@ -58,9 +59,13 @@ function RecordFormScreen({ type }: { type: Extract<RecordType, 'PAYMENT' | 'WIT
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    const problem = LedgerForms.checkRecord(type, amount, memberId);
+    const problem = LedgerForms.checkRecord(type === 'OPENING' ? 'PAYMENT' : type, amount, memberId);
     setError(problem);
     if (problem || amount === null) return;
+    if (type === 'OPENING') {
+      if (member) actions.addOpeningBalance(member, owes ? -amount : amount, note.trim(), back);
+      return;
+    }
     actions.addRecord(newRecord({ type, amountCentavos: amount, memberId, memberName: member?.name ?? '', note: note.trim(), dateMillis }), back);
   }
 
@@ -68,22 +73,33 @@ function RecordFormScreen({ type }: { type: Extract<RecordType, 'PAYMENT' | 'WIT
     <SubPage title={recordLabel(type)}>
       <form className="card stack" onSubmit={submit} noValidate>
         <p className="small muted" style={{ margin: 0 }}>
-          {type === 'WITHDRAWAL'
+          {type === 'OPENING'
+            ? 'What a student already had in the class fund, or owed, before these records start. Enter it once per student. It only matches the real fund when no earlier charge is still waiting to be paid out.'
+            : type === 'WITHDRAWAL'
             ? 'Money a student takes out of the class fund. It lowers their balance, and it may be more than they have in.'
             : 'Money a student pays into the class fund. Adds to their balance.'}
         </p>
         <AmountField value={amountText} onChange={(v) => (setAmountText(v), setError(null))} label="Amount" />
         <PickerField
-          label={type === 'PAYMENT' ? 'Who paid' : 'Who is withdrawing'}
+          label={type === 'PAYMENT' ? 'Who paid' : type === 'OPENING' ? 'Student' : 'Who is withdrawing'}
           value={member?.name ?? null}
           onClick={() => setPicking(true)}
           supporting={member ? `Current ${balanceText(state.balanceOf(member.id)).toLowerCase()}` : undefined}
         />
-        <DateField millis={dateMillis} onChange={setDateMillis} />
+        {type === 'OPENING' ? (
+          <Field label="This amount is">
+            <select value={owes ? 'OWES' : 'HAS'} onChange={(e) => setOwes(e.target.value === 'OWES')}>
+              <option value="HAS">Money the student has in the fund</option>
+              <option value="OWES">Money the student owes the class</option>
+            </select>
+          </Field>
+        ) : (
+          <DateField millis={dateMillis} onChange={setDateMillis} />
+        )}
         <Field label="Note (optional)">
           <input
             value={note}
-            placeholder={type === 'WITHDRAWAL' ? 'e.g. Asked for cash back' : 'e.g. October dues'}
+            placeholder={type === 'OPENING' ? 'e.g. Carried over from last semester' : type === 'WITHDRAWAL' ? 'e.g. Asked for cash back' : 'e.g. October dues'}
             onChange={(e) => (setNote(e.target.value.slice(0, 80)), setError(null))}
           />
         </Field>

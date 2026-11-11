@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectNotice, newUser, openTab, realErrors, signUp } from './helpers';
+import { expectNotice, newUser, openTab, realErrors, signUp, joinWithApproval } from './helpers';
 
 /*
  * The Mayor deletes a class. It is refused while a student still has money in the fund,
@@ -48,7 +48,7 @@ test.describe.serial('deleting a class', () => {
     const code = (await dina.page.locator('.invite-code').textContent())!.trim();
 
     await signUp(eli.page, eli.first, eli.last, eli.email, `/join/${code}`);
-    await eli.page.getByRole('button', { name: 'Join Closing Class' }).click();
+    await joinWithApproval(eli.page, dina.page, 'Closing Class', classUrl, 'Eli Cruz');
     await expect(eli.page.getByText('You are Member')).toBeVisible();
     // Students do not see the delete button: Class settings is for officers.
     await eli.page.goto(`${classUrl}/settings`);

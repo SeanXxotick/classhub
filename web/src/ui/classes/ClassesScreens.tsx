@@ -1,33 +1,37 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Avatar, ColorPicker, ACCENT_CHOICES, Dialog, Field, Spinner, TopBar, useBack, Loading } from '../common';
-import { useQueryList, fromDoc } from '../../data/live';
-import { membershipsOf, createClass, joinClass, lookupInvite } from '../../data/classRepo';
+import { db } from '../../data/firebase';
+import { useMyClasses as useMyClassesLive } from '../../data/hooks';
+import { createClass } from '../../data/classes';
+import { cancelJoinRequest, lookupInvite, requestToJoin } from '../../data/membership';
 import { useClassPhotos } from '../../data/photoRepo';
 import { friendlyMessage } from '../../data/errors';
-import type { AppUser, ClassMembership } from '../../data/models';
+import type { AppUser, ClassMembership, JoinRequest } from '../../data/models';
 import { ClassRules } from '../../domain/classRules';
 import { InviteCode } from '../../domain/inviteCode';
 import { compareStrings } from '../../domain/classRules';
 import { pinnedClasses, useSettingsVersion } from '../settings';
 
 /** The "My classes" list, sorted by name with pinned classes first. Null while loading. */
-export function useMyClasses(uid: string): { classes: ClassMembership[] | null; error: string | null } {
-  const live = useQueryList(`memberships/${uid}`, membershipsOf(uid), (s) =>
-    fromDoc<ClassMembership>({ classId: '', className: '', joinedAtMillis: 0 }, s, 'classId'),
-  );
+export function useMyClasses(uid: string): { classes: ClassMembership[] | null; requests: JoinRequest[]; error: string | null } {
+  const live = useMyClassesLive(db, uid);
   useSettingsVersion();
   const pinned = pinnedClasses();
   const classes = live.data
-    ? [...live.data]
+    ? live.data.classes
+        // A class that no longer exists, or is being deleted, is not listed.
+        .filter((c) => c.room !== null && !(c.room && c.room.deletingAtMillis > 0))
+        .map((c) => ({ classId: c.classId, className: c.room?.name ?? '', joinedAtMillis: c.member.joinedAtMillis }))
         .sort((a, b) => compareStrings(a.className.toLowerCase(), b.className.toLowerCase()))
         .sort((a, b) => Number(pinned.has(b.classId)) - Number(pinned.has(a.classId)))
     : null;
-  return { classes, error: live.error ? friendlyMessage(live.error) : null };
+  const requests = (live.data?.requests ?? []).map((r) => ({ ...r.request, id: r.classId }));
+  return { classes, requests, error: live.error ? friendlyMessage(live.error) : null };
 }
 
 export function ClassesScreen({ user }: { user: AppUser }) {
-  const { classes, error } = useMyClasses(user.uid);
+  const { classes, requests, error } = useMyClasses(user.uid);
   const photos = useClassPhotos(useMemo(() => classes?.map((c) => c.classId) ?? [], [classes]));
   const [adding, setAdding] = useState(false);
   const navigate = useNavigate();
@@ -47,7 +51,7 @@ export function ClassesScreen({ user }: { user: AppUser }) {
       <div className="page">
         {classes === null ? (
           <Loading />
-        ) : classes.length === 0 ? (
+        ) : classes.length === 0 && requests.length === 0 ? (
           <div className="empty" style={{ paddingTop: 80 }}>
             <h2 style={{ fontSize: 22, color: 'var(--on-surface)' }}>Hi, {user.displayName}!</h2>
             <p>You are not in any classes yet. Tap "Add a class" to create one or join with a code.</p>
@@ -69,6 +73,22 @@ export function ClassesScreen({ user }: { user: AppUser }) {
                 </Link>
               ))}
             </div>
+            {requests.length > 0 && (
+              <>
+                <span className="small semibold muted">Waiting for approval</span>
+                {requests.map((r) => (
+                  <div key={r.id} className="card row" style={{ padding: 14 }}>
+                    <span className="grow">
+                      <span className="semibold" style={{ display: 'block', fontSize: 16 }}>{r.className}</span>
+                      <span className="small muted">An officer of the class has to approve your request.</span>
+                    </span>
+                    <button className="btn text" onClick={() => cancelJoinRequest(db, user.uid, r.id).catch(() => {})}>
+                      Cancel request
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -119,7 +139,7 @@ export function CreateClassScreen({ user }: { user: AppUser }) {
     if (problem) return setError(problem);
     setBusy(true);
     try {
-      const classId = await createClass(name.trim(), description, accent, user.uid, user.displayName);
+      const { classId } = await createClass(db, { uid: user.uid, name: user.displayName }, { name: name.trim(), description, accentColor: accent });
       navigate(`/class/${classId}`, { replace: true });
     } catch (err) {
       setError(friendlyMessage(err));
@@ -166,9 +186,9 @@ export function JoinClassScreen({ user }: { user: AppUser }) {
   useEffect(() => {
     if (code.length !== InviteCode.LENGTH || !InviteCode.isValid(code) || preview?.code === code) return;
     let live = true;
-    lookupInvite(code)
+    lookupInvite(db, code)
       .catch(() => null)
-      .then((className) => live && setPreview({ code, className }));
+      .then((invite) => live && setPreview({ code, className: invite?.className ?? null }));
     return () => {
       live = false;
     };
@@ -183,8 +203,8 @@ export function JoinClassScreen({ user }: { user: AppUser }) {
     if (!InviteCode.isValid(code)) return setError(`Invite codes have ${InviteCode.LENGTH} letters and numbers.`);
     setBusy(true);
     try {
-      const classId = await joinClass(code, user.uid, user.displayName);
-      navigate(`/class/${classId}`, { replace: true });
+      await requestToJoin(db, { uid: user.uid, name: user.displayName }, code);
+      navigate('/', { replace: true });
     } catch (err) {
       setError(friendlyMessage(err));
       setBusy(false);
@@ -218,9 +238,9 @@ export function JoinClassScreen({ user }: { user: AppUser }) {
           )}
           {error && <p className="error-text" role="alert" style={{ margin: 0 }}>{error}</p>}
           <button className="btn solid big block" type="submit" disabled={busy || code.length !== InviteCode.LENGTH}>
-            {busy ? <Spinner small /> : className ? `Join ${className}` : 'Join class'}
+            {busy ? <Spinner small /> : className ? `Ask to join ${className}` : 'Ask to join'}
           </button>
-          <p className="small muted" style={{ margin: 0 }}>You will join as a Member. The Mayor can give you an officer role afterward.</p>
+          <p className="small muted" style={{ margin: 0 }}>An officer of the class approves your request. You then join as a Member, and the Mayor can give you an officer role afterward.</p>
         </form>
       </div>
     </>

@@ -1,5 +1,5 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import type { LedgerRecord, Member, RecordType } from '../../data/models';
+import { BALANCE_VISIBILITIES, type BalanceVisibility, type LedgerRecord, type Member, type RecordType } from '../../data/models';
 import { Ledger } from '../../domain/ledger';
 import { LEDGER_FILTERS, LedgerView, type ChargeBatch, type LedgerEntry, type LedgerFilter } from '../../domain/ledgerView';
 import { formatMoney } from '../../domain/money';
@@ -180,6 +180,8 @@ export function EntryRow({ entry, state, onClick }: { entry: LedgerEntry; state:
     }
   }
   const amount = LedgerView.displayAmount(entry);
+  const voided = entry.kind === 'batch' ? entry.voided : entry.record.voidedAtMillis > 0;
+  const struck = voided ? { textDecoration: 'line-through', opacity: 0.6 } : undefined;
   const photoOwner = entry.kind === 'single' && entry.record.memberId ? entry.record : null;
   const role = photoOwner ? state.roleOf(state.members.find((m) => m.id === photoOwner.memberId)) : null;
   const content = (
@@ -192,12 +194,14 @@ export function EntryRow({ entry, state, onClick }: { entry: LedgerEntry; state:
         <TypeIcon type={entry.type} />
       )}
       <span className="grow ellipsis-box">
-        <span className="title ellipsis">{title}</span>
+        <span className="title ellipsis" style={struck}>{title}</span>
         <span className="sub ellipsis">{subtitle}</span>
       </span>
       <span className="end-col">
-        <span className={'bold ' + (amount >= 0 ? 'income' : 'expense')}>{signedMoney(amount)}</span>
-        {entry.kind === 'batch' &&
+        <span className={'bold ' + (amount >= 0 ? 'income' : 'expense')} style={struck}>{signedMoney(amount)}</span>
+        {voided && <Tag text="Voided" color="var(--error)" />}
+        {!voided &&
+          entry.kind === 'batch' &&
           (paidOut.has(entry.batchId) ? <Tag text="Paid out" color="var(--income)" /> : <Tag text="Not yet paid out" color="var(--pending)" />)}
       </span>
     </>
@@ -284,7 +288,64 @@ export function LedgerSummaryCard({ state }: { state: ClassState }) {
   return state.can('RECORDS_MANAGE') ? (
     <FundSummaryCard records={state.records} />
   ) : (
-    <MyBalanceCard records={state.records} balanceCentavos={state.balanceOf(state.myUid)} myUid={state.myUid} />
+    <>
+      <MyBalanceCard records={state.records} balanceCentavos={state.balanceOf(state.myUid)} myUid={state.myUid} />
+      {state.summary && (
+        <div className="card">
+          <div className="small semibold muted">Class fund</div>
+          <div className="tiles">
+            <SummaryTile label="Cash on hand" centavos={state.summary.cashOnHandCentavos} />
+            <SummaryTile label="Waiting to be paid out" centavos={state.summary.waitingPayoutCentavos} />
+          </div>
+        </div>
+      )}
+      {state.room?.paymentInfo.trim() && (
+        <div className="card">
+          <div className="small semibold muted">How to pay</div>
+          <p style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{state.room.paymentInfo}</p>
+        </div>
+      )}
+    </>
+  );
+}
+
+const VISIBILITY_LABELS: Record<BalanceVisibility, string> = {
+  EVERYONE: 'The whole class',
+  OFFICERS: 'Officers only',
+  TREASURERS: 'Treasurers only',
+};
+
+/** Who may see every balance, and how to pay. Changed by anyone who manages the records. */
+export function LedgerSettingsCard({ state, onSave }: { state: ClassState; onSave: (visibility: BalanceVisibility, paymentInfo: string) => void }) {
+  const room = state.room;
+  const [visibility, setVisibility] = useState<BalanceVisibility>(room?.balanceVisibility ?? 'EVERYONE');
+  const [info, setInfo] = useState(room?.paymentInfo ?? '');
+  if (!room) return null;
+  const changed = visibility !== room.balanceVisibility || info.trim() !== room.paymentInfo;
+  return (
+    <div className="card stack">
+      <div className="bold">Ledger settings</div>
+      <label className="small semibold muted">
+        Who can see every balance
+        <select value={visibility} style={{ display: 'block', width: '100%', marginTop: 4 }} onChange={(e) => setVisibility(e.target.value as BalanceVisibility)}>
+          {BALANCE_VISIBILITIES.map((v) => (
+            <option key={v} value={v}>
+              {VISIBILITY_LABELS[v]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="small muted" style={{ margin: 0 }}>
+        Everyone always sees their own records, the fund totals and the pay-outs. The Mayor and the treasurers always see everything.
+      </p>
+      <label className="small semibold muted">
+        How to pay (shown to the class)
+        <textarea value={info} rows={3} maxLength={500} placeholder="e.g. GCash 09XX XXX XXXX, or cash to the treasurer" style={{ display: 'block', width: '100%', marginTop: 4 }} onChange={(e) => setInfo(e.target.value)} />
+      </label>
+      <button type="button" className="btn outline" disabled={!changed} onClick={() => onSave(visibility, info)}>
+        Save ledger settings
+      </button>
+    </div>
   );
 }
 
@@ -295,10 +356,12 @@ export function LedgerTab({
   onDeleteRecord,
   onUndoCharge,
   onRecordPayout,
+  onSaveSettings,
 }: {
   state: ClassState;
-  onDeleteRecord: (record: LedgerRecord) => void;
-  onUndoCharge: (batch: ChargeBatch) => void;
+  onSaveSettings: (visibility: BalanceVisibility, paymentInfo: string) => void;
+  onDeleteRecord: (record: LedgerRecord, reason: string) => void;
+  onUndoCharge: (batch: ChargeBatch, reason: string) => void;
   onRecordPayout: (batchId: string) => void;
 }) {
   const [filter, setFilter] = useState<LedgerFilter>('ALL');
@@ -312,6 +375,7 @@ export function LedgerTab({
         <div className="stack">
           <LedgerSummaryCard state={state} />
           {state.can('RECORDS_MANAGE') && <div className="semibold muted">{myBalanceLine(state.balanceOf(state.myUid))}</div>}
+          {state.can('RECORDS_MANAGE') && <LedgerSettingsCard key={`${state.room?.balanceVisibility}|${state.room?.paymentInfo}`} state={state} onSave={onSaveSettings} />}
         </div>
         <div className="stack">
           <div className="chips" role="tablist" aria-label="Filter records">
@@ -348,8 +412,8 @@ export function LedgerTab({
           state={state}
           canManage={state.can('RECORDS_MANAGE')}
           onDismiss={() => setSelected(null)}
-          onDelete={(record) => (setSelected(null), onDeleteRecord(record))}
-          onUndo={(batch) => (setSelected(null), onUndoCharge(batch))}
+          onDelete={(record, reason) => (setSelected(null), onDeleteRecord(record, reason))}
+          onUndo={(batch, reason) => (setSelected(null), onUndoCharge(batch, reason))}
           onRecordPayout={(batchId) => (setSelected(null), onRecordPayout(batchId))}
         />
       )}
@@ -370,37 +434,44 @@ function EntryDetailsDialog({
   state: ClassState;
   canManage: boolean;
   onDismiss: () => void;
-  onDelete: (record: LedgerRecord) => void;
-  onUndo: (batch: ChargeBatch) => void;
+  onDelete: (record: LedgerRecord, reason: string) => void;
+  onUndo: (batch: ChargeBatch, reason: string) => void;
   onRecordPayout: (batchId: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [reason, setReason] = useState('');
+  const voided = entry.kind === 'batch' ? entry.voided : entry.record.voidedAtMillis > 0;
   const createdBy = (uid: string) => state.members.find((m) => m.id === uid)?.name ?? 'a former member';
   const payout = entry.kind === 'batch' ? LedgerView.payoutFor(entry.batchId, state.records) : null;
   // A charge that was paid out cannot be undone, and a single student's share of a charge is not deleted on its own.
-  const removable = entry.kind === 'batch' ? payout === null : !(entry.record.type === 'CHARGE' && entry.record.batchId);
+  const removable = !voided && (entry.kind === 'batch' || !(entry.record.type === 'CHARGE' && entry.record.batchId));
 
   if (confirming) {
     return (
       <Dialog
-        title={entry.kind === 'batch' ? 'Undo this whole charge?' : 'Delete this record?'}
+        title={entry.kind === 'batch' ? 'Void this whole charge?' : 'Void this record?'}
         onClose={onDismiss}
         actions={
           <>
             <button className="btn text" onClick={onDismiss}>
               Cancel
             </button>
-            <button className="btn text danger" onClick={() => (entry.kind === 'batch' ? onUndo(entry) : onDelete(entry.record))}>
-              {entry.kind === 'batch' ? 'Undo charge' : 'Delete'}
+            <button className="btn text danger" disabled={!reason.trim()} onClick={() => (entry.kind === 'batch' ? onUndo(entry, reason.trim()) : onDelete(entry.record, reason.trim()))}>
+              {entry.kind === 'batch' ? 'Void charge' : 'Void record'}
             </button>
           </>
         }
       >
         <p style={{ margin: 0 }}>
           {entry.kind === 'batch'
-            ? `All ${entry.count} charges of "${entry.note}" will be removed and those students' balances go back up.`
-            : 'This removes the record and updates the balances. It cannot be undone.'}
+            ? `All ${entry.count} charges of "${entry.note}" stay in the list, crossed out, and the balances of those students go back up.` +
+              (payout ? ' Its pay-out is voided as well.' : '')
+            : 'The record stays in the list, crossed out, with your name and this reason. It is left out of every total. This cannot be undone.'}
         </p>
+        <label className="small semibold muted" style={{ display: 'block', marginTop: 12 }}>
+          Reason for voiding
+          <textarea value={reason} maxLength={200} rows={2} style={{ display: 'block', width: '100%', marginTop: 4 }} onChange={(e) => setReason(e.target.value)} />
+        </label>
       </Dialog>
     );
   }
@@ -413,10 +484,10 @@ function EntryDetailsDialog({
         <>
           {canManage && removable && (
             <button className="btn text danger" style={{ marginRight: 'auto' }} onClick={() => setConfirming(true)}>
-              {entry.kind === 'batch' ? 'Undo charge' : 'Delete'}
+              {entry.kind === 'batch' ? 'Void charge' : 'Void record'}
             </button>
           )}
-          {canManage && entry.kind === 'batch' && payout === null && (
+          {canManage && !voided && entry.kind === 'batch' && payout === null && (
             <button className="btn text" onClick={() => onRecordPayout(entry.batchId)}>
               Record pay-out
             </button>
@@ -428,6 +499,15 @@ function EntryDetailsDialog({
       }
     >
       <div className="stack" style={{ gap: 6 }}>
+        {voided && (
+          <p className="error-text" style={{ margin: 0 }}>
+            Voided
+            {(() => {
+              const r = entry.kind === 'batch' ? entry.records[0] : entry.record;
+              return r ? ` by ${createdBy(r.voidedByUid)} on ${fullDate(r.voidedAtMillis)}: ${r.voidReason}` : '';
+            })()}
+          </p>
+        )}
         {entry.kind === 'single' ? (
           <SingleDetails record={entry.record} state={state} createdBy={createdBy} />
         ) : (
@@ -487,6 +567,7 @@ export function AddRecordChooser({ onPick, onDismiss }: { onPick: (type: RecordT
     ['CHARGE', 'Deduct an amount from each student, such as a quiz fee. You can charge by course.'],
     ['WITHDRAWAL', 'A student takes part of their balance out.'],
     ['EXPENSE', 'Pay a charge out in full, for example handing the quiz money to the professor.'],
+    ['OPENING', 'What a student already had, or owed, before this class started using ClassHub.'],
   ];
   return (
     <Dialog

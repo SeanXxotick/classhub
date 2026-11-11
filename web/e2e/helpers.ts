@@ -43,6 +43,20 @@ export async function signIn(page: Page, email: string, password = TEST_PASSWORD
   await page.locator('form').getByRole('button', { name: 'Sign in' }).click();
 }
 
+/**
+ * The student asks to join from the join screen they are on, an officer approves the request in the
+ * Members tab, and the student opens the class.
+ */
+export async function joinWithApproval(student: Page, officer: Page, className: string, classUrl: string, studentName: string) {
+  await student.getByRole('button', { name: `Ask to join ${className}` }).click();
+  await expect(student.getByText('Waiting for approval')).toBeVisible();
+  await officer.goto(classUrl);
+  await openTab(officer, 'Members');
+  await officer.getByRole('button', { name: 'Approve' }).click();
+  await expectNotice(officer, `${studentName} is now in the class.`);
+  await student.goto(classUrl);
+}
+
 /** The snackbar shows this message. */
 export async function expectNotice(page: Page, text: string | RegExp) {
   await expect(page.getByRole('status').filter({ hasText: text })).toBeVisible();

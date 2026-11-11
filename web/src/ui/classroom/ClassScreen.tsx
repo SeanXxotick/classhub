@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import type { Member, ScheduleItem } from '../../data/models';
+import type { JoinRequest, Member, ScheduleItem } from '../../data/models';
 import { JoinLinks } from '../../domain/joinLinks';
 import { LedgerView } from '../../domain/ledgerView';
 import { ScheduleView } from '../../domain/scheduleView';
@@ -135,12 +135,13 @@ function ClassScreen() {
         ) : !room || !state.me ? null : tab === 'HOME' ? (
           <HomeTab state={state} onSeeLedger={() => setTab('LEDGER')} onSeeSchedule={() => setTab('SCHEDULE')} onToggleDone={onToggleDone} />
         ) : tab === 'MEMBERS' ? (
-          <MembersTab state={state} onOpenMember={(id) => navigate(`${base}/member/${id}`)} />
+          <MembersTab state={state} onApprove={actions.approveRequest} onReject={actions.rejectRequest} onOpenMember={(id) => navigate(`${base}/member/${id}`)} />
         ) : tab === 'LEDGER' ? (
           <LedgerTab
             state={state}
             onDeleteRecord={actions.deleteRecord}
             onUndoCharge={actions.undoCharge}
+            onSaveSettings={(visibility, info) => actions.saveLedgerSettings(visibility, info)}
             onRecordPayout={(batchId) => navigate(`${base}/record/EXPENSE?batch=${encodeURIComponent(batchId)}`)}
           />
         ) : tab === 'SCHEDULE' ? (
@@ -422,8 +423,48 @@ function PermissionLine({ label, allowed }: { label: string; allowed: boolean })
 
 // ---------------------------------------------------------------- Members
 
-function MembersTab({ state, onOpenMember }: { state: ClassState; onOpenMember: (id: string) => void }) {
+function MembersTab({
+  state,
+  onOpenMember,
+  onApprove,
+  onReject,
+}: {
+  state: ClassState;
+  onOpenMember: (id: string) => void;
+  onApprove: (request: JoinRequest) => void;
+  onReject: (request: JoinRequest) => void;
+}) {
   const canManage = state.can('MEMBERS_MANAGE');
+  return (
+    <>
+      {canManage && state.joinRequests.length > 0 && (
+        <div className="card flush" style={{ marginBottom: 12 }}>
+          <div className="small semibold muted" style={{ padding: '0 16px 6px' }}>
+            Waiting for approval ({state.joinRequests.length})
+          </div>
+          {state.joinRequests.map((r) => (
+            <div key={r.uid} className="list-row">
+              <Avatar name={r.name} color="#6B768A" />
+              <span className="grow ellipsis-box">
+                <span className="title ellipsis">{r.name}</span>
+                <span className="sub ellipsis">Asked to join with the invite code</span>
+              </span>
+              <button type="button" className="btn text" onClick={() => onReject(r)}>
+                Reject
+              </button>
+              <button type="button" className="btn solid" onClick={() => onApprove(r)}>
+                Approve
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <MembersList state={state} canManage={canManage} onOpenMember={onOpenMember} />
+    </>
+  );
+}
+
+function MembersList({ state, canManage, onOpenMember }: { state: ClassState; canManage: boolean; onOpenMember: (id: string) => void }) {
   return (
     <div className="card flush">
       <div className="small semibold muted" style={{ padding: '0 16px 6px' }}>
@@ -446,7 +487,7 @@ function MemberRow({ member, state, isMe, onClick }: { member: Member; state: Cl
   const skipped = showCourses ? state.courses.filter((c) => member.excludedCourseIds.includes(c.id)).length : 0;
   const balance = state.balanceOf(member.id);
   const details = [
-    state.room?.ledgerEnabled !== false ? balanceText(balance) : null,
+    state.room?.ledgerEnabled !== false && (state.seeAll || isMe) ? balanceText(balance) : null,
     skipped > 0 ? `Does not take ${skipped} course${s(skipped)}` : null,
   ].filter(Boolean);
   const content = (

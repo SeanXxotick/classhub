@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { TEST_PASSWORD, expectNotice, newUser, openTab, realErrors, signIn, signUp } from './helpers';
+import { TEST_PASSWORD, expectNotice, newUser, openTab, realErrors, signIn, signUp, joinWithApproval } from './helpers';
 
 /*
  * The whole life of a class with three people, run in order:
@@ -85,7 +85,7 @@ test.describe.serial('a class from start to finish', () => {
     const { page } = stu;
     await signUp(page, stu.first, stu.last, stu.email, `/join/${firstCode}`);
     await expect(page.getByText('You are invited to')).toBeVisible();
-    await page.getByRole('button', { name: 'Join Test Class' }).click();
+    await joinWithApproval(page, maya.page, 'Test Class', classUrl, 'Stu Dent');
     await expect(page.getByText('You are Member')).toBeVisible();
     await expect(page.getByText('2 members')).toBeVisible();
     // Members cannot add records, so there is no + button and the form says so.

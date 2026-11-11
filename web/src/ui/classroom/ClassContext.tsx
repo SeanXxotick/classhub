@@ -1,20 +1,29 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { doc, setDoc } from 'firebase/firestore';
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import { doc } from 'firebase/firestore';
 import { db } from '../../data/firebase';
 import { fromDoc, useDocValue, useQueryList } from '../../data/live';
 import { friendlyMessage, isPermissionDenied } from '../../data/errors';
 import * as classRepo from '../../data/classRepo';
+import * as classes from '../../data/classes';
+import * as membership from '../../data/membership';
+import * as ledgerStore from '../../data/ledgerStore';
+import * as openings from '../../data/openingBalances';
+import { useCharges, useFundSummary, useJoinRequests, useLedgerUpkeep, usePendingOpeningBalances, useVisibleRecords } from '../../data/hooks';
 import * as dataRepo from '../../data/classDataRepo';
 import * as photoRepo from '../../data/photoRepo';
 import {
   newClassRoom,
   newContentItem,
   newMember,
-  newRecord,
   newRole,
   newScheduleItem,
+  type BalanceVisibility,
+  type Charge,
   type ClassRoom,
   type ContentItem,
+  type JoinRequest,
+  type PendingOpeningBalance,
+  type StoredFundSummary,
   type Course,
   type LedgerRecord,
   type Member,
@@ -27,7 +36,7 @@ import { Ledger } from '../../domain/ledger';
 import { can as roleCan, RoleRules } from '../../domain/permissions';
 import { ClassRules, CourseRules, MemberRules, compareStrings, sortByName } from '../../domain/classRules';
 import { LedgerForms } from '../../domain/ledgerForms';
-import { ChargePlanner, type ChargePreview } from '../../domain/chargePlanner';
+import { type ChargePreview } from '../../domain/chargePlanner';
 import type { ChargeBatch } from '../../domain/ledgerView';
 import { formatMoney } from '../../domain/money';
 import { ScheduleForms } from '../../domain/scheduleView';
@@ -46,7 +55,17 @@ export interface ClassState {
   roles: Role[];
   members: Member[];
   courses: Course[];
+  /** The records this user may read: all of them, or only their own plus the pay-outs (see seeAll). */
   records: LedgerRecord[];
+  /** True when this user may read every record (and so every balance). */
+  seeAll: boolean;
+  /** The fund totals kept by the treasurers, readable by every member. */
+  summary: StoredFundSummary | null;
+  charges: Charge[];
+  /** Students waiting for approval (empty unless this user manages members). */
+  joinRequests: JoinRequest[];
+  /** Opening balances waiting for a student to join (records managers only). */
+  pendingOpenings: PendingOpeningBalance[];
   contents: ContentItem[];
   schedule: ScheduleItem[];
   /** Schedule items the signed-in student marked done. */
@@ -85,11 +104,17 @@ export interface ClassActions {
   addCourse: (name: string, onDone?: Done) => void;
   renameCourse: (course: Course, name: string, onDone?: Done) => void;
   deleteCourse: (course: Course, onDone?: Done) => void;
+  approveRequest: (request: JoinRequest) => void;
+  rejectRequest: (request: JoinRequest) => void;
+  saveLedgerSettings: (balanceVisibility: BalanceVisibility, paymentInfo: string, onDone?: Done) => void;
+  addOpeningBalance: (member: Member, amountCentavos: number, note: string, onDone?: Done) => void;
   addRecord: (record: LedgerRecord, onDone?: Done) => void;
   addPayout: (charge: ChargeBatch | null, paidTo: string, dateMillis: number, onDone?: Done) => void;
   chargeStudents: (preview: ChargePreview, note: string, courseId: string, dateMillis: number, payNow: boolean, paidTo: string, onDone?: Done) => void;
-  deleteRecord: (record: LedgerRecord) => void;
-  undoCharge: (batch: ChargeBatch) => void;
+  /** Voids a record: it stays in the list, crossed out, with the reason. */
+  deleteRecord: (record: LedgerRecord, reason: string) => void;
+  /** Voids a whole charge (its pay-out first when it was paid out). */
+  undoCharge: (batch: ChargeBatch, reason: string) => void;
   saveScheduleItem: (item: ScheduleItem, onDone?: Done) => void;
   setCancelled: (item: ScheduleItem, cancelled: boolean) => void;
   setDone: (item: ScheduleItem, done: boolean) => void;
@@ -117,7 +142,16 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
   const roles = useQueryList(`roles/${classId}/${allowed}`, allowed ? classRepo.rolesOf(classId) : null, (d) => fromDoc(newRole({}), d));
   const members = useQueryList(`members/${classId}/${allowed}`, allowed ? classRepo.membersOf(classId) : null, (d) => fromDoc(newMember({}), d));
   const courses = useQueryList(`courses/${classId}/${allowed}`, allowed ? classRepo.coursesOf(classId) : null, (d) => fromDoc<Course>({ id: '', name: '' }, d));
-  const records = useQueryList(`records/${classId}/${allowed}`, allowed ? dataRepo.recordsOf(classId) : null, (d) => fromDoc(newRecord({}), d));
+  const visible = useVisibleRecords(db, classId, uid);
+  const records = useMemo(() => ({ data: allowed ? visible.data?.records : [], error: visible.error }), [allowed, visible]);
+  const seeAll = visible.data?.scope === 'ALL';
+  const myRoleEarly = roles.data?.find((r) => r.id === me.data?.roleId) ?? null;
+  const manageRecords = allowed && roleCan(myRoleEarly, 'RECORDS_MANAGE');
+  const summary = useFundSummary(db, classId, allowed);
+  const charges = useCharges(db, classId, allowed);
+  const joinRequests = useJoinRequests(db, classId, allowed && roleCan(myRoleEarly, 'MEMBERS_MANAGE'));
+  const pendingOpenings = usePendingOpeningBalances(db, classId, manageRecords);
+  useLedgerUpkeep(db, classId, uid, manageRecords);
   const contents = useQueryList(`contents/${classId}/${allowed}`, allowed ? dataRepo.contentsOf(classId) : null, (d) => fromDoc(newContentItem({}), d));
   const schedule = useQueryList(`schedule/${classId}/${allowed}`, allowed ? dataRepo.scheduleOf(classId) : null, (d) => fromDoc(newScheduleItem({}), d));
   const progress = useQueryList(`progress/${classId}/${allowed}`, allowed ? dataRepo.progressOf(classId) : null, (d) =>
@@ -126,7 +160,6 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
   const classPhoto = useDocValue(`classPhoto/${classId}/${allowed}`, allowed ? doc(db, 'classPhotos', classId) : null, (d) =>
     typeof d.get('photo') === 'string' ? (d.get('photo') as string) : null,
   );
-  const membership = useDocValue(`membership/${uid}/${classId}`, doc(classRepo.membershipsOf(uid), classId), (d) => (d.get('className') as string | undefined) ?? '');
   const memberIds = useMemo(() => (members.data ?? []).map((m) => m.id), [members.data]);
 
   const avatars = photoRepo.useAvatars(memberIds);
@@ -160,6 +193,11 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
       members: memberList,
       courses: [...(courses.data ?? [])].sort((a, b) => compareStrings(a.name.toLowerCase(), b.name.toLowerCase())),
       records: recordList,
+      seeAll,
+      summary: summary.data ?? null,
+      charges: charges.data ?? [],
+      joinRequests: joinRequests.data ?? [],
+      pendingOpenings: pendingOpenings.data ?? [],
       contents: contents.data ?? [],
       schedule: [...(schedule.data ?? [])].sort((a, b) => a.dueMillis - b.dueMillis),
       myDone: new Set(Object.keys(mine?.done ?? {})),
@@ -174,28 +212,12 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
       roleOf,
       can: (p) => roleCan(myRole, p),
     };
-  }, [classId, uid, room, me, roles, members, courses, records, contents, schedule, progress, avatars, classPhoto]);
+  }, [classId, uid, room, me, roles, members, courses, records, seeAll, summary, charges, joinRequests, pendingOpenings, contents, schedule, progress, avatars, classPhoto]);
 
   const notice = useNotice();
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
 
-  // Keeps this class in My classes while the user is a member: brings the name up to date after an officer
-  // renames the class, and (checked once with the server) puts the class back if its entry went missing.
-  // Skipped while an action (such as leaving) runs.
-  const liveName = me.data ? room.data?.name : undefined;
-  const restoreChecked = useRef(false);
-  useEffect(() => {
-    if (!liveName || busy) return;
-    if (typeof membership.data === 'string') {
-      if (membership.data !== liveName) setDoc(doc(classRepo.membershipsOf(uid), classId), { className: liveName }, { merge: true }).catch(() => {});
-    } else if (!restoreChecked.current) {
-      restoreChecked.current = true;
-      classRepo.restoreMembership(uid, classId, liveName).catch(() => {
-        restoreChecked.current = false;
-      });
-    }
-  }, [liveName, membership.data, busy, uid, classId]);
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -229,7 +251,7 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         const r = st().room;
         if (!r) return;
         runAction(null, undefined, async () => {
-          const code = await classRepo.regenerateInviteCode(r);
+          const code = await classes.regenerateInviteCode(db, classId);
           notice(`New invite code: ${code}. The old code no longer works.`);
         });
       },
@@ -242,21 +264,21 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         if (!c.can('CLASS_SETTINGS')) return deny('You do not have permission to change class settings.');
         const problem = ClassRules.checkName(updated.name);
         if (problem) return deny(problem);
-        // Only the editable fields change; everything else comes from the live class.
-        const next: ClassRoom = {
-          ...c.room,
+        const next: classes.ClassSettingsChanges = {
           name: updated.name.trim(),
           description: updated.description.trim(),
           accentColor: updated.accentColor,
           ledgerEnabled: updated.ledgerEnabled,
           scheduleEnabled: updated.scheduleEnabled,
           contentsEnabled: updated.contentsEnabled,
+          announcementsEnabled: updated.announcementsEnabled,
+          timetableEnabled: updated.timetableEnabled,
           scheduleIcons: ScheduleIcons.sanitize(updated.scheduleIcons),
           scheduleColors: ScheduleIcons.sanitizeColors(updated.scheduleColors),
           contentIcons: ContentIcons.sanitize(updated.contentIcons),
           contentColors: ContentIcons.sanitizeColors(updated.contentColors),
         };
-        runAction('Class settings saved.', onDone, () => classRepo.updateSettings(next, uid));
+        runAction('Class settings saved.', onDone, () => classes.updateClassSettings(db, classId, next));
       },
 
       setClassPhoto(photo) {
@@ -277,37 +299,37 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         if (!c.can('MEMBERS_MANAGE')) return deny('You do not have permission to change roles.');
         if (!MemberRules.canChangeRole(uid, member, ownerUid)) return deny("This member's role cannot be changed.");
         if (!MemberRules.assignableRoles(c.roles).some((r) => r.id === roleId)) return deny("Pick one of the class's roles.");
-        runAction(`${member.name}'s role was updated.`, onDone, () => classRepo.setRole(classId, member.id, roleId));
+        runAction(`${member.name}'s role was updated.`, onDone, () => membership.changeMemberRole(db, uid, classId, member.id, roleId));
       },
 
       setCoursesTaken(member, taken, onDone) {
         const c = st();
         if (!c.can('MEMBERS_MANAGE')) return deny('You do not have permission to change courses.');
         const excluded = c.courses.map((x) => x.id).filter((id) => !taken.has(id));
-        runAction(`${member.name}'s courses were saved.`, onDone, () => classRepo.setExcludedCourses(classId, member.id, excluded));
+        runAction(`${member.name}'s courses were saved.`, onDone, () => membership.setMemberCourses(db, classId, member.id, excluded));
       },
 
       removeMember(member, onDone) {
         const c = st();
         if (!c.can('MEMBERS_MANAGE')) return deny('You do not have permission to remove members.');
         if (!MemberRules.canRemove(uid, member, c.room?.ownerUid ?? '')) return deny('This member cannot be removed.');
-        runAction(`${member.name} was removed from the class.`, onDone, () => classRepo.removeMember(classId, member.id));
+        runAction(`${member.name} was removed from the class.`, onDone, () => membership.removeMember(db, uid, classId, member.id));
       },
 
       leaveClass(newMayorUid, onDone) {
         const c = st();
         const handOver = MemberRules.mustHandOver(uid, c.room?.ownerUid ?? '');
-        if (!handOver) return runAction(null, onDone, () => classRepo.leaveClass(classId, uid));
+        if (!handOver) return runAction(null, onDone, () => membership.leaveClass(db, uid, classId));
         if (!newMayorUid) return deny('Choose the new Mayor before you leave.');
         if (!MemberRules.mayorCandidates(uid, c.members).some((m) => m.id === newMayorUid)) return deny('Choose someone who is still in the class.');
-        runAction(null, onDone, () => classRepo.handOverAndLeave(classId, uid, newMayorUid));
+        runAction(null, onDone, () => membership.handOverAndLeave(db, uid, classId, newMayorUid));
       },
 
       deleteClass(onDone) {
         const c = st();
         if (!c.room || c.room.ownerUid !== uid) return deny('Only the Mayor can delete the class.');
-        if (!Ledger.canCloseBooks(c.records)) return deny('Everyone must be settled and the class fund must be empty before the class can be deleted.');
-        runAction(`${c.room.name} was deleted.`, onDone, () => classRepo.deleteClass(classId, uid));
+        if (!c.seeAll || !Ledger.canCloseBooks(c.records)) return deny('Everyone must be settled and the class fund must be empty before the class can be deleted.');
+        runAction(`${c.room.name} was deleted.`, onDone, () => classes.deleteClass(db, uid, classId));
       },
 
       // ---- Roles ----
@@ -317,7 +339,7 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         if (!c.can('ROLES_MANAGE')) return deny('You do not have permission to edit roles.');
         if (!RoleRules.canEdit(role)) return deny(`The ${role.name} role cannot be changed.`);
         if (!RoleRules.isNameValid(role.name, c.roles, role.id)) return deny('Use a role name of up to 24 characters that no other role uses.');
-        runAction(`Role "${role.name.trim()}" saved.`, onDone, () => classRepo.saveRole(classId, { ...role, name: role.name.trim() }));
+        runAction(`Role "${role.name.trim()}" saved.`, onDone, () => membership.saveRole(db, uid, classId, { ...role, name: role.name.trim() }, c.roles));
       },
 
       deleteRole(role, onDone) {
@@ -325,7 +347,7 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         const defaultRoleId = c.room?.defaultRoleId ?? '';
         if (!c.can('ROLES_MANAGE')) return deny('You do not have permission to delete roles.');
         if (!RoleRules.canDelete(role, defaultRoleId)) return deny(`The ${role.name} role cannot be deleted.`);
-        runAction(`Role "${role.name}" deleted.`, onDone, () => classRepo.deleteRole(classId, role, defaultRoleId));
+        runAction(`Role "${role.name}" deleted.`, onDone, () => membership.deleteRole(db, classId, role.id));
       },
 
       // ---- Courses ----
@@ -349,7 +371,32 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         runAction(`Deleted ${course.name}.`, onDone, () => classRepo.deleteCourse(classId, course.id));
       },
 
+      // ---- Joining ----
+
+      approveRequest(request) {
+        if (!st().can('MEMBERS_MANAGE')) return deny('You do not have permission to approve requests.');
+        runAction(`${request.name} is now in the class.`, undefined, () => membership.approveJoinRequest(db, uid, classId, request.uid));
+      },
+
+      rejectRequest(request) {
+        if (!st().can('MEMBERS_MANAGE')) return deny('You do not have permission to reject requests.');
+        runAction(`The request of ${request.name} was rejected.`, undefined, () => membership.rejectJoinRequest(db, classId, request.uid));
+      },
+
       // ---- Ledger ----
+
+      saveLedgerSettings(balanceVisibility, paymentInfo, onDone) {
+        if (!st().can('RECORDS_MANAGE')) return deny('You do not have permission to change the ledger settings.');
+        runAction('Ledger settings saved.', onDone, () => classes.updateLedgerSettings(db, classId, { balanceVisibility, paymentInfo: paymentInfo.trim() }));
+      },
+
+      addOpeningBalance(member, amountCentavos, note, onDone) {
+        if (!st().can('RECORDS_MANAGE')) return deny('You do not have permission to add ledger records.');
+        if (!amountCentavos) return deny('Enter an opening balance that is not zero.');
+        runAction(`Opening balance of ${formatMoney(amountCentavos)} for ${member.name} saved.`, onDone, () =>
+          openings.addOpeningBalance(db, uid, classId, { memberId: member.id, memberName: member.name, amountCentavos, note }),
+        );
+      },
 
       addRecord(record, onDone) {
         const c = st();
@@ -364,7 +411,8 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
           record.type === 'WITHDRAWAL'
             ? `Withdrawal of ${formatMoney(record.amountCentavos)} by ${record.memberName} saved.`
             : `Payment of ${formatMoney(record.amountCentavos)} from ${record.memberName} saved.`;
-        runAction(label, onDone, () => dataRepo.addRecord(classId, { ...record, createdByUid: uid }));
+        const input = { memberId: record.memberId, memberName: record.memberName, amountCentavos: record.amountCentavos, dateMillis: record.dateMillis, note: record.note };
+        runAction(label, onDone, () => (record.type === 'WITHDRAWAL' ? ledgerStore.addWithdrawal(db, uid, classId, input) : ledgerStore.addPayment(db, uid, classId, input)));
       },
 
       addPayout(charge, paidTo, dateMillis, onDone) {
@@ -373,39 +421,36 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         const alreadyPaid = !!charge && Ledger.paidOutBatchIds(c.records).has(charge.batchId);
         const problem = LedgerForms.checkPayout(charge, alreadyPaid);
         if (problem || !charge) return deny(problem ?? 'Choose the charge this pay-out is for.');
-        const payout = { ...ChargePlanner.buildPayout(charge.batchId, charge.totalCentavos, charge.note, dateMillis, paidTo), createdByUid: uid };
-        runAction(`Paid out ${formatMoney(charge.totalCentavos)} for "${charge.note}".`, onDone, () => dataRepo.addRecord(classId, payout));
+        const batchId = charge.batchId;
+        runAction(`Paid out ${formatMoney(charge.totalCentavos)} for "${charge.note}".`, onDone, () => ledgerStore.payOutCharge(db, uid, classId, batchId, { paidTo, dateMillis }));
       },
 
       chargeStudents(preview, note, courseId, dateMillis, payNow, paidTo, onDone) {
         if (!st().can('RECORDS_MANAGE')) return deny('You do not have permission to charge students.');
         const problem = LedgerForms.checkCharge(preview.perMemberCentavos > 0 ? preview.perMemberCentavos : null, note, preview.charged.length);
         if (problem) return deny(problem);
-        const batchId = crypto.randomUUID();
-        const charges = ChargePlanner.buildRecords(preview, note.trim(), courseId, dateMillis, batchId);
-        const payout = payNow ? [ChargePlanner.buildPayout(batchId, preview.totalCentavos, note.trim(), dateMillis, paidTo)] : [];
-        const all = [...charges, ...payout].map((r) => ({ ...r, createdByUid: uid }));
+        const shares = preview.charged.map((m) => ({ memberId: m.id, memberName: m.name, amountCentavos: preview.perMemberCentavos }));
         const n = preview.charged.length;
         const message =
           `Charged ${n} student${s(n)} ${formatMoney(preview.perMemberCentavos)} each (${formatMoney(preview.totalCentavos)} in total)` +
           (payNow ? ' and recorded the pay-out.' : '.');
-        runAction(message, onDone, () => dataRepo.addRecords(classId, all));
+        runAction(message, onDone, () =>
+          ledgerStore.chargeStudents(db, uid, classId, { note: note.trim(), courseId, dateMillis, shares, payout: payNow ? { paidTo } : undefined }),
+        );
       },
 
-      deleteRecord(record) {
-        if (!st().can('RECORDS_MANAGE')) return deny('You do not have permission to delete ledger records.');
-        if (record.type === 'CHARGE' && record.batchId) return deny('This is part of a charge to several students. Use Undo charge on the charge instead.');
-        const message = record.type === 'EXPENSE' ? 'Pay-out deleted. Its charge is waiting to be paid out again.' : 'Record deleted.';
-        runAction(message, undefined, () => dataRepo.deleteRecord(classId, record.id));
+      deleteRecord(record, reason) {
+        if (!st().can('RECORDS_MANAGE')) return deny('You do not have permission to void ledger records.');
+        if (record.type === 'CHARGE' && record.batchId) return deny('This is part of a charge to several students. Void the whole charge instead.');
+        const message = record.type === 'EXPENSE' ? 'Pay-out voided. Its charge is waiting to be paid out again.' : 'Record voided.';
+        runAction(message, undefined, () => ledgerStore.voidRecord(db, uid, classId, record.id, reason));
       },
 
-      undoCharge(batch) {
-        const c = st();
-        if (!c.can('RECORDS_MANAGE')) return deny('You do not have permission to undo charges.');
-        if (Ledger.paidOutBatchIds(c.records).has(batch.batchId)) {
-          return deny('This charge has already been paid out. Delete its pay-out first, then undo the charge.');
-        }
-        runAction(`Charge "${batch.note}" undone for ${batch.count} student${s(batch.count)}.`, undefined, () => dataRepo.deleteChargeBatch(classId, batch.batchId));
+      undoCharge(batch, reason) {
+        if (!st().can('RECORDS_MANAGE')) return deny('You do not have permission to void charges.');
+        runAction(`Charge "${batch.note}" voided for ${batch.count} student${s(batch.count)}.`, undefined, () =>
+          ledgerStore.voidCharge(db, uid, classId, batch.batchId, reason, { voidPayoutFirst: true }),
+        );
       },
 
       // ---- Schedule ----
@@ -454,7 +499,8 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
       },
 
       forgetClass() {
-        classRepo.forgetMembership(uid, classId).catch(() => {});
+        // A class that was deleted can leave this user's entry behind; removing it clears it from My classes.
+        if (stateRef.current.room === null && stateRef.current.me) membership.leaveClass(db, uid, classId).catch(() => {});
       },
     };
   }, [busy, classId, uid, notice, runAction]);
