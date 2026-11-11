@@ -39,6 +39,7 @@ import {
 import { Ledger } from '../../domain/ledger';
 import { formatMoney, parsePesos } from '../../domain/money';
 import { Dialog, Field, shortDate } from '../common';
+import { Badge, Button, Card, DayHeader, ListRow, Money, Notice, Section, StatusBadge, TypeIcon } from '../../design';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 
 /** Runs a write and shows the result in the snackbar. */
@@ -51,11 +52,16 @@ function useRun() {
   };
 }
 
+/** "2026-11-16" -> "Mon, Nov 16". */
+const niceDate = (dateKey: string) =>
+  new Date(`${dateKey}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+const times = (n: number) => `${n} time${n === 1 ? '' : 's'}`;
+
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 // ---------------------------------------------------------------- Payment claims
 
-const CLAIM_STATUS: Record<Claim['status'], string> = { PENDING: 'Waiting for the Treasurer', CONFIRMED: 'Confirmed', REJECTED: 'Rejected' };
+const CLAIM_STATUS: Record<Claim['status'], string> = { PENDING: 'Waiting', CONFIRMED: 'Confirmed', REJECTED: 'Rejected' };
 
 /** In the Ledger tab: "I paid" for students, and the list of claims to decide for records managers. */
 export function ClaimsCard({ state }: { state: ClassState }) {
@@ -71,54 +77,71 @@ export function ClaimsCard({ state }: { state: ClassState }) {
   const repeated = (c: Claim) => !!c.reference.trim() && references.filter((r) => r === c.reference.trim().toLowerCase()).length > 1;
 
   return (
-    <div className="card stack">
-      <div className="row">
-        <span className="bold grow">Payment claims{manage && waiting.length > 0 ? ` (${waiting.length} waiting)` : ''}</span>
-        <button type="button" className="btn outline" onClick={() => setAdding(true)}>
+    <Section
+      title={`Payment claims${manage && waiting.length > 0 ? ` (${waiting.length} waiting)` : ''}`}
+      action={
+        <Button variant="outline" size="small" icon="coins" onClick={() => setAdding(true)}>
           I paid
-        </button>
-      </div>
-      {manage &&
-        waiting.map((c) => (
-          <div key={c.id} className="stack" style={{ gap: 4 }}>
-            <div>
-              <span className="semibold">{c.memberName}</span> says they paid <span className="bold">{formatMoney(c.amountCentavos)}</span> by {CLAIM_METHOD_LABELS[c.method]}
-              {c.reference ? `, reference ${c.reference}` : ''}
-              {c.note ? ` (${c.note})` : ''} on {shortDate(c.createdAtMillis)}.
-            </div>
-            {repeated(c) && <div className="error-text small">Another waiting claim has the same reference number.</div>}
-            <div className="row">
-              <button type="button" className="btn text danger" onClick={() => (setReason(''), setRejecting(c))}>
-                Reject
-              </button>
-              <button
-                type="button"
-                className="btn solid"
-                onClick={() => run(`Payment of ${formatMoney(c.amountCentavos)} from ${c.memberName} confirmed.`, () => confirmClaim(db, state.myUid, state.classId, c))}
-              >
-                Confirm
-              </button>
-            </div>
-          </div>
-        ))}
-      {mine.length > 0 && <div className="small semibold muted">Your claims</div>}
-      {mine.map((c) => (
-        <div key={c.id} className="row">
-          <span className="grow">
-            <span className="semibold">{formatMoney(c.amountCentavos)}</span> · {CLAIM_METHOD_LABELS[c.method]} · {shortDate(c.createdAtMillis)}
-            <span className="small muted" style={{ display: 'block' }}>
-              {CLAIM_STATUS[c.status]}
-              {c.status === 'REJECTED' ? `: ${c.rejectReason}` : ''}
-            </span>
-          </span>
-          {c.status === 'PENDING' && (
-            <button type="button" className="btn text" onClick={() => run('Claim cancelled.', () => cancelClaim(db, state.classId, c.id))}>
-              Cancel
-            </button>
-          )}
-        </div>
-      ))}
-      {!manage && mine.length === 0 && <p className="small muted" style={{ margin: 0 }}>Paid by GCash or bank? Tap "I paid" so the Treasurer can confirm it.</p>}
+        </Button>
+      }
+    >
+      {manage && waiting.length > 0 && (
+        <Card flush>
+          <DayHeader>To decide</DayHeader>
+          {waiting.map((c) => (
+            <ListRow
+              key={c.id}
+              leading={<TypeIcon icon="hourglass" tone="warning" />}
+              title={c.memberName}
+              subtitle={[CLAIM_METHOD_LABELS[c.method], c.reference && `Ref ${c.reference}`, shortDate(c.createdAtMillis), c.note].filter(Boolean).join(' · ')}
+              trailing={<Money centavos={c.amountCentavos} sign tone="income" />}
+            >
+              {repeated(c) && <span className="ch-small ch-text-danger ch-block">Another waiting claim has the same reference number.</span>}
+              <span className="ch-row ch-gap-2" style={{ marginTop: 8 }}>
+                <Button
+                  size="small"
+                  icon="check"
+                  onClick={() => run(`Payment of ${formatMoney(c.amountCentavos)} from ${c.memberName} confirmed.`, () => confirmClaim(db, state.myUid, state.classId, c))}
+                >
+                  Confirm
+                </Button>
+                <Button size="small" variant="outline" danger onClick={() => (setReason(''), setRejecting(c))}>
+                  Reject
+                </Button>
+              </span>
+            </ListRow>
+          ))}
+        </Card>
+      )}
+      {mine.length > 0 ? (
+        <Card flush>
+          <DayHeader>Your claims</DayHeader>
+          {mine.map((c) => (
+            <ListRow
+              key={c.id}
+              leading={<TypeIcon icon={c.status === 'CONFIRMED' ? 'check' : c.status === 'REJECTED' ? 'x' : 'hourglass'} tone={c.status === 'CONFIRMED' ? 'success' : c.status === 'REJECTED' ? 'danger' : 'warning'} />}
+              title={`${CLAIM_METHOD_LABELS[c.method]} · ${shortDate(c.createdAtMillis)}`}
+              subtitle={c.status === 'REJECTED' ? `Reason: ${c.rejectReason}` : c.reference ? `Ref ${c.reference}` : undefined}
+              trailing={
+                <>
+                  <Money centavos={c.amountCentavos} />
+                  <StatusBadge status={c.status === 'CONFIRMED' ? 'success' : c.status === 'REJECTED' ? 'danger' : 'warning'}>{CLAIM_STATUS[c.status]}</StatusBadge>
+                </>
+              }
+            >
+              {c.status === 'PENDING' && (
+                <span className="ch-row" style={{ marginTop: 8 }}>
+                  <Button size="small" variant="outline" onClick={() => run('Claim cancelled.', () => cancelClaim(db, state.classId, c.id))}>
+                    Cancel claim
+                  </Button>
+                </span>
+              )}
+            </ListRow>
+          ))}
+        </Card>
+      ) : (
+        !manage && <Notice tone="info">Paid by GCash or bank? Tap "I paid" so the Treasurer can confirm it.</Notice>
+      )}
       {adding && <ClaimDialog state={state} onClose={() => setAdding(false)} />}
       {rejecting && (
         <Dialog
@@ -144,7 +167,7 @@ export function ClaimsCard({ state }: { state: ClassState }) {
           </Field>
         </Dialog>
       )}
-    </div>
+    </Section>
   );
 }
 
@@ -397,28 +420,34 @@ export function TodayCard({ state }: { state: ClassState }) {
   const now = Date.now();
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const mine = (m: Meeting) => !state.me?.excludedCourseIds.includes(m.courseId);
+  const days: [string, number][] = [
+    ['Today', now],
+    ['Tomorrow', now + 86_400_000],
+  ];
   return (
-    <div className="card stack" style={{ gap: 6 }}>
-      {[
-        ['Today', now],
-        ['Tomorrow', now + 86_400_000],
-      ].map(([label, at]) => {
-        const list = meetingsOn(meetings, marks, at as number).filter((x) => mine(x.meeting));
-        return (
-          <div key={label as string}>
-            <div className="small semibold muted">{label}</div>
-            {list.length === 0 && <div className="muted">No classes.</div>}
-            {list.map(({ meeting: m, cancelled }) => (
-              <div key={m.id} style={cancelled ? { textDecoration: 'line-through', opacity: 0.6 } : undefined}>
-                {clockText(m.startMinutes)} to {clockText(m.endMinutes)} · <span className="semibold">{courseName(m.courseId)}</span>
-                {m.room ? ` · ${m.room}` : ''}
-                {cancelled ? ` · No classes${cancelled.reason ? `: ${cancelled.reason}` : ''}` : ''}
-              </div>
-            ))}
-          </div>
-        );
-      })}
-    </div>
+    <Section title="Classes">
+      <Card flush>
+        {days.map(([label, at]) => {
+          const list = meetingsOn(meetings, marks, at).filter((x) => mine(x.meeting));
+          return (
+            <div key={label}>
+              <DayHeader>{label}</DayHeader>
+              {list.length === 0 && <ListRow leading={<TypeIcon icon="moon" tone="neutral" />} title="No classes" />}
+              {list.map(({ meeting: m, cancelled }) => (
+                <ListRow
+                  key={m.id}
+                  voided={!!cancelled}
+                  leading={<TypeIcon icon={cancelled ? 'ban' : 'clock'} tone={cancelled ? 'danger' : 'primary'} />}
+                  title={courseName(m.courseId)}
+                  subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}`}
+                  trailing={cancelled ? <StatusBadge status="danger">{`No classes${cancelled.reason ? `: ${cancelled.reason}` : ''}`}</StatusBadge> : undefined}
+                />
+              ))}
+            </div>
+          );
+        })}
+      </Card>
+    </Section>
   );
 }
 
@@ -436,66 +465,81 @@ export function TimetableCard({ state }: { state: ClassState }) {
   const coming = marks.filter((k) => k.dateKey >= todayKey).sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
 
   return (
-    <div className="card stack" style={{ gap: 8 }}>
-      <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-        <span className="bold grow">Timetable</span>
-        {manage && (
-          <>
-            <button type="button" className="btn outline" onClick={() => setMarking(true)}>
-              No classes
-            </button>
-            <button type="button" className="btn outline" onClick={() => setEditing(newMeeting({ courseId: state.courses[0]?.id ?? '' }))}>
-              Add meeting
-            </button>
-          </>
-        )}
-      </div>
-      {meetings.length === 0 && <p className="small muted" style={{ margin: 0 }}>{manage ? (state.courses.length === 0 ? 'Add courses in Class settings first, then add their weekly meetings here.' : 'No meetings yet.') : 'The officers have not added the timetable yet.'}</p>}
-      {DAYS.map((day, i) => {
-        const list = meetings.filter((m) => m.dayOfWeek === i).sort((a, b) => a.startMinutes - b.startMinutes);
-        if (list.length === 0) return null;
-        return (
-          <div key={day}>
-            <div className="small semibold muted">{day}</div>
-            {list.map((m) => (
-              <div key={m.id} className="row">
-                <span className="grow">
-                  {clockText(m.startMinutes)} to {clockText(m.endMinutes)} · <span className="semibold">{courseName(m.courseId)}</span>
-                  {m.room ? ` · ${m.room}` : ''}
-                </span>
-                {manage && (
-                  <button type="button" className="btn text" onClick={() => setEditing(m)}>
-                    Edit
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        );
-      })}
-      {coming.length > 0 && <div className="small semibold muted">No classes</div>}
-      {coming.map((k) => (
-        <div key={k.id} className="row">
-          <span className="grow">
-            {k.dateKey} · {k.courseId ? courseName(k.courseId) : 'Whole day'}
-            {k.reason ? ` · ${k.reason}` : ''}
-          </span>
+    <Section title="Timetable">
+      {(manage || state.can('ATTENDANCE_MANAGE')) && (
+        <div className="ch-row ch-wrap ch-gap-2">
+          {state.can('ATTENDANCE_MANAGE') && meetings.length > 0 && (
+            <Button size="small" icon="check" onClick={() => setTaking(true)}>
+              Take attendance
+            </Button>
+          )}
           {manage && (
-            <button type="button" className="btn text" onClick={() => run('Classes are back on.', () => removeNoClass(db, state.classId, k.id))}>
-              Remove
-            </button>
+            <Button size="small" variant="outline" icon="plus" onClick={() => setEditing(newMeeting({ courseId: state.courses[0]?.id ?? '' }))}>
+              Add meeting
+            </Button>
+          )}
+          {manage && meetings.length > 0 && (
+            <Button size="small" variant="outline" icon="ban" onClick={() => setMarking(true)}>
+              No classes
+            </Button>
           )}
         </div>
-      ))}
-      {state.can('ATTENDANCE_MANAGE') && meetings.length > 0 && (
-        <button type="button" className="btn solid" style={{ alignSelf: 'flex-start' }} onClick={() => setTaking(true)}>
-          Take attendance
-        </button>
+      )}
+      {meetings.length === 0 ? (
+        <Notice tone="info">
+          {manage
+            ? state.courses.length === 0
+              ? 'Add courses in Class settings first, then add their weekly meetings here.'
+              : 'No meetings yet. Add the weekly class meetings of each course.'
+            : 'The officers have not added the timetable yet.'}
+        </Notice>
+      ) : (
+        <Card flush>
+          {DAYS.map((day, i) => {
+            const list = meetings.filter((m) => m.dayOfWeek === i).sort((a, b) => a.startMinutes - b.startMinutes);
+            if (list.length === 0) return null;
+            return (
+              <div key={day}>
+                <DayHeader>{day}</DayHeader>
+                {list.map((m) => (
+                  <ListRow
+                    key={m.id}
+                    leading={<TypeIcon icon="clock" tone="primary" />}
+                    title={courseName(m.courseId)}
+                    subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}`}
+                    chevron={manage}
+                    onClick={manage ? () => setEditing(m) : undefined}
+                  />
+                ))}
+              </div>
+            );
+          })}
+        </Card>
+      )}
+      {coming.length > 0 && (
+        <Card flush>
+          <DayHeader>No classes</DayHeader>
+          {coming.map((k) => (
+            <ListRow
+              key={k.id}
+              leading={<TypeIcon icon="ban" tone="danger" />}
+              title={`${niceDate(k.dateKey)} · ${k.courseId ? courseName(k.courseId) : 'Whole day'}`}
+              subtitle={k.reason || undefined}
+              actions={
+                manage ? (
+                  <Button size="small" variant="text" onClick={() => run('Classes are back on.', () => removeNoClass(db, state.classId, k.id))}>
+                    Remove
+                  </Button>
+                ) : undefined
+              }
+            />
+          ))}
+        </Card>
       )}
       {taking && <AttendanceDialog state={state} meetings={meetings} onClose={() => setTaking(false)} />}
       {editing && <MeetingDialog state={state} meeting={editing} onClose={() => setEditing(null)} />}
       {marking && <NoClassDialog state={state} meetings={meetings} onClose={() => setMarking(false)} />}
-    </div>
+    </Section>
   );
 }
 
@@ -694,61 +738,68 @@ export function AttendanceCard({ state }: { state: ClassState }) {
   const mine = useMyAttendance(db, state.classId, state.myUid, true);
   const all = useAttendance(db, state.classId, manage).data ?? [];
   const totals = useAttendanceTotals(db, state.classId, true);
-  const outOf = (courseId: string) => (totals[courseId] ? ` of ${totals[courseId]} meeting${totals[courseId] === 1 ? '' : 's'}` : '');
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const courseIds = [...new Set([...mine.absent, ...mine.late].map((x) => x.courseId))];
   const perCourse = [...new Set(all.map((x) => x.courseId))].map((courseId) => {
     const sheets = all.filter((x) => x.courseId === courseId);
     const rows = state.members
-      .map((m) => ({ name: m.name, absent: sheets.filter((x) => x.absent.includes(m.id)).length, late: sheets.filter((x) => x.late.includes(m.id)).length }))
+      .map((m) => ({ id: m.id, name: m.name, absent: sheets.filter((x) => x.absent.includes(m.id)).length, late: sheets.filter((x) => x.late.includes(m.id)).length }))
       .filter((r) => r.absent || r.late)
       .sort((a, b) => b.absent - a.absent || b.late - a.late);
     return { courseId, taken: sheets.length, rows };
   });
-  if (!manage && courseIds.length === 0) {
-    return (
-      <div className="card">
-        <div className="bold">My attendance</div>
-        <p className="small muted" style={{ margin: '4px 0 0' }}>No absences or lates recorded for you.</p>
-      </div>
-    );
-  }
-  const dates = (list: { dateKey: string }[]) => list.map((x) => x.dateKey).sort().join(', ');
+  const dates = (list: { dateKey: string }[]) => list.map((x) => x.dateKey).sort().map(niceDate).join(', ');
+  const counts = (absent: number, late: number) => (
+    <>
+      {absent > 0 && <Badge tone="danger">{`${absent} absent`}</Badge>}
+      {late > 0 && <Badge tone="warning">{`${late} late`}</Badge>}
+    </>
+  );
   return (
-    <div className="card stack" style={{ gap: 6 }}>
-      <div className="bold">My attendance</div>
-      {courseIds.length === 0 && <div className="small muted">No absences or lates recorded for you.</div>}
-      {courseIds.map((id) => {
-        const a = mine.absent.filter((x) => x.courseId === id);
-        const l = mine.late.filter((x) => x.courseId === id);
-        return (
-          <div key={id}>
-            <span className="semibold">{courseName(id)}</span>: absent {a.length} time{a.length === 1 ? '' : 's'}, late {l.length} time{l.length === 1 ? '' : 's'}
-            {outOf(id)}
-            {a.length > 0 && <div className="small muted">Absent on {dates(a)}</div>}
-            {l.length > 0 && <div className="small muted">Late on {dates(l)}</div>}
-          </div>
-        );
-      })}
-      {manage && <div className="bold" style={{ marginTop: 6 }}>Class attendance</div>}
-      {manage && perCourse.length === 0 && <div className="small muted">No attendance taken yet.</div>}
-      {manage &&
-        perCourse.map((c) => (
-          <div key={c.courseId}>
-            <div className="small semibold muted">
-              {courseName(c.courseId)} · taken {c.taken} time{c.taken === 1 ? '' : 's'}
-            </div>
-            {c.rows.length === 0 && <div className="small muted">Nobody was absent or late.</div>}
-            {c.rows.map((r) => (
-              <div key={r.name} className="row">
-                <span className="grow">{r.name}</span>
-                <span className="small">
-                  {r.absent} absent · {r.late} late
-                </span>
-              </div>
-            ))}
-          </div>
-        ))}
-    </div>
+    <>
+      <Section title="My attendance">
+        {courseIds.length === 0 ? (
+          <Notice tone="success">No absences or lates recorded for you.</Notice>
+        ) : (
+          <Card flush>
+            {courseIds.map((id) => {
+              const a = mine.absent.filter((x) => x.courseId === id);
+              const l = mine.late.filter((x) => x.courseId === id);
+              return (
+                <ListRow
+                  key={id}
+                  leading={<TypeIcon icon="alert" tone={a.length > 0 ? 'danger' : 'warning'} />}
+                  title={courseName(id)}
+                  subtitle={`Absent ${times(a.length)}, late ${times(l.length)}${totals[id] ? `, out of ${totals[id]} meeting${totals[id] === 1 ? '' : 's'}` : ''}`}
+                  trailing={counts(a.length, l.length)}
+                >
+                  {a.length > 0 && <span className="ch-small ch-muted ch-block">Absent: {dates(a)}</span>}
+                  {l.length > 0 && <span className="ch-small ch-muted ch-block">Late: {dates(l)}</span>}
+                </ListRow>
+              );
+            })}
+          </Card>
+        )}
+      </Section>
+      {manage && (
+        <Section title="Class attendance">
+          {perCourse.length === 0 ? (
+            <Notice tone="info">No attendance taken yet. Use "Take attendance" in the timetable above.</Notice>
+          ) : (
+            <Card flush>
+              {perCourse.map((c) => (
+                <div key={c.courseId}>
+                  <DayHeader>{`${courseName(c.courseId)} · taken ${times(c.taken)}`}</DayHeader>
+                  {c.rows.length === 0 && <ListRow leading={<TypeIcon icon="check" tone="success" />} title="Nobody was absent or late" />}
+                  {c.rows.map((r) => (
+                    <ListRow key={r.id} title={r.name} trailing={counts(r.absent, r.late)} />
+                  ))}
+                </div>
+              ))}
+            </Card>
+          )}
+        </Section>
+      )}
+    </>
   );
 }

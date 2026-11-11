@@ -55,6 +55,7 @@
 
 /* A class's own accent (set as --accent on the element) recolors everything inside it, like the Android ClassHubTheme. */
 .accented {
+  --ch-accent: var(--accent);
   --primary: var(--accent);
   --on-primary: #ffffff;
   --primary-container: color-mix(in srgb, var(--accent) 14%, var(--surface));
