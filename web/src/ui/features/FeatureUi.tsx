@@ -759,6 +759,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
 export function AttendanceCard({ state }: { state: ClassState }) {
   const manage = state.can('ATTENDANCE_MANAGE');
   const mine = useMyAttendance(db, state.classId, state.myUid, true);
+  const [openCourse, setOpenCourse] = useState<string | null>(null);
   const all = useAttendance(db, state.classId, manage).data ?? [];
   const totals = useAttendanceTotals(db, state.classId, true);
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
@@ -813,16 +814,40 @@ export function AttendanceCard({ state }: { state: ClassState }) {
           ) : (
             <Card flush>
               {perCourse.map((c) => (
-                <div key={c.courseId}>
-                  <DayHeader>{`${courseName(c.courseId)} · taken ${times(c.taken)}`}</DayHeader>
-                  {c.rows.length === 0 && <ListRow leading={<TypeIcon icon="check" tone="success" />} title="Nobody was absent or late" />}
-                  {c.rows.map((r) => (
-                    <ListRow key={r.id} title={r.name} trailing={counts(r.absent, r.late)} />
-                  ))}
-                </div>
+                <ListRow
+                  key={c.courseId}
+                  leading={<TypeIcon icon={c.rows.length === 0 ? 'check' : 'list'} tone={c.rows.length === 0 ? 'success' : 'neutral'} />}
+                  title={courseName(c.courseId)}
+                  subtitle={`Taken ${times(c.taken)} · ${c.rows.length === 0 ? 'nobody absent or late' : `${c.rows.length} student${c.rows.length === 1 ? '' : 's'} with absences or lates`}`}
+                  chevron={c.rows.length > 0}
+                  onClick={c.rows.length > 0 ? () => setOpenCourse(c.courseId) : undefined}
+                />
               ))}
             </Card>
           )}
+          {perCourse
+            .filter((c) => c.courseId === openCourse)
+            .map((c) => (
+              <Dialog
+                key={c.courseId}
+                title={`Attendance: ${courseName(c.courseId)}`}
+                onClose={() => setOpenCourse(null)}
+                actions={
+                  <button className="btn text" onClick={() => setOpenCourse(null)}>
+                    Close
+                  </button>
+                }
+              >
+                <p className="small muted" style={{ marginTop: 0 }}>
+                  Taken {times(c.taken)}. Most absences first. Students who were always present are not listed.
+                </p>
+                <Card flush>
+                  {c.rows.map((r) => (
+                    <ListRow key={r.id} title={r.name} trailing={counts(r.absent, r.late)} />
+                  ))}
+                </Card>
+              </Dialog>
+            ))}
         </Section>
       )}
     </>
