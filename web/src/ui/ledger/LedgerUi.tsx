@@ -4,7 +4,7 @@ import { Ledger } from '../../domain/ledger';
 import { LEDGER_FILTERS, LedgerView, type ChargeBatch, type LedgerEntry, type LedgerFilter } from '../../domain/ledgerView';
 import { formatMoney } from '../../domain/money';
 import { dayOf, monthShort, parseDay, plusDays, today, weekday, weekdayShort } from '../../domain/dates';
-import { Avatar, DetailLine, Dialog, Field, hexColor } from '../common';
+import { Avatar, CourseDot, DetailLine, Dialog, Field, hexColor } from '../common';
 import type { ClassState } from '../classroom/ClassContext';
 
 // ---------------------------------------------------------------- Labels, colors and dates
@@ -212,7 +212,10 @@ export function EntryRow({ entry, state, onClick, mine }: { entry: LedgerEntry; 
       )}
       <span className="grow ellipsis-box">
         <span className="title ellipsis" style={struck}>{title}</span>
-        <span className="sub ellipsis">{subtitle}</span>
+        <span className="sub ellipsis">
+          <CourseDot color={state.courses.find((c) => c.id === (entry.kind === 'batch' ? entry.courseId : entry.record.courseId))?.color} />
+          {subtitle}
+        </span>
       </span>
       <span className="end-col">
         <span className={'bold ' + (amount >= 0 ? 'income' : 'expense')} style={struck}>{signedMoney(amount)}</span>

@@ -4,7 +4,7 @@ import { CONTENT_KINDS, newContentItem, type ClassRoom, type ContentItem, type C
 import { CONTENT_SORTS, ContentRules, type ContentFormat, type ContentSort } from '../../domain/contentRules';
 import { ContentIcons, IconLibrary } from '../../domain/iconStyles';
 import { IconStylePicker } from '../classroom/ManageScreens';
-import { ConfirmDialog, Dialog, Field, PickerField, Spinner, StyledIcon, useBack } from '../common';
+import { ConfirmDialog, CourseDot, Dialog, Field, PickerField, Spinner, StyledIcon, useBack } from '../common';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 import { NoAccess, SubPage } from '../classroom/SubPage';
 
@@ -155,7 +155,10 @@ function ContentRow({
         <ContentBadge item={item} format={format} room={state.room} />
         <span className="grow ellipsis-box">
           <span className="title clamp-2">{item.title}</span>
-          <span className="sub ellipsis">{subtitle}</span>
+          <span className="sub ellipsis">
+            {showCourse && <CourseDot color={state.courses.find((c) => c.id === item.courseId)?.color} />}
+            {subtitle}
+          </span>
         </span>
       </a>
       <RowMenu item={item} onEdit={onEdit && (() => onEdit(item.id))} onNotice={onNotice} />
@@ -221,13 +224,16 @@ export function ContentsTab({ state, onEdit, onNotice }: { state: ClassState; on
     courseFilter === ALL ? (groupByCourse ? 'Course' : 'One list') : courseFilter === GENERAL ? 'General' : state.courses.find((c) => c.id === courseFilter)?.name ?? 'Course';
 
   // Sections that mix courses (New this week, one list) take the full width, with their rows in columns on wide screens.
-  const section = (key: string, heading: string, items: ContentItem[], mixed: boolean) => {
+  const section = (key: string, heading: string, items: ContentItem[], mixed: boolean, color?: string) => {
     const foldable = browsing && items.length > FOLDED_ROWS;
     const folded = foldable && !unfolded.has(key);
     return (
       <section key={key} className={'card flush content-card' + (mixed ? ' wide' : '')} aria-label={heading}>
         <div className="content-card-head">
-          <h3 className="grow ellipsis">{heading}</h3>
+          <h3 className="grow ellipsis">
+            <CourseDot color={color} />
+            {heading}
+          </h3>
           <span className="count">{items.length}</span>
         </div>
         <div className="content-rows">
@@ -304,7 +310,7 @@ export function ContentsTab({ state, onEdit, onNotice }: { state: ClassState; on
       {fresh.length > 0 && section(NEW_KEY, 'New this week', fresh, true)}
 
       {groupByCourse ? (
-        <div className="contents-grid">{groups.map(([course, items]) => section(course?.id ?? 'general', course?.name ?? 'General', items, false))}</div>
+        <div className="contents-grid">{groups.map(([course, items]) => section(course?.id ?? 'general', course?.name ?? 'General', items, false, course?.color))}</div>
       ) : (
         groups.map(([, items]) => section('all', 'All items', items, true))
       )}

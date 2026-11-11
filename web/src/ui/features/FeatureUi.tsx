@@ -39,7 +39,7 @@ import {
 import { Ledger } from '../../domain/ledger';
 import { byLastName, listName } from '../../data/models';
 import { formatMoney, parsePesos } from '../../domain/money';
-import { Dialog, Field, shortDate } from '../common';
+import { CourseDot, Dialog, Field, shortDate } from '../common';
 import { Badge, Button, Card, DayHeader, ListRow, Money, Notice, Section, StatusBadge, TypeIcon } from '../../design';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 
@@ -846,7 +846,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
                 <ListRow
                   key={id}
                   leading={<TypeIcon icon="alert" tone={a.length > 0 ? 'danger' : 'warning'} />}
-                  title={courseName(id)}
+                  title={<><CourseDot color={state.courses.find((c) => c.id === id)?.color} />{courseName(id)}</>}
                   subtitle={`Absent ${times(a.length)}, late ${times(l.length)}${totals[id] ? `, out of ${totals[id]} meeting${totals[id] === 1 ? '' : 's'}` : ''}`}
                   trailing={counts(a.length, l.length)}
                 >
@@ -868,7 +868,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
                 <ListRow
                   key={c.courseId}
                   leading={<TypeIcon icon={c.rows.length === 0 ? 'check' : 'list'} tone={c.rows.length === 0 ? 'success' : 'neutral'} />}
-                  title={courseName(c.courseId)}
+                  title={<><CourseDot color={state.courses.find((x) => x.id === c.courseId)?.color} />{courseName(c.courseId)}</>}
                   subtitle={`Taken ${times(c.taken)} · ${c.rows.length === 0 ? 'nobody absent or late' : `${c.rows.length} student${c.rows.length === 1 ? '' : 's'} with absences or lates`}`}
                   chevron={c.rows.length > 0}
                   onClick={c.rows.length > 0 ? () => setOpenCourse(c.courseId) : undefined}

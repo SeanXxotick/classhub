@@ -5,7 +5,7 @@ import { ScheduleIcons } from '../../domain/iconStyles';
 import { ScheduleLogic } from '../../domain/scheduleLogic';
 import { SCHEDULE_FILTERS, ScheduleForms, ScheduleView, type ScheduleFilter } from '../../domain/scheduleView';
 import { dayOf, monthLong, monthShort, noonMillis, parseDay, plusDays, today, weekday, weekdayLong, weekdayShort, type DayKey } from '../../domain/dates';
-import { ConfirmDialog, DateField, DetailLine, Dialog, Field, PickerField, Spinner, StyledIcon, hexColor, useBack } from '../common';
+import { ConfirmDialog, DateField, DetailLine, Dialog, Field, PickerField, Spinner, StyledIcon, hexColor, useBack, CourseDot } from '../common';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 import { NoAccess, SubPage } from '../classroom/SubPage';
 import { Tag } from '../ledger/LedgerUi';
@@ -108,7 +108,8 @@ export function ScheduleRow({
 }) {
   const done = state.myDone.has(item.id);
   const cancelled = ScheduleLogic.isCancelled(item);
-  const course = state.courses.find((c) => c.id === item.courseId)?.name;
+  const courseDoc = state.courses.find((c) => c.id === item.courseId);
+  const course = courseDoc?.name;
   const subtitle = [course, kindLabel(item.kind), showDate ? longDay(dayOf(item.dueMillis)) : null].filter(Boolean).join('  ·  ');
   return (
     <div className={'list-row' + (onClick ? ' clickable' : '')} onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined}
@@ -118,7 +119,10 @@ export function ScheduleRow({
         <span className={'title' + (cancelled ? ' struck' : '') + (cancelled || done ? ' muted' : '')} style={{ display: 'block' }}>
           {item.title}
         </span>
-        <span className="sub ellipsis">{subtitle}</span>
+        <span className="sub ellipsis">
+          <CourseDot color={courseDoc?.color} />
+          {subtitle}
+        </span>
       </span>
       <Tag text={ScheduleView.dueLabel(item, now, done)} color={statusColor(item, done, now)} />
       {onToggleDone && !cancelled && <DoneCheck done={done} title={item.title} onToggle={() => onToggleDone(item, !done)} />}

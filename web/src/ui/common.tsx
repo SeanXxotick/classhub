@@ -120,6 +120,12 @@ export function ColorPicker({ choices, selected, onSelect, label }: { choices: s
   );
 }
 
+/** A small dot in a course's color, in front of the course name. Nothing for a course without a color. */
+export function CourseDot({ color }: { color?: string }) {
+  if (!color) return null;
+  return <i aria-hidden style={{ display: 'inline-block', flex: 'none', width: 9, height: 9, borderRadius: '50%', background: color, marginRight: 6 }} />;
+}
+
 // ------------------------------------------------------------------ Small pieces
 
 export function Spinner({ small }: { small?: boolean }) {

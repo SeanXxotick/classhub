@@ -60,8 +60,8 @@ async function main() {
   }
 
   const courseIds: string[] = [];
-  for (const name of ['Operations Research', 'Software Engineering', 'Abstract Algebra']) {
-    courseIds.push((await addDoc(collection(m, 'classes', classId, 'courses'), { id: '', name })).id);
+  for (const [name, color] of [['Operations Research', '#2563EB'], ['Software Engineering', '#DB2777'], ['Abstract Algebra', '#B45309']]) {
+    courseIds.push((await addDoc(collection(m, 'classes', classId, 'courses'), { id: '', name, color })).id);
   }
 
   // Ledger: payments, a charge that was paid out, one withdrawal, one confirmed and one waiting claim.
