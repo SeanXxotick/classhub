@@ -261,6 +261,9 @@ export interface ContentItem {
   note: string;
   createdByUid: string;
   createdAtMillis: number;
+  /** This item's own icon and color. Empty: it follows its type (and the class's choice for the type). */
+  icon: string;
+  color: string;
 }
 
 /**
@@ -305,7 +308,7 @@ export const newScheduleItem = (s: Partial<ScheduleItem>): ScheduleItem => ({
 });
 
 export const newContentItem = (c: Partial<ContentItem>): ContentItem => ({
-  id: '', courseId: '', title: '', url: '', kind: 'WEBSITE', note: '', createdByUid: '', createdAtMillis: 0, ...c,
+  id: '', courseId: '', title: '', url: '', kind: 'WEBSITE', note: '', createdByUid: '', createdAtMillis: 0, icon: '', color: '', ...c,
 });
 
 export const newClassRoom = (c: Partial<ClassRoom>): ClassRoom => ({

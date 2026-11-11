@@ -781,7 +781,7 @@ function IconStyleRow({ label, icon, color, isDefault, onChange }: { label: stri
 }
 
 /** A grid of icons and a row of colors for one type. */
-function IconStylePicker({
+export function IconStylePicker({
   title,
   icon,
   color,

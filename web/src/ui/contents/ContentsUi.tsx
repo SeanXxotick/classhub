@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefOb
 import { useParams, useSearchParams } from 'react-router-dom';
 import { CONTENT_KINDS, newContentItem, type ClassRoom, type ContentItem, type ContentKind, type Course } from '../../data/models';
 import { CONTENT_SORTS, ContentRules, type ContentFormat, type ContentSort } from '../../domain/contentRules';
-import { ContentIcons } from '../../domain/iconStyles';
+import { ContentIcons, IconLibrary } from '../../domain/iconStyles';
+import { IconStylePicker } from '../classroom/ManageScreens';
 import { ConfirmDialog, Dialog, Field, PickerField, Spinner, StyledIcon, useBack } from '../common';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 import { NoAccess, SubPage } from '../classroom/SubPage';
@@ -26,7 +27,11 @@ function KindBadge({ kind, room }: { kind: ContentKind; room: ClassRoom | null }
 function ContentBadge({ item, format, room }: { item: ContentItem; format: ContentFormat; room: ClassRoom | null }) {
   const icon = ContentIcons.iconFor(item.kind, room?.contentIcons ?? {});
   const own = icon !== ContentIcons.DEFAULTS[item.kind];
-  return <StyledIcon icon={own || !format.icon ? icon : format.icon} color={ContentIcons.colorFor(item.kind, room?.contentColors ?? {})} label={format.label} box={40} tint />;
+  const typeColor = ContentIcons.colorFor(item.kind, room?.contentColors ?? {});
+  // An icon or color picked for this one item wins over the type's.
+  const itemIcon = IconLibrary.ICONS.includes(item.icon) ? item.icon : '';
+  const color = IconLibrary.COLORS.includes(item.color) ? item.color : typeColor;
+  return <StyledIcon icon={itemIcon || (own || !format.icon ? icon : format.icon)} color={color} label={format.label} box={40} tint />;
 }
 
 /** Only web links open; anything else (such as a javascript: link) is refused. */
@@ -351,8 +356,13 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
   // Until the user picks a kind themselves, it follows the link.
   const [kindChosen, setKindChosen] = useState(!!existing);
   const [pickingCourse, setPickingCourse] = useState(false);
+  const [icon, setIcon] = useState(existing?.icon ?? '');
+  const [color, setColor] = useState(existing?.color ?? '');
+  const [pickingIcon, setPickingIcon] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const typeIcon = ContentIcons.iconFor(kind, state.room?.contentIcons ?? {});
+  const typeColor = ContentIcons.colorFor(kind, state.room?.contentColors ?? {});
   const courseName = state.courses.find((c) => c.id === courseId)?.name ?? 'General (no course)';
 
   function submit(e: FormEvent) {
@@ -368,6 +378,8 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
         url,
         kind,
         note,
+        icon,
+        color,
         createdByUid: existing?.createdByUid ?? '',
         createdAtMillis: existing?.createdAtMillis ?? 0,
       }),
@@ -376,6 +388,22 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
   }
 
   return (
+    <>
+      {pickingIcon && (
+        <IconStylePicker
+          title="Icon of this content"
+          icon={icon || typeIcon}
+          color={color || typeColor}
+          defaultIcon={typeIcon}
+          defaultColor={typeColor}
+          onDone={(pickedIcon, pickedColor) => {
+            setIcon(pickedIcon === typeIcon ? '' : pickedIcon);
+            setColor(pickedColor === typeColor ? '' : pickedColor);
+            setPickingIcon(false);
+          }}
+          onDismiss={() => setPickingIcon(false)}
+        />
+      )}
     <form className="card stack" onSubmit={submit} noValidate>
       <p className="small muted" style={{ margin: 0 }}>
         Share a link to class material. Files stay in Google Drive (or wherever they are); make sure the link's sharing allows your classmates to open it.
@@ -404,6 +432,19 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
             {kindLabel(k)}
           </button>
         ))}
+      </div>
+      <span className="small semibold muted">Icon</span>
+      <div className="row" style={{ gap: 12 }}>
+        <StyledIcon icon={icon || typeIcon} color={color || typeColor} box={40} tint />
+        <span className="grow small muted">{icon || color ? 'Its own icon' : `Same as other ${pluralLabel(kind).toLowerCase()}`}</span>
+        {(icon || color) && (
+          <button type="button" className="btn text" onClick={() => (setIcon(''), setColor(''))}>
+            Reset
+          </button>
+        )}
+        <button type="button" className="btn outline small" onClick={() => setPickingIcon(true)}>
+          Change icon
+        </button>
       </div>
       <PickerField label="Course" value={courseName} onClick={() => setPickingCourse(true)} />
       <Field label="Note (optional)">
@@ -464,5 +505,6 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
         />
       )}
     </form>
+    </>
   );
 }
