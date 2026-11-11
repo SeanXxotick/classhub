@@ -265,6 +265,10 @@ export function renameCourse(classId: string, courseId: string, name: string): P
   return updateDoc(doc(coursesOf(classId), courseId), { name: name.trim() });
 }
 
+export function setCourseColor(classId: string, courseId: string, color: string): Promise<void> {
+  return updateDoc(doc(coursesOf(classId), courseId), { color });
+}
+
 export function deleteCourse(classId: string, courseId: string): Promise<void> {
   return deleteDoc(doc(coursesOf(classId), courseId));
 }

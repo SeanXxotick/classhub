@@ -103,6 +103,7 @@ export interface ClassActions {
   deleteRole: (role: Role, onDone?: Done) => void;
   addCourse: (name: string, onDone?: Done) => void;
   renameCourse: (course: Course, name: string, onDone?: Done) => void;
+  setCourseColor: (course: Course, color: string, onDone?: Done) => void;
   deleteCourse: (course: Course, onDone?: Done) => void;
   approveRequest: (request: JoinRequest) => void;
   rejectRequest: (request: JoinRequest) => void;
@@ -141,7 +142,7 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
   const allowed = !!me.data;
   const roles = useQueryList(`roles/${classId}/${allowed}`, allowed ? classRepo.rolesOf(classId) : null, (d) => fromDoc(newRole({}), d));
   const members = useQueryList(`members/${classId}/${allowed}`, allowed ? classRepo.membersOf(classId) : null, (d) => fromDoc(newMember({}), d));
-  const courses = useQueryList(`courses/${classId}/${allowed}`, allowed ? classRepo.coursesOf(classId) : null, (d) => fromDoc<Course>({ id: '', name: '' }, d));
+  const courses = useQueryList(`courses/${classId}/${allowed}`, allowed ? classRepo.coursesOf(classId) : null, (d) => fromDoc<Course>({ id: '', name: '', color: '' }, d));
   const visible = useVisibleRecords(db, classId, uid);
   const records = useMemo(() => ({ data: allowed ? visible.data?.records : [], error: visible.error }), [allowed, visible]);
   const seeAll = visible.data?.scope === 'ALL';
@@ -364,6 +365,12 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         if (!c.can('CLASS_SETTINGS')) return deny('You do not have permission to edit courses.');
         if (!CourseRules.isNameValid(name, c.courses, course.id)) return deny(`Use a course name of up to ${CourseRules.MAX_NAME} characters that is not already listed.`);
         runAction(`Renamed to ${name.trim()}.`, onDone, () => classRepo.renameCourse(classId, course.id, name));
+      },
+
+      setCourseColor(course, color, onDone) {
+        if (!st().can('CLASS_SETTINGS')) return deny('You do not have permission to edit courses.');
+        if (!/^#[0-9a-fA-F]{6}$/.test(color)) return deny('Choose one of the colors.');
+        runAction(`Color of ${course.name} changed.`, onDone, () => classRepo.setCourseColor(classId, course.id, color));
       },
 
       deleteCourse(course, onDone) {

@@ -147,6 +147,8 @@ export interface JoinRequest {
 export interface Course {
   id: string;
   name: string;
+  /** Hex colour of the course in the timetable. Empty: the class accent. */
+  color?: string;
 }
 
 /**
@@ -303,7 +305,7 @@ export const newJoinRequest = (r: Partial<JoinRequest>): JoinRequest => ({
   id: '', uid: '', name: '', className: '', joinCode: '', requestedAtMillis: 0, ...r,
 });
 
-export const newCourse = (c: Partial<Course>): Course => ({ id: '', name: '', ...c });
+export const newCourse = (c: Partial<Course>): Course => ({ id: '', name: '', color: '', ...c });
 
 export const newCharge = (c: Partial<Charge>): Charge => ({
   id: '', note: '', courseId: '', dateMillis: 0, count: 0, totalCentavos: 0, perMemberCentavos: 0, payoutRecordId: '',

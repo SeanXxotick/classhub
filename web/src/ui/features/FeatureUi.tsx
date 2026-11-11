@@ -436,7 +436,8 @@ const fromClock = (text: string) => {
 };
 
 /** The start time as a small tile in front of a meeting row ("8:00" over "AM"), in place of a repeated icon. */
-function TimeTile({ minutes, cancelled }: { minutes: number; cancelled?: boolean }) {
+function TimeTile({ minutes, cancelled, color }: { minutes: number; cancelled?: boolean; color?: string }) {
+  const solid = !cancelled && !!color;
   const [clock, half] = clockText(minutes).split(' ');
   return (
     <span
@@ -444,7 +445,7 @@ function TimeTile({ minutes, cancelled }: { minutes: number; cancelled?: boolean
       className={cancelled ? 'ch-tone-danger' : 'ch-tone-primary'}
       style={{
         flex: 'none', width: 52, height: 44, borderRadius: 12, display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        background: 'var(--tb)', color: 'var(--tc)', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums', textDecoration: cancelled ? 'line-through' : undefined,
+        background: solid ? color : 'var(--tb)', color: solid ? '#fff' : 'var(--tc)', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums', textDecoration: cancelled ? 'line-through' : undefined,
       }}
     >
       <span style={{ fontWeight: 800, fontSize: 15 }}>{clock}</span>
@@ -460,6 +461,7 @@ export function TodayCard({ state }: { state: ClassState }) {
   if (meetings.length === 0) return null;
   const now = Date.now();
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
+  const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
   const mine = (m: Meeting) => !state.me?.excludedCourseIds.includes(m.courseId);
   const days: [string, number][] = [
     ['Today', now],
@@ -478,7 +480,7 @@ export function TodayCard({ state }: { state: ClassState }) {
                 <ListRow
                   key={m.id}
                   voided={!!cancelled}
-                  leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} />}
+                  leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} color={courseColor(m.courseId)} />}
                   title={courseName(m.courseId)}
                   subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}`}
                   trailing={cancelled ? <StatusBadge status="danger">{`No classes${cancelled.reason ? `: ${cancelled.reason}` : ''}`}</StatusBadge> : undefined}
@@ -502,6 +504,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
   const [marking, setMarking] = useState(false);
   const [taking, setTaking] = useState(false);
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
+  const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
   const todayKey = manilaDay(Date.now()).dateKey;
   const coming = marks.filter((k) => k.dateKey >= todayKey).sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
 
@@ -545,7 +548,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
                 {list.map((m) => (
                   <ListRow
                     key={m.id}
-                    leading={<TimeTile minutes={m.startMinutes} />}
+                    leading={<TimeTile minutes={m.startMinutes} color={courseColor(m.courseId)} />}
                     title={courseName(m.courseId)}
                     subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}`}
                     chevron={manage}

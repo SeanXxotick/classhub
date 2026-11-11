@@ -9,6 +9,7 @@ import { formatMoney } from '../../domain/money';
 import { RoleRules } from '../../domain/permissions';
 import {
   ACCENT_CHOICES,
+  COURSE_COLORS,
   Avatar,
   ColorPicker,
   ConfirmDialog,
@@ -397,7 +398,7 @@ export function CoursesScreen() {
             const takers = CourseRules.takers(course, state.members);
             return (
               <button key={course.id} type="button" className="list-row" onClick={() => setEditing(course)}>
-                <span className="avatar" aria-hidden style={{ width: 42, height: 42, background: 'var(--primary)', color: 'var(--on-primary)', fontSize: 15 }}>
+                <span className="avatar" aria-hidden style={{ width: 42, height: 42, background: course.color || 'var(--primary)', color: course.color ? '#fff' : 'var(--on-primary)', fontSize: 15 }}>
                   {initialsOf(course.name)}
                 </span>
                 <span className="grow">
@@ -423,6 +424,7 @@ export function CoursesScreen() {
 function CourseDialog({ course, onClose }: { course: Course; onClose: () => void }) {
   const { actions } = useClass();
   const [rename, setRename] = useState(course.name);
+  const [color, setColor] = useState(course.color ?? '');
   const [confirmDelete, setConfirmDelete] = useState(false);
   if (confirmDelete) {
     return (
@@ -436,7 +438,14 @@ function CourseDialog({ course, onClose }: { course: Course; onClose: () => void
       />
     );
   }
-  const canSave = !!rename.trim() && rename.trim() !== course.name;
+  const renamed = rename.trim() !== course.name;
+  const recolored = color !== (course.color ?? '');
+  const canSave = !!rename.trim() && (renamed || recolored);
+  const save = () => {
+    if (renamed) actions.renameCourse(course, rename);
+    if (recolored) actions.setCourseColor(course, color);
+    onClose();
+  };
   return (
     <Dialog
       title="Edit course"
@@ -449,7 +458,7 @@ function CourseDialog({ course, onClose }: { course: Course; onClose: () => void
           <button className="btn text" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn text" disabled={!canSave} onClick={() => (actions.renameCourse(course, rename), onClose())}>
+          <button className="btn text" disabled={!canSave} onClick={save}>
             Save
           </button>
         </>
@@ -458,15 +467,16 @@ function CourseDialog({ course, onClose }: { course: Course; onClose: () => void
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (canSave) {
-            actions.renameCourse(course, rename);
-            onClose();
-          }
+          if (canSave) save();
         }}
       >
         <Field label="Course name">
           <input value={rename} onChange={(e) => setRename(e.target.value.slice(0, CourseRules.MAX_NAME))} />
         </Field>
+        <div className="small semibold muted" style={{ margin: '14px 0 6px' }}>
+          Color in the timetable
+        </div>
+        <ColorPicker label="Course color" choices={COURSE_COLORS} selected={color} onSelect={setColor} />
       </form>
     </Dialog>
   );
