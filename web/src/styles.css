@@ -1891,3 +1891,62 @@ a.list-row:hover {
   color: var(--ch-text);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
 }
+
+/* The practice class the tour runs in: a full-screen stand-in for a class, in a phone-width column. */
+.practice {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  background: var(--ch-bg);
+  color: var(--ch-text);
+}
+.practice-banner {
+  padding: 10px 16px;
+  background: var(--ch-primary);
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  text-align: center;
+}
+.practice-body {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 16px;
+}
+.practice-nav {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--ch-border);
+  background: var(--ch-surface);
+}
+.practice-nav button {
+  flex: 1;
+  max-width: 130px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ch-text-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.practice-nav button.selected {
+  color: var(--ch-primary-text);
+  background: var(--ch-primary-soft);
+}

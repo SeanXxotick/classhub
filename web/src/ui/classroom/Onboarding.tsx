@@ -3,7 +3,7 @@ import { db } from '../../data/firebase';
 import { pushState, turnOnPush } from '../../data/notify';
 import { useAnnouncements, useMeetings } from '../../data/features';
 import type { Permission } from '../../data/models';
-import { Icon, TypeIcon, type IconName } from '../../design';
+import { Button, Card, Icon, ListRow, Money, TypeIcon, type IconName } from '../../design';
 import { Dialog } from '../common';
 import { useClass, type ClassState } from './ClassContext';
 
@@ -41,45 +41,43 @@ const isOfficer = (state: ClassState) => OFFICER_PERMISSIONS.some((p) => state.c
 
 // ---------------------------------------------------------------- Welcome tour
 
-/**
- * One step of the tour.
- * - card: a message in the middle of the screen (the start, and the notifications offer).
- * - tap:  a real button is lit and the user taps it; the tap does what it always does (it opens a tab).
- * - show: a real control is lit and explained, but a tap on it does nothing, so the tour never files
- *         a claim or ticks a deadline by accident. "Got it" moves on.
- * A step whose target is not on the screen (a module is off, or a list is empty) is skipped.
+/*
+ * The tour runs in a practice class made of sample data, so there is always something to tap and
+ * nothing the user does in it is saved. One real-looking button is lit at a time and the user taps
+ * it. There is no skip: it is short, and it cannot get stuck, because a step whose button is
+ * missing is passed over by itself.
  */
-type TourStep =
-  | { kind: 'card'; icon: IconName; title: string; text: string; push?: boolean }
-  | { kind: 'tap' | 'show'; target: string; title: string; text: string };
+
+type PracticeTab = 'HOME' | 'LEDGER' | 'SCHEDULE' | 'NEWS';
+
+interface TourStep {
+  target: string;
+  title: string;
+  text: string;
+}
 
 function tourSteps(state: ClassState): TourStep[] {
   const room = state.room!;
-  const steps: TourStep[] = [
-    { kind: 'card', icon: 'home', title: `Welcome to ${room.name}`, text: 'This is where your class keeps its fund, deadlines, files and announcements. Take a one-minute tour: tap what lights up.' },
-  ];
-  if (isOfficer(state)) {
-    steps.push({ kind: 'show', target: 'section[aria-label="Getting started"]', title: 'Set up your class', text: 'These are the steps a new class needs. Tap one any time to do it. Other officers see this list too and can help.' });
-  } else {
-    if (room.ledgerEnabled) {
-      steps.push({ kind: 'tap', target: '[data-tour="tab-LEDGER"]', title: 'Your money', text: 'Tap Ledger to see what you owe and what you have paid.' });
-      steps.push({ kind: 'show', target: '[data-tour="i-paid"]', title: 'Tell the treasurer you paid', text: 'After you pay, tap "I paid" here. The treasurer confirms it and your balance updates.' });
-    }
-    if (room.scheduleEnabled) {
-      steps.push({ kind: 'tap', target: '[data-tour="tab-SCHEDULE"]', title: 'Your deadlines', text: 'Tap Schedule to see quizzes, exams and deliverables.' });
-      steps.push({ kind: 'show', target: '.done-check', title: 'Tick it when you are done', text: 'Tap the circle beside a deadline when you finish it, so you always know what is left.' });
-    }
-    if (room.announcementsEnabled !== false) {
-      steps.push({ kind: 'tap', target: '[data-tour="tab-NEWS"]', title: 'Announcements', text: 'Tap News to read what the officers post.' });
-      steps.push({ kind: 'show', target: '.vote-bar', title: 'Vote and comment', text: 'Vote up or down on an announcement, and open its comments to ask a question.' });
-    }
-    steps.push({ kind: 'tap', target: '[data-tour="tab-HOME"]', title: 'Back to Home', text: 'Tap Home. It gathers today, what is due and your balance in one place.' });
+  const steps: TourStep[] = [];
+  let lead = '';
+  if (room.ledgerEnabled) {
+    steps.push({ target: '[data-tour="p-tab-LEDGER"]', title: 'Your money', text: 'Tap Ledger to see what you owe and what you have paid.' });
+    steps.push({ target: '[data-tour="p-paid"]', title: 'Tell the treasurer you paid', text: 'You owe 150 pesos here. After you pay, you tap "I paid". Try it now.' });
+    lead = 'Your claim now waits for the treasurer to confirm it. ';
   }
-  if (pushState() === 'off') steps.push({ kind: 'card', icon: 'bell', title: 'Do not miss anything', text: 'Turn on notifications to hear about new announcements, deadlines and payment updates on this device.', push: true });
+  if (room.scheduleEnabled) {
+    steps.push({ target: '[data-tour="p-tab-SCHEDULE"]', title: 'Your deadlines', text: `${lead}Tap Schedule to see quizzes, exams and deliverables.` });
+    steps.push({ target: '[data-tour="p-done"]', title: 'Tick it when you are done', text: 'Tap the circle beside the quiz to mark it as done.' });
+    lead = 'Done. It is off your list. ';
+  }
+  if (room.announcementsEnabled !== false) {
+    steps.push({ target: '[data-tour="p-tab-NEWS"]', title: 'Announcements', text: `${lead}Tap News to read what the officers post.` });
+    steps.push({ target: '[data-tour="p-vote"]', title: 'Vote and comment', text: 'You can vote on an announcement and comment under it. Tap the up arrow.' });
+  }
   return steps;
 }
 
-/** The first element matching the selector that is actually on screen (the phone and wide menus both exist). */
+/** The first element matching the selector that is actually on screen. */
 function visibleTarget(selector: string): HTMLElement | null {
   for (const el of document.querySelectorAll<HTMLElement>(selector)) {
     const r = el.getBoundingClientRect();
@@ -95,15 +93,113 @@ interface Box {
   height: number;
 }
 
-/** Shows once per device, the first time a class is opened. */
+const PRACTICE_TABS: { id: PracticeTab; label: string; icon: IconName }[] = [
+  { id: 'HOME', label: 'Home', icon: 'home' },
+  { id: 'LEDGER', label: 'Ledger', icon: 'ledger' },
+  { id: 'SCHEDULE', label: 'Schedule', icon: 'schedule' },
+  { id: 'NEWS', label: 'News', icon: 'news' },
+];
+
+/** The practice class: sample screens that look like the real ones and react to taps, saving nothing. */
+function Practice({ state }: { state: ClassState }) {
+  const room = state.room!;
+  const [tab, setTab] = useState<PracticeTab>('HOME');
+  const [paid, setPaid] = useState(false);
+  const [done, setDone] = useState(false);
+  const [voted, setVoted] = useState(false);
+  const tabs = PRACTICE_TABS.filter((t) => t.id === 'HOME' || (t.id === 'LEDGER' && room.ledgerEnabled) || (t.id === 'SCHEDULE' && room.scheduleEnabled) || (t.id === 'NEWS' && room.announcementsEnabled !== false));
+  return (
+    <div className="practice" aria-label="Practice class">
+      <div className="practice-banner">Practice class · sample data, nothing here is saved</div>
+      <div className="practice-body">
+        {tab === 'HOME' && (
+          <Card>
+            <div className="bold" style={{ fontSize: 20 }}>Practice class</div>
+            <div className="ch-muted">A pretend class for this tour. Your real class opens when the tour ends.</div>
+          </Card>
+        )}
+        {tab === 'LEDGER' && (
+          <>
+            <Card>
+              <div className="ch-small ch-muted">Your balance</div>
+              <Money centavos={-15000} size="big" tone="danger" />
+              <div className="ch-small ch-muted">You owe this for the class shirt.</div>
+            </Card>
+            <div className="ch-row">
+              <div className="bold" style={{ flex: 1 }}>Payment claims</div>
+              <Button data-tour="p-paid" variant="outline" size="small" icon="coins" onClick={() => setPaid(true)}>
+                I paid
+              </Button>
+            </div>
+            <Card flush>
+              {paid && <ListRow leading={<TypeIcon icon="hourglass" tone="warning" size={36} />} title="GCash · just now" subtitle="Waiting for the treasurer" trailing={<Money centavos={15000} sign tone="success" />} />}
+              <ListRow leading={<TypeIcon icon="charge" tone="danger" size={36} />} title="Class shirt" subtitle="Charge" trailing={<Money centavos={-25000} tone="danger" />} />
+              <ListRow leading={<TypeIcon icon="income" tone="success" size={36} />} title="Payment" subtitle="Class fund" trailing={<Money centavos={10000} sign tone="success" />} />
+            </Card>
+          </>
+        )}
+        {tab === 'SCHEDULE' && (
+          <Card flush>
+            <ListRow
+              leading={<TypeIcon icon="edit" tone="neutral" size={36} />}
+              title={<span style={{ textDecoration: done ? 'line-through' : undefined }}>Quiz 3: simplex method</span>}
+              subtitle="Operations Research · Quiz · Tomorrow"
+              trailing={
+                <button type="button" data-tour="p-done" className={'done-check' + (done ? ' on' : '')} aria-pressed={done} aria-label="Mark the quiz as done" onClick={() => setDone(true)}>
+                  {done && '✓'}
+                </button>
+              }
+            />
+            <ListRow leading={<TypeIcon icon="doc" tone="neutral" size={36} />} title="Group report" subtitle="Software Engineering · Deliverable · Friday" />
+          </Card>
+        )}
+        {tab === 'NEWS' && (
+          <Card>
+            <div className="stack" style={{ gap: 8 }}>
+              <div className="ch-small ch-muted">Maya Reyes · Mayor · today</div>
+              <div className="bold" style={{ fontSize: 18 }}>Class shirt sizes due Friday</div>
+              <div>Send your size to the Mayor. Small, medium, large or extra large.</div>
+              <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
+                <div className="vote-bar">
+                  <button type="button" data-tour="p-vote" className={'vote' + (voted ? ' on' : '')} aria-pressed={voted} aria-label="Upvote" onClick={() => setVoted(true)}>
+                    <Icon name="up" size={16} />
+                    {voted ? 7 : 6}
+                  </button>
+                  <button type="button" className="vote" aria-label="Downvote">
+                    <Icon name="down" size={16} />1
+                  </button>
+                </div>
+                <Button size="small" variant="outline" icon="comment">
+                  4 comments
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
+      </div>
+      <nav className="practice-nav" aria-label="Practice class sections">
+        {tabs.map((t) => (
+          <button key={t.id} type="button" data-tour={`p-tab-${t.id}`} className={t.id === tab ? 'selected' : ''} onClick={() => setTab(t.id)}>
+            <Icon name={t.icon} size={24} />
+            {t.label}
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+}
+
+/** Shows once per device, the first time a class is opened: a start card, the practice tour, an end card. */
 export function Welcome({ state }: { state: ClassState }) {
   const { actions } = useClass();
   const [open, setOpen] = useState(() => !read(WELCOME_KEY));
   const [steps] = useState(() => tourSteps(state));
-  const [index, setIndex] = useState(0);
+  // -1 is the start card, steps.length the end card.
+  const [index, setIndex] = useState(-1);
   const [box, setBox] = useState<Box | null>(null);
   const [working, setWorking] = useState(false);
-  const step = open ? steps[index] : undefined;
+  const [canPush] = useState(() => pushState() === 'off');
+  const step = open && index >= 0 && index < steps.length ? steps[index] : undefined;
 
   const close = useCallback(() => {
     write(WELCOME_KEY, '1');
@@ -111,20 +207,15 @@ export function Welcome({ state }: { state: ClassState }) {
   }, []);
   const next = useCallback(() => {
     setBox(null);
-    setIndex((i) => {
-      if (i + 1 < steps.length) return i + 1;
-      write(WELCOME_KEY, '1');
-      setOpen(false);
-      return i;
-    });
-  }, [steps.length]);
+    setIndex((i) => i + 1);
+  }, []);
 
-  // Finds the lit control, keeps its place while the page moves, and skips the step if it never shows up.
+  // Finds the lit button, follows it while the page moves, and passes over the step if it never shows up.
   useEffect(() => {
-    if (!step || step.kind === 'card') return;
+    if (!step) return;
     let target: HTMLElement | null = null;
     const started = Date.now();
-    const onTap = () => next();
+    const onTap = () => window.setTimeout(next, 0);
     const timer = window.setInterval(() => {
       if (!target || !target.isConnected) {
         target?.removeEventListener('click', onTap);
@@ -134,7 +225,7 @@ export function Welcome({ state }: { state: ClassState }) {
           return;
         }
         target.scrollIntoView({ block: 'center', inline: 'nearest' });
-        if (step.kind === 'tap') target.addEventListener('click', onTap);
+        target.addEventListener('click', onTap);
       }
       const r = target.getBoundingClientRect();
       setBox((old) => (old && old.top === r.top && old.left === r.left && old.width === r.width && old.height === r.height ? old : { top: r.top, left: r.left, width: r.width, height: r.height }));
@@ -145,14 +236,7 @@ export function Welcome({ state }: { state: ClassState }) {
     };
   }, [step, next]);
 
-  useEffect(() => {
-    if (!step || step.kind === 'card') return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [step, close]);
-
-  if (!step) return null;
+  if (!open) return null;
 
   async function turnOn() {
     setWorking(true);
@@ -165,13 +249,39 @@ export function Welcome({ state }: { state: ClassState }) {
     close();
   }
 
-  if (step.kind === 'card') {
+  // The start and end cards cannot be dismissed with Escape or a tap outside; only their button moves on.
+  const stay = () => undefined;
+
+  if (index < 0) {
     return (
       <Dialog
         title="Getting to know ClassHub"
-        onClose={close}
+        onClose={stay}
         actions={
-          step.push ? (
+          <button className="btn solid" onClick={next}>
+            Start the tour
+          </button>
+        }
+      >
+        <div className="welcome-card">
+          <TypeIcon icon="home" tone="primary" size={64} />
+          <div className="bold" style={{ fontSize: 20, lineHeight: 1.3 }}>
+            Welcome to {state.room!.name}
+          </div>
+          <p style={{ margin: 0, lineHeight: 1.55 }}>Take a one-minute tour in a practice class. Tap what lights up. Nothing you do in it is saved.</p>
+        </div>
+      </Dialog>
+    );
+  }
+
+  if (!step) {
+    const officer = isOfficer(state);
+    return (
+      <Dialog
+        title="You are ready"
+        onClose={stay}
+        actions={
+          canPush ? (
             <>
               <button className="btn text" disabled={working} onClick={close}>
                 Not now
@@ -181,69 +291,65 @@ export function Welcome({ state }: { state: ClassState }) {
               </button>
             </>
           ) : (
-            <>
-              <button className="btn text" onClick={close}>
-                Skip
-              </button>
-              <button className="btn solid" onClick={next}>
-                Start the tour
-              </button>
-            </>
+            <button className="btn solid" onClick={close}>
+              Open my class
+            </button>
           )
         }
       >
         <div className="welcome-card">
-          <TypeIcon icon={step.icon} tone="primary" size={64} />
+          <TypeIcon icon={canPush ? 'bell' : 'check'} tone="primary" size={64} />
           <div className="bold" style={{ fontSize: 20, lineHeight: 1.3 }}>
-            {step.title}
+            That was the practice class
           </div>
-          <p style={{ margin: 0, lineHeight: 1.55 }}>{step.text}</p>
+          <p style={{ margin: 0, lineHeight: 1.55 }}>
+            Nothing from it was saved. Your real class is next.
+            {officer ? ' As an officer, you will find a Getting started list on Home with the steps a new class needs.' : ''}
+            {canPush ? ' Turn on notifications to hear about new announcements, deadlines and payment updates on this device.' : ''}
+          </p>
         </div>
       </Dialog>
     );
   }
 
-  // Until the control is found the whole screen is dimmed, so nothing else can be tapped by mistake.
-  if (!box) return <div className="tour-dim" style={{ inset: 0 }} />;
-
   const pad = 6;
-  const top = Math.max(0, Math.floor(box.top - pad));
-  const left = Math.max(0, Math.floor(box.left - pad));
-  const right = Math.min(window.innerWidth, Math.ceil(box.left + box.width + pad));
-  const bottom = Math.min(window.innerHeight, Math.ceil(box.top + box.height + pad));
-  const below = window.innerHeight - bottom > 230 || top < 230;
+  const hole = box && {
+    top: Math.max(0, Math.floor(box.top - pad)),
+    left: Math.max(0, Math.floor(box.left - pad)),
+    right: Math.min(window.innerWidth, Math.ceil(box.left + box.width + pad)),
+    bottom: Math.min(window.innerHeight, Math.ceil(box.top + box.height + pad)),
+  };
   const bubbleWidth = Math.min(340, window.innerWidth - 24);
-  const bubbleLeft = Math.min(Math.max(12, (left + right) / 2 - bubbleWidth / 2), window.innerWidth - bubbleWidth - 12);
-  const position = below ? { top: Math.min(bottom + 12, window.innerHeight - 210) } : { bottom: window.innerHeight - top + 12 };
-  const count = steps.filter((s) => s.kind !== 'card').length;
-  const at = steps.slice(0, index + 1).filter((s) => s.kind !== 'card').length;
 
   return (
     <div role="dialog" aria-label={step.title}>
-      {/* Four dimmed panels leave a hole over the lit control. */}
-      <div className="tour-dim" style={{ top: 0, left: 0, right: 0, height: top }} />
-      <div className="tour-dim" style={{ top, left: 0, width: left, height: bottom - top }} />
-      <div className="tour-dim" style={{ top, left: right, right: 0, height: bottom - top }} />
-      <div className="tour-dim" style={{ top: bottom, left: 0, right: 0, bottom: 0 }} />
-      {step.kind === 'show' && <div className="tour-shield" style={{ top, left, width: right - left, height: bottom - top }} />}
-      <div className={'tour-ring' + (step.kind === 'tap' ? ' pulse' : '')} style={{ top, left, width: right - left, height: bottom - top }} />
-      <div className="tour-bubble" style={{ left: bubbleLeft, width: bubbleWidth, ...position }}>
-        <div className="bold" style={{ fontSize: 17 }}>{step.title}</div>
-        <p style={{ margin: 0, lineHeight: 1.5 }}>{step.text}</p>
-        <div className="row" style={{ marginTop: 4 }}>
-          <span className="small muted grow">
-            {at} of {count}
-          </span>
-          <button type="button" className="btn text" onClick={close}>
-            Skip the tour
-          </button>
-          {step.kind === 'show' && (
-            <button type="button" className="btn solid" onClick={next}>
-              Got it
-            </button>
-          )}
-        </div>
-      </div>
+      <Practice state={state} />
+      {/* Until the button is found the whole screen is dimmed, so nothing else can be tapped by mistake. */}
+      {!hole && <div className="tour-dim" style={{ inset: 0 }} />}
+      {hole && (
+        <>
+          {/* Four dimmed panels leave a hole over the lit button. */}
+          <div className="tour-dim" style={{ top: 0, left: 0, right: 0, height: hole.top }} />
+          <div className="tour-dim" style={{ top: hole.top, left: 0, width: hole.left, height: hole.bottom - hole.top }} />
+          <div className="tour-dim" style={{ top: hole.top, left: hole.right, right: 0, height: hole.bottom - hole.top }} />
+          <div className="tour-dim" style={{ top: hole.bottom, left: 0, right: 0, bottom: 0 }} />
+          <div className="tour-ring pulse" style={{ top: hole.top, left: hole.left, width: hole.right - hole.left, height: hole.bottom - hole.top }} />
+          <div
+            className="tour-bubble"
+            style={{
+              width: bubbleWidth,
+              left: Math.min(Math.max(12, (hole.left + hole.right) / 2 - bubbleWidth / 2), window.innerWidth - bubbleWidth - 12),
+              ...(window.innerHeight - hole.bottom > 200 || hole.top < 200 ? { top: Math.min(hole.bottom + 12, window.innerHeight - 180) } : { bottom: window.innerHeight - hole.top + 12 }),
+            }}
+          >
+            <div className="bold" style={{ fontSize: 17 }}>{step.title}</div>
+            <p style={{ margin: 0, lineHeight: 1.5 }}>{step.text}</p>
+            <span className="small muted">
+              Step {index + 1} of {steps.length}
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
