@@ -314,6 +314,11 @@ export async function saveRole(db: Firestore, actorUid: string, classId: string,
   return id;
 }
 
+/** Changes the tag color of the locked role (the Mayor's). Only its holder may; nothing else on it can change. */
+export async function setLockedRoleColor(db: Firestore, classId: string, roleId: string, colorHex: string): Promise<void> {
+  await explainRefusal(db, classId, () => updateDoc(roleRef(db, classId, roleId), { colorHex }));
+}
+
 /** Deletes a role and moves everyone who held it to the class's default role, in one batch. */
 export async function deleteRole(db: Firestore, classId: string, roleId: string): Promise<void> {
   const room = await readOpenClass(db, classId);

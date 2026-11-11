@@ -29,6 +29,9 @@ import {
 import { balanceText, EntryRow } from '../ledger/LedgerUi';
 import { kindLabel as scheduleKindLabel } from '../schedule/ScheduleUi';
 import { setPinned } from '../settings';
+import { db } from '../../data/firebase';
+import { friendlyMessage } from '../../data/errors';
+import { setLockedRoleColor } from '../../data/membership';
 import { useClass } from './ClassContext';
 import { NoAccess, SubPage } from './SubPage';
 
@@ -194,9 +197,12 @@ function MemberDetailContent({ member }: { member: Member }) {
 
 /** /class/:classId/roles */
 export function RolesScreen() {
-  const { state } = useClass();
+  const { state, actions } = useClass();
   const navigate = useNavigate();
   const canManage = state.can('ROLES_MANAGE');
+  const myRoleId = state.members.find((m) => m.id === state.myUid)?.roleId;
+  const [coloring, setColoring] = useState<Role | null>(null);
+  const [tagColor, setTagColor] = useState('');
   const defaultRoleName = state.roles.find((r) => r.id === state.room?.defaultRoleId)?.name ?? 'Member';
   return (
     <SubPage
@@ -231,10 +237,23 @@ export function RolesScreen() {
                     {summary} · {holders} member{s(holders)}
                   </span>
                 </span>
-                <span className="muted">{role.locked ? 'Locked' : '›'}</span>
+                <span className="muted">{role.locked ? (role.id === myRoleId ? 'Color ›' : 'Locked') : '›'}</span>
               </>
             );
-            return role.locked ? (
+            return role.locked && role.id === myRoleId ? (
+              <button
+                key={role.id}
+                type="button"
+                className="list-row"
+                aria-label={`${role.name}, change tag color`}
+                onClick={() => {
+                  setTagColor(hexColor(role.colorHex, '#7C3AED'));
+                  setColoring(role);
+                }}
+              >
+                {content}
+              </button>
+            ) : role.locked ? (
               <div key={role.id} className="list-row">
                 {content}
               </div>
@@ -247,6 +266,40 @@ export function RolesScreen() {
           <p className="small muted" style={{ margin: 0, padding: 16 }}>
             Tap a role to rename it, change its color or choose what it can do. New members join as {defaultRoleName}.
           </p>
+          {coloring && (
+            <Dialog
+              title={`${coloring.name} tag color`}
+              onClose={() => setColoring(null)}
+              actions={
+                <>
+                  <button className="btn text" onClick={() => setColoring(null)}>
+                    Cancel
+                  </button>
+                  <button
+                    className="btn solid"
+                    onClick={() =>
+                      setLockedRoleColor(db, state.classId, coloring.id, tagColor)
+                        .then(() => (actions.showNotice('Tag color saved.'), setColoring(null)))
+                        .catch((e) => actions.showNotice(friendlyMessage(e)))
+                    }
+                  >
+                    Save
+                  </button>
+                </>
+              }
+            >
+              <div className="stack">
+                <p className="small muted" style={{ margin: 0 }}>
+                  The {coloring.name} role is locked: its name and permissions cannot change. Only its tag color can, and only by the {coloring.name}.
+                </p>
+                <ColorPicker label="Tag color" choices={['#7C3AED', ...ROLE_COLOR_CHOICES]} selected={tagColor} onSelect={setTagColor} custom />
+                <div className="row">
+                  <span className="muted">Preview</span>
+                  <RoleChip name={coloring.name} color={tagColor} />
+                </div>
+              </div>
+            </Dialog>
+          )}
         </div>
       )}
     </SubPage>
@@ -305,7 +358,7 @@ function RoleEditorContent({ existing }: { existing: Role | undefined }) {
           <input value={name} placeholder="e.g. PIO, Auditor, Class Rep" onChange={(e) => setName(e.target.value.slice(0, 24))} />
         </Field>
         <span className="small semibold muted">Color</span>
-        <ColorPicker label="Role color" choices={ROLE_COLOR_CHOICES} selected={color} onSelect={setColor} />
+        <ColorPicker label="Role color" choices={ROLE_COLOR_CHOICES} selected={color} onSelect={setColor} custom />
         <div className="row">
           <span className="muted">Preview</span>
           <RoleChip name={name.trim() || 'Role'} color={color} />

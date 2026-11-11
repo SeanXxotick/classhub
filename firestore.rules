@@ -839,10 +839,17 @@ service cloud.firestore {
           || (can(classId, 'ROLES_MANAGE') && request.resource.data.get('locked', false) != true);
         // Nobody edits the role they hold themselves: otherwise anyone who manages roles could switch on
         // every permission for themselves. (The Mayor's role is locked, so the Mayor edits all the others.)
-        allow update: if can(classId, 'ROLES_MANAGE')
-          && resource.data.get('locked', false) != true
-          && request.resource.data.get('locked', false) != true
-          && get(memberPath(classId, uid())).data.roleId != roleId;
+        // The one exception on a locked role: its holder (the Mayor) may change the color of their own tag.
+        allow update: if (can(classId, 'ROLES_MANAGE')
+            && resource.data.get('locked', false) != true
+            && request.resource.data.get('locked', false) != true
+            && get(memberPath(classId, uid())).data.roleId != roleId)
+          || (isMember(classId)
+            && resource.data.get('locked', false) == true
+            && get(memberPath(classId, uid())).data.roleId == roleId
+            && changesOnly(['colorHex'])
+            && request.resource.data.colorHex is string
+            && request.resource.data.colorHex.matches('^#[0-9A-Fa-f]{6}$'));
         allow delete: if (can(classId, 'ROLES_MANAGE')
             && resource.data.get('locked', false) != true
             && roleId != get(classPath(classId)).data.defaultRoleId)

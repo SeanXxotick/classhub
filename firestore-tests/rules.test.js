@@ -541,6 +541,17 @@ async function main() {
   await test('The locked Mayor role cannot be edited, even by the Mayor', () =>
     assertFails(updateDoc(doc(db('mayor'), `classes/${CLASS}/roles/mayor`), { name: 'King' })));
 
+  await test('The Mayor changes the color of the locked Mayor role, and nothing else on it; nobody else does', async () => {
+    const mayorRole = (who) => doc(db(who), `classes/${CLASS}/roles/mayor`);
+    await assertSucceeds(updateDoc(mayorRole('mayor'), { colorHex: '#BE123C' }));
+    await assertFails(updateDoc(mayorRole('mayor'), { colorHex: 'red' }));
+    await assertFails(updateDoc(mayorRole('mayor'), { colorHex: '#BE123C', name: 'King' }));
+    await assertFails(updateDoc(mayorRole('mayor'), { colorHex: '#BE123C', locked: false }));
+    await assertFails(updateDoc(mayorRole('mayor'), { permissions: [] }));
+    await assertFails(updateDoc(mayorRole('student'), { colorHex: '#000000' }));
+    await assertFails(updateDoc(mayorRole('outsider'), { colorHex: '#000000' }));
+  });
+
   await test('A new role cannot be created as locked', () =>
     assertFails(setDoc(doc(db('mayor'), `classes/${CLASS}/roles/fake`), { id: '', name: 'Fake', colorHex: '#000000', permissions: PERMS, locked: true })));
 
