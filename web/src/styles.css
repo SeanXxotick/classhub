@@ -11,12 +11,12 @@
   --surface: #ffffff;
   --surface-variant: #eef1f6;
   --on-surface: #1a1c1e;
-  --muted: #6b768a;
+  --muted: #596478;
   --outline: #d5dbe5;
   --error: #b91c1c;
-  --income: #15803d;
+  --income: #146c34;
   --expense: #c2410c;
-  --pending: #b45309;
+  --pending: #a35207;
   --scrim: rgba(15, 20, 28, 0.45);
   --shadow: 0 1px 2px rgba(15, 20, 28, 0.04), 0 4px 16px rgba(15, 20, 28, 0.06);
   --card-border: transparent;
