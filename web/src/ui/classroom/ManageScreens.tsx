@@ -12,6 +12,7 @@ import {
   COURSE_COLORS,
   NEUTRAL_ICON,
   Avatar,
+  CourseDot,
   ColorPicker,
   ConfirmDialog,
   Dialog,
@@ -74,16 +75,15 @@ export function MemberDetailScreen() {
     <SubPage title={member?.name ?? 'Member'}>
       {!member ? (
         <NoAccess what="see this member, or they are no longer in the class" />
-      ) : !state.can('MEMBERS_MANAGE') ? (
-        <NoAccess what="manage members" />
       ) : (
-        <MemberDetailContent key={member.id} member={member} />
+        // Everyone may open a classmate: officers who manage members can change things, the rest only look.
+        <MemberDetailContent key={member.id} member={member} readOnly={!state.can('MEMBERS_MANAGE')} />
       )}
     </SubPage>
   );
 }
 
-function MemberDetailContent({ member }: { member: Member }) {
+function MemberDetailContent({ member, readOnly }: { member: Member; readOnly: boolean }) {
   const { state, actions } = useClass();
   const back = useBack(`/class/${state.classId}?tab=MEMBERS`);
   const ownerUid = state.room?.ownerUid ?? '';
@@ -126,11 +126,32 @@ function MemberDetailContent({ member }: { member: Member }) {
           {LedgerView.statement(member.id, state.records)
             .slice(0, 5)
             .map((record) => (
-              <EntryRow key={record.id} entry={{ kind: 'single', key: 'r:' + record.id, type: record.type, dateMillis: record.dateMillis, record }} state={state} />
+              <EntryRow key={record.id} entry={{ kind: 'single', key: 'r:' + record.id, type: record.type, dateMillis: record.dateMillis, record }} state={state} mine />
             ))}
         </div>
       )}
 
+      {readOnly && (
+        <div className="card">
+          <div className="section-label" style={{ padding: '0 0 6px' }}>Courses taken</div>
+          {state.courses.length === 0 ? (
+            <p className="muted" style={{ margin: 0 }}>This class has no courses yet.</p>
+          ) : (
+            state.courses.map((course) => {
+              const takes = !member.excludedCourseIds.includes(course.id);
+              return (
+                <div key={course.id} className="row" style={{ padding: '8px 0' }}>
+                  <CourseDot color={course.color} />
+                  <span className="grow" style={takes ? undefined : { color: 'var(--muted)', textDecoration: 'line-through' }}>{course.name}</span>
+                  <span className="small muted">{takes ? 'Takes' : 'Does not take'}</span>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {!readOnly && (
       <div className="card">
         <div className="section-label" style={{ padding: '0 0 6px' }}>Role</div>
         {!canChangeRole ? (
@@ -155,7 +176,9 @@ function MemberDetailContent({ member }: { member: Member }) {
           </div>
         )}
       </div>
+      )}
 
+      {!readOnly && (
       <div className="card">
         <div className="section-label" style={{ padding: '0 0 6px' }}>Courses taken</div>
         {state.courses.length === 0 ? (
@@ -172,8 +195,9 @@ function MemberDetailContent({ member }: { member: Member }) {
           </>
         )}
       </div>
+      )}
 
-      {canRemove && (
+      {!readOnly && canRemove && (
         <button className="btn outline danger block" disabled={actions.busy} onClick={() => setConfirmRemove(true)}>
           Remove from class
         </button>

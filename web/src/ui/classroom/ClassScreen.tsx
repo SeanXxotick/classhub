@@ -498,11 +498,11 @@ function MembersList({ state, canManage, onOpenMember }: { state: ClassState; ca
     <div className="card flush">
       <div className="small semibold muted" style={{ padding: '0 16px 6px' }}>
         {state.members.length} member{s(state.members.length)}
-        {canManage ? '  ·  Tap someone to set their role or courses' : ''}
+        {canManage ? '  ·  Tap someone to set their role or courses' : '  ·  Tap someone to see their role and courses'}
       </div>
       <div className="members-grid">
         {byLastName(state.members).map((member) => (
-          <MemberRow key={member.id} member={member} state={state} isMe={member.id === state.myUid} onClick={canManage ? () => onOpenMember(member.id) : undefined} />
+          <MemberRow key={member.id} member={member} state={state} isMe={member.id === state.myUid} onClick={() => onOpenMember(member.id)} />
         ))}
       </div>
     </div>
