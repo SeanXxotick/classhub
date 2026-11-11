@@ -979,6 +979,11 @@ a.list-row:hover {
   background: color-mix(in srgb, var(--on-surface) 5%, transparent);
 }
 
+/* Today has a box around it, in the week strip and in both month views. */
+.day.today {
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
 .day.today .num {
   color: var(--primary);
   font-weight: 800;
