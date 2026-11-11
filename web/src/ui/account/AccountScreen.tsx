@@ -8,6 +8,7 @@ import type { AppUser } from '../../data/models';
 import { removeAvatar, setAvatar, useAvatar } from '../../data/photoRepo';
 import { NameRules, personName, type PersonName } from '../../domain/nameRules';
 import { Avatar, Dialog, Field, PasswordInput, Spinner, TopBar, useBack, useNotice, usePhotoPicker } from '../common';
+import { replayWelcome } from '../classroom/Onboarding';
 import { setThemeMode, themeMode, useSettingsVersion, type ThemeMode } from '../settings';
 
 /** Where the Android app is downloaded from (the same page the Android update prompt opens). */
@@ -129,6 +130,9 @@ export function AccountScreen({ user }: { user: AppUser }) {
             </a>
           </div>
 
+          <button className="btn outline block" onClick={() => (replayWelcome(), notice('The welcome will show the next time you open a class.'))}>
+            Show the welcome again
+          </button>
           <button className="btn outline block" onClick={() => navigate('/account/password')}>
             Change password
           </button>

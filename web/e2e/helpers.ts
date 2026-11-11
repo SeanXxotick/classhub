@@ -6,11 +6,13 @@ export const TEST_PASSWORD = `e2e-${Math.random().toString(36).slice(2, 12)}`;
 let counter = 0;
 
 /** A new browser profile with its own sign-in, and the console errors it logs. */
-export async function newUser(browser: Browser, first: string, last: string, options: { phone?: boolean; dark?: boolean } = {}) {
+export async function newUser(browser: Browser, first: string, last: string, options: { phone?: boolean; dark?: boolean; welcome?: boolean } = {}) {
   const context = await browser.newContext({
     viewport: options.phone ? { width: 390, height: 844 } : { width: 1360, height: 900 },
     colorScheme: options.dark ? 'dark' : 'light',
   });
+  // The first-visit welcome would cover every screen; only the test that checks it asks for it.
+  if (!options.welcome) await context.addInitScript(() => localStorage.setItem('classhub.welcomeSeen', '1'));
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));

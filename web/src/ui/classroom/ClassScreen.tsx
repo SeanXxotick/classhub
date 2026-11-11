@@ -17,6 +17,7 @@ import { byLastName, listName } from '../../data/models';
 import { CLASS_TABS, tabShownIn, type ClassTabId } from './classTabs';
 import { ClassSettingsScreen, CoursesScreen, MemberDetailScreen, RoleEditorScreen, RolesScreen } from './ManageScreens';
 import { MySettingsScreen } from './MySettingsScreen';
+import { SetupChecklist, Welcome } from './Onboarding';
 
 const s = (n: number) => (n === 1 ? '' : 's');
 
@@ -130,6 +131,7 @@ function ClassScreen() {
             ))}
           </nav>
         )}
+        {room && state.me && !state.loading && !state.error && <Welcome state={state} />}
         {room && state.me && !state.loading && !state.error && tab === 'SCHEDULE' && (
           <div className="stack" style={{ marginBottom: 12 }}>
             {tab === 'SCHEDULE' && room.timetableEnabled !== false && <TimetableCard state={state} />}
@@ -141,7 +143,7 @@ function ClassScreen() {
         ) : state.error ? (
           <p className="error-text center" style={{ padding: 32 }}>{state.error}</p>
         ) : !room || !state.me ? null : tab === 'HOME' ? (
-          <HomeTab state={state} onSeeLedger={() => setTab('LEDGER')} onSeeSchedule={() => setTab('SCHEDULE')} onToggleDone={onToggleDone} />
+          <HomeTab state={state} onSeeLedger={() => setTab('LEDGER')} onSeeSchedule={() => setTab('SCHEDULE')} onSeeNews={() => setTab('NEWS')} onToggleDone={onToggleDone} />
         ) : tab === 'NEWS' ? (
           <NewsTab state={state} />
         ) : tab === 'MEMBERS' ? (
@@ -232,11 +234,13 @@ function HomeTab({
   state,
   onSeeLedger,
   onSeeSchedule,
+  onSeeNews,
   onToggleDone,
 }: {
   state: ClassState;
   onSeeLedger: () => void;
   onSeeSchedule: () => void;
+  onSeeNews: () => void;
   onToggleDone: (item: ScheduleItem, done: boolean) => void;
 }) {
   const { actions } = useClass();
@@ -286,6 +290,8 @@ function HomeTab({
             </span>
           </span>
         </section>
+
+        <SetupChecklist state={state} go={{ courses: () => navigate(`${base}/courses`), timetable: onSeeSchedule, ledger: onSeeLedger, invite: shareCode, news: onSeeNews }} />
 
         {(canRoles || canCourses) && (
           <section className="home-section home-order-1">
