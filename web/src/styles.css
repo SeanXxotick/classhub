@@ -1850,3 +1850,44 @@ a.list-row:hover {
 .list-row.setup-quiet .title {
   color: var(--ch-text-muted);
 }
+
+/* The tour: four dimmed panels around the lit control, a ring on it, and a bubble that explains it. */
+.tour-dim,
+.tour-shield,
+.tour-ring,
+.tour-bubble {
+  position: fixed;
+  z-index: 1000;
+}
+.tour-dim {
+  background: rgba(10, 14, 22, 0.62);
+}
+.tour-ring {
+  border-radius: 14px;
+  box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--ch-primary);
+  pointer-events: none;
+}
+.tour-ring.pulse {
+  animation: tour-pulse 1.4s ease-in-out infinite;
+}
+@keyframes tour-pulse {
+  50% {
+    box-shadow: 0 0 0 3px #fff, 0 0 0 11px color-mix(in srgb, var(--ch-primary) 45%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-ring.pulse {
+    animation: none;
+  }
+}
+.tour-bubble {
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--ch-surface);
+  color: var(--ch-text);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}

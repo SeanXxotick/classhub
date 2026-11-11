@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { db } from '../../data/firebase';
 import { pushState, turnOnPush } from '../../data/notify';
 import { useAnnouncements, useMeetings } from '../../data/features';
@@ -9,7 +9,7 @@ import { useClass, type ClassState } from './ClassContext';
 
 /*
  * Help for new users, remembered on this device only (a second device shows it once more):
- * - Welcome: a few cards the first time someone opens a class.
+ * - Welcome: a short tour the first time someone opens a class. Real buttons light up and the user taps them.
  * - SetupChecklist: the steps a new class needs, on Home, for every officer who can do one of them.
  */
 
@@ -39,98 +39,212 @@ export const replayWelcome = () => write(WELCOME_KEY, '');
 const OFFICER_PERMISSIONS: Permission[] = ['RECORDS_MANAGE', 'SCHEDULE_MANAGE', 'MEMBERS_MANAGE', 'ROLES_MANAGE', 'CLASS_SETTINGS', 'CONTENTS_MANAGE', 'ANNOUNCEMENTS_MANAGE', 'ATTENDANCE_MANAGE'];
 const isOfficer = (state: ClassState) => OFFICER_PERMISSIONS.some((p) => state.can(p));
 
-// ---------------------------------------------------------------- Welcome cards
+// ---------------------------------------------------------------- Welcome tour
 
-interface WelcomeCard {
-  icon: IconName;
-  title: string;
-  text: string;
-  push?: boolean;
-}
+/**
+ * One step of the tour.
+ * - card: a message in the middle of the screen (the start, and the notifications offer).
+ * - tap:  a real button is lit and the user taps it; the tap does what it always does (it opens a tab).
+ * - show: a real control is lit and explained, but a tap on it does nothing, so the tour never files
+ *         a claim or ticks a deadline by accident. "Got it" moves on.
+ * A step whose target is not on the screen (a module is off, or a list is empty) is skipped.
+ */
+type TourStep =
+  | { kind: 'card'; icon: IconName; title: string; text: string; push?: boolean }
+  | { kind: 'tap' | 'show'; target: string; title: string; text: string };
 
-function welcomeCards(state: ClassState): WelcomeCard[] {
+function tourSteps(state: ClassState): TourStep[] {
   const room = state.room!;
-  const cards: WelcomeCard[] = [
-    { icon: 'home', title: `Welcome to ${room.name}`, text: 'This is where your class keeps its fund, deadlines, files and announcements. Here is a one-minute look around.' },
+  const steps: TourStep[] = [
+    { kind: 'card', icon: 'home', title: `Welcome to ${room.name}`, text: 'This is where your class keeps its fund, deadlines, files and announcements. Take a one-minute tour: tap what lights up.' },
   ];
   if (isOfficer(state)) {
-    cards.push({ icon: 'list', title: 'Set up your class', text: 'Home has a Getting started list with the steps a new class needs. Other officers see it too and can help.' });
+    steps.push({ kind: 'show', target: 'section[aria-label="Getting started"]', title: 'Set up your class', text: 'These are the steps a new class needs. Tap one any time to do it. Other officers see this list too and can help.' });
   } else {
-    if (room.ledgerEnabled) cards.push({ icon: 'ledger', title: 'Your money', text: 'Home and Ledger show what you owe and what you have paid. After you pay, tap "I paid" so the treasurer can confirm it.' });
-    if (room.scheduleEnabled) cards.push({ icon: 'schedule', title: 'Your deadlines', text: 'Schedule lists quizzes, exams and deliverables. Tick the circle when you are done with one.' });
-    if (room.announcementsEnabled !== false) cards.push({ icon: 'news', title: 'Announcements', text: 'News is where officers post updates. You can vote and comment there.' });
+    if (room.ledgerEnabled) {
+      steps.push({ kind: 'tap', target: '[data-tour="tab-LEDGER"]', title: 'Your money', text: 'Tap Ledger to see what you owe and what you have paid.' });
+      steps.push({ kind: 'show', target: '[data-tour="i-paid"]', title: 'Tell the treasurer you paid', text: 'After you pay, tap "I paid" here. The treasurer confirms it and your balance updates.' });
+    }
+    if (room.scheduleEnabled) {
+      steps.push({ kind: 'tap', target: '[data-tour="tab-SCHEDULE"]', title: 'Your deadlines', text: 'Tap Schedule to see quizzes, exams and deliverables.' });
+      steps.push({ kind: 'show', target: '.done-check', title: 'Tick it when you are done', text: 'Tap the circle beside a deadline when you finish it, so you always know what is left.' });
+    }
+    if (room.announcementsEnabled !== false) {
+      steps.push({ kind: 'tap', target: '[data-tour="tab-NEWS"]', title: 'Announcements', text: 'Tap News to read what the officers post.' });
+      steps.push({ kind: 'show', target: '.vote-bar', title: 'Vote and comment', text: 'Vote up or down on an announcement, and open its comments to ask a question.' });
+    }
+    steps.push({ kind: 'tap', target: '[data-tour="tab-HOME"]', title: 'Back to Home', text: 'Tap Home. It gathers today, what is due and your balance in one place.' });
   }
-  if (pushState() === 'off') cards.push({ icon: 'bell', title: 'Do not miss anything', text: 'Turn on notifications to hear about new announcements, deadlines and payment updates on this device.', push: true });
-  return cards;
+  if (pushState() === 'off') steps.push({ kind: 'card', icon: 'bell', title: 'Do not miss anything', text: 'Turn on notifications to hear about new announcements, deadlines and payment updates on this device.', push: true });
+  return steps;
+}
+
+/** The first element matching the selector that is actually on screen (the phone and wide menus both exist). */
+function visibleTarget(selector: string): HTMLElement | null {
+  for (const el of document.querySelectorAll<HTMLElement>(selector)) {
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) return el;
+  }
+  return null;
+}
+
+interface Box {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
 }
 
 /** Shows once per device, the first time a class is opened. */
 export function Welcome({ state }: { state: ClassState }) {
   const { actions } = useClass();
   const [open, setOpen] = useState(() => !read(WELCOME_KEY));
-  const [cards] = useState(() => welcomeCards(state));
-  const [step, setStep] = useState(0);
+  const [steps] = useState(() => tourSteps(state));
+  const [index, setIndex] = useState(0);
+  const [box, setBox] = useState<Box | null>(null);
   const [working, setWorking] = useState(false);
-  if (!open) return null;
-  const card = cards[step];
-  const last = step === cards.length - 1;
-  const close = () => {
+  const step = open ? steps[index] : undefined;
+
+  const close = useCallback(() => {
     write(WELCOME_KEY, '1');
     setOpen(false);
-  };
+  }, []);
+  const next = useCallback(() => {
+    setBox(null);
+    setIndex((i) => {
+      if (i + 1 < steps.length) return i + 1;
+      write(WELCOME_KEY, '1');
+      setOpen(false);
+      return i;
+    });
+  }, [steps.length]);
+
+  // Finds the lit control, keeps its place while the page moves, and skips the step if it never shows up.
+  useEffect(() => {
+    if (!step || step.kind === 'card') return;
+    let target: HTMLElement | null = null;
+    const started = Date.now();
+    const onTap = () => next();
+    const timer = window.setInterval(() => {
+      if (!target || !target.isConnected) {
+        target?.removeEventListener('click', onTap);
+        target = visibleTarget(step.target);
+        if (!target) {
+          if (Date.now() - started > 2500) next();
+          return;
+        }
+        target.scrollIntoView({ block: 'center', inline: 'nearest' });
+        if (step.kind === 'tap') target.addEventListener('click', onTap);
+      }
+      const r = target.getBoundingClientRect();
+      setBox((old) => (old && old.top === r.top && old.left === r.left && old.width === r.width && old.height === r.height ? old : { top: r.top, left: r.left, width: r.width, height: r.height }));
+    }, 120);
+    return () => {
+      window.clearInterval(timer);
+      target?.removeEventListener('click', onTap);
+    };
+  }, [step, next]);
+
+  useEffect(() => {
+    if (!step || step.kind === 'card') return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [step, close]);
+
+  if (!step) return null;
 
   async function turnOn() {
     setWorking(true);
     try {
-      const next = await turnOnPush(db, state.myUid);
-      actions.showNotice(next === 'on' ? 'Notifications are on for this device.' : next === 'blocked' ? 'Notifications are blocked. Allow them for ClassHub in your settings.' : 'Notifications were not turned on. You can turn them on in Account.');
+      const result = await turnOnPush(db, state.myUid);
+      actions.showNotice(result === 'on' ? 'Notifications are on for this device.' : result === 'blocked' ? 'Notifications are blocked. Allow them for ClassHub in your settings.' : 'Notifications were not turned on. You can turn them on in Account.');
     } catch {
       actions.showNotice('Notifications could not be turned on. You can try again in Account.');
     }
     close();
   }
 
-  return (
-    <Dialog
-      title="Getting to know ClassHub"
-      onClose={close}
-      actions={
-        card.push ? (
-          <>
-            <button className="btn text" disabled={working} onClick={close}>
-              Not now
-            </button>
-            <button className="btn solid" disabled={working} onClick={turnOn}>
-              Turn on notifications
-            </button>
-          </>
-        ) : (
-          <>
-            {!last && (
+  if (step.kind === 'card') {
+    return (
+      <Dialog
+        title="Getting to know ClassHub"
+        onClose={close}
+        actions={
+          step.push ? (
+            <>
+              <button className="btn text" disabled={working} onClick={close}>
+                Not now
+              </button>
+              <button className="btn solid" disabled={working} onClick={turnOn}>
+                Turn on notifications
+              </button>
+            </>
+          ) : (
+            <>
               <button className="btn text" onClick={close}>
                 Skip
               </button>
-            )}
-            <button className="btn solid" onClick={() => (last ? close() : setStep(step + 1))}>
-              {last ? 'Done' : 'Next'}
-            </button>
-          </>
-        )
-      }
-    >
-      <div className="welcome-card">
-        <TypeIcon icon={card.icon} tone="primary" size={64} />
-        <div className="bold" style={{ fontSize: 20, lineHeight: 1.3 }}>
-          {card.title}
+              <button className="btn solid" onClick={next}>
+                Start the tour
+              </button>
+            </>
+          )
+        }
+      >
+        <div className="welcome-card">
+          <TypeIcon icon={step.icon} tone="primary" size={64} />
+          <div className="bold" style={{ fontSize: 20, lineHeight: 1.3 }}>
+            {step.title}
+          </div>
+          <p style={{ margin: 0, lineHeight: 1.55 }}>{step.text}</p>
         </div>
-        <p style={{ margin: 0, lineHeight: 1.55 }}>{card.text}</p>
-        <div className="welcome-dots" aria-label={`Card ${step + 1} of ${cards.length}`}>
-          {cards.map((c, i) => (
-            <i key={c.title} className={i === step ? 'on' : ''} />
-          ))}
+      </Dialog>
+    );
+  }
+
+  // Until the control is found the whole screen is dimmed, so nothing else can be tapped by mistake.
+  if (!box) return <div className="tour-dim" style={{ inset: 0 }} />;
+
+  const pad = 6;
+  const top = Math.max(0, Math.floor(box.top - pad));
+  const left = Math.max(0, Math.floor(box.left - pad));
+  const right = Math.min(window.innerWidth, Math.ceil(box.left + box.width + pad));
+  const bottom = Math.min(window.innerHeight, Math.ceil(box.top + box.height + pad));
+  const below = window.innerHeight - bottom > 230 || top < 230;
+  const bubbleWidth = Math.min(340, window.innerWidth - 24);
+  const bubbleLeft = Math.min(Math.max(12, (left + right) / 2 - bubbleWidth / 2), window.innerWidth - bubbleWidth - 12);
+  const position = below ? { top: Math.min(bottom + 12, window.innerHeight - 210) } : { bottom: window.innerHeight - top + 12 };
+  const count = steps.filter((s) => s.kind !== 'card').length;
+  const at = steps.slice(0, index + 1).filter((s) => s.kind !== 'card').length;
+
+  return (
+    <div role="dialog" aria-label={step.title}>
+      {/* Four dimmed panels leave a hole over the lit control. */}
+      <div className="tour-dim" style={{ top: 0, left: 0, right: 0, height: top }} />
+      <div className="tour-dim" style={{ top, left: 0, width: left, height: bottom - top }} />
+      <div className="tour-dim" style={{ top, left: right, right: 0, height: bottom - top }} />
+      <div className="tour-dim" style={{ top: bottom, left: 0, right: 0, bottom: 0 }} />
+      {step.kind === 'show' && <div className="tour-shield" style={{ top, left, width: right - left, height: bottom - top }} />}
+      <div className={'tour-ring' + (step.kind === 'tap' ? ' pulse' : '')} style={{ top, left, width: right - left, height: bottom - top }} />
+      <div className="tour-bubble" style={{ left: bubbleLeft, width: bubbleWidth, ...position }}>
+        <div className="bold" style={{ fontSize: 17 }}>{step.title}</div>
+        <p style={{ margin: 0, lineHeight: 1.5 }}>{step.text}</p>
+        <div className="row" style={{ marginTop: 4 }}>
+          <span className="small muted grow">
+            {at} of {count}
+          </span>
+          <button type="button" className="btn text" onClick={close}>
+            Skip the tour
+          </button>
+          {step.kind === 'show' && (
+            <button type="button" className="btn solid" onClick={next}>
+              Got it
+            </button>
+          )}
         </div>
       </div>
-    </Dialog>
+    </div>
   );
 }
 

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { newUser, realErrors, signUp } from './helpers';
 
-// A new Mayor sees the welcome once, then the Getting started list, which ticks itself from the class.
+// A new Mayor sees the welcome tour once, then the Getting started list, which ticks itself from the class.
 test('the welcome shows once and the Getting started list follows the class', async ({ browser }) => {
   const mayor = await newUser(browser, 'Wena', 'Cruz', { welcome: true });
   const { page } = mayor;
@@ -11,14 +11,17 @@ test('the welcome shows once and the Getting started list follows the class', as
   await page.getByLabel('Class name').fill('Welcome Class');
   await page.getByRole('button', { name: 'Create class' }).click();
 
-  const welcome = page.getByRole('dialog', { name: 'Getting to know ClassHub' });
-  await expect(welcome.getByText('Welcome to Welcome Class')).toBeVisible();
-  await welcome.getByRole('button', { name: 'Next' }).click();
-  await expect(welcome.getByText('Set up your class')).toBeVisible();
+  // The start card, then the tour lights up the Getting started list.
+  const start = page.getByRole('dialog', { name: 'Getting to know ClassHub' });
+  await expect(start.getByText('Welcome to Welcome Class')).toBeVisible();
+  await start.getByRole('button', { name: 'Start the tour' }).click();
+  const tour = page.getByRole('dialog', { name: 'Set up your class' });
+  await expect(tour.getByText('1 of 1')).toBeVisible();
+  await tour.getByRole('button', { name: 'Got it' }).click();
   // The notifications card only shows where the browser can show notifications.
-  await welcome.getByRole('button', { name: /^(Next|Done)$/ }).click();
-  const notNow = welcome.getByRole('button', { name: 'Not now' });
+  const notNow = page.getByRole('button', { name: 'Not now' });
   if (await notNow.isVisible().catch(() => false)) await notNow.click();
+  const welcome = page.getByRole('dialog');
   await expect(welcome).toBeHidden();
 
   const list = page.getByRole('region', { name: 'Getting started' });

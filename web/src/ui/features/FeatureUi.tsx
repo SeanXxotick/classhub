@@ -89,7 +89,7 @@ export function ClaimsCard({ state }: { state: ClassState }) {
     <Section
       title={`Payment claims${manage && waiting.length > 0 ? ` (${waiting.length} waiting)` : ''}`}
       action={
-        <Button variant="outline" size="small" icon="coins" onClick={() => setAdding(true)}>
+        <Button data-tour="i-paid" variant="outline" size="small" icon="coins" onClick={() => setAdding(true)}>
           I paid
         </Button>
       }

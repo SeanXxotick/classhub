@@ -124,7 +124,7 @@ function ClassScreen() {
         {room && !state.loading && (
           <nav className="tabs wide-only" aria-label="Class sections">
             {tabs.map((t) => (
-              <button key={t.id} type="button" className={'tab' + (t.id === tab ? ' selected' : '')} aria-current={t.id === tab ? 'page' : undefined} onClick={() => setTab(t.id)}>
+              <button key={t.id} type="button" data-tour={`tab-${t.id}`} className={'tab' + (t.id === tab ? ' selected' : '')} aria-current={t.id === tab ? 'page' : undefined} onClick={() => setTab(t.id)}>
                 <Icon name={t.icon} size={20} />
                 {t.label}
               </button>
@@ -188,7 +188,7 @@ function ClassScreen() {
       {room && (
         <nav className="bottom-nav phone-only" aria-label="Class sections">
           {tabs.map((t) => (
-            <button key={t.id} type="button" className={t.id === tab ? 'selected' : ''} aria-current={t.id === tab ? 'page' : undefined} onClick={() => setTab(t.id)}>
+            <button key={t.id} type="button" data-tour={`tab-${t.id}`} className={t.id === tab ? 'selected' : ''} aria-current={t.id === tab ? 'page' : undefined} onClick={() => setTab(t.id)}>
               <span className="nav-icon">
                 <Icon name={t.icon} size={24} />
               </span>
