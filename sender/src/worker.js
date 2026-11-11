@@ -251,6 +251,7 @@ async function accessToken(account, now) {
 
 export default {
   async scheduled(event, env, ctx) {
+    if (!env.SERVICE_ACCOUNT) return console.log('SERVICE_ACCOUNT is not set yet: nothing to do.');
     const account = JSON.parse(env.SERVICE_ACCOUNT);
     const now = Date.now();
     const cfg = {
