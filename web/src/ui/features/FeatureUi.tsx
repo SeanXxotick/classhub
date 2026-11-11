@@ -481,7 +481,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
         </div>
       ))}
       {editing && <MeetingDialog state={state} meeting={editing} onClose={() => setEditing(null)} />}
-      {marking && <NoClassDialog state={state} onClose={() => setMarking(false)} />}
+      {marking && <NoClassDialog state={state} meetings={meetings} onClose={() => setMarking(false)} />}
     </div>
   );
 }
@@ -542,11 +542,16 @@ function MeetingDialog({ state, meeting, onClose }: { state: ClassState; meeting
   );
 }
 
-function NoClassDialog({ state, onClose }: { state: ClassState; onClose: () => void }) {
+function NoClassDialog({ state, meetings, onClose }: { state: ClassState; meetings: Meeting[]; onClose: () => void }) {
   const run = useRun();
   const [dateKey, setDateKey] = useState(manilaDay(Date.now()).dateKey);
-  const [courseId, setCourseId] = useState('');
+  const [picked, setPicked] = useState('');
   const [reason, setReason] = useState('');
+  // Only the courses that meet on the chosen day can be marked.
+  const dayOfWeek = dateKey ? new Date(`${dateKey}T00:00:00Z`).getUTCDay() : -1;
+  const meeting = new Set(meetings.filter((m) => m.dayOfWeek === dayOfWeek).map((m) => m.courseId));
+  const courses = state.courses.filter((c) => meeting.has(c.id));
+  const courseId = meeting.has(picked) ? picked : '';
   return (
     <Dialog
       title="No classes"
@@ -556,7 +561,7 @@ function NoClassDialog({ state, onClose }: { state: ClassState; onClose: () => v
           <button className="btn text" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn solid" disabled={!dateKey} onClick={() => run('Marked as no classes.', () => addNoClass(db, state.myUid, state.classId, dateKey, courseId, reason), onClose)}>
+          <button className="btn solid" disabled={!dateKey || courses.length === 0} onClick={() => run('Marked as no classes.', () => addNoClass(db, state.myUid, state.classId, dateKey, courseId, reason), onClose)}>
             Save
           </button>
         </>
@@ -567,15 +572,16 @@ function NoClassDialog({ state, onClose }: { state: ClassState; onClose: () => v
           <input type="date" value={dateKey} onChange={(e) => setDateKey(e.target.value)} />
         </Field>
         <Field label="Which classes">
-          <select value={courseId} onChange={(e) => setCourseId(e.target.value)}>
+          <select value={courseId} disabled={courses.length === 0} onChange={(e) => setPicked(e.target.value)}>
             <option value="">The whole day</option>
-            {state.courses.map((c) => (
+            {courses.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
           </select>
         </Field>
+        {dateKey && courses.length === 0 && <p className="small muted" style={{ margin: 0 }}>The timetable has no classes on that day, so there is nothing to mark.</p>}
         <Field label="Reason (optional)">
           <input value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} />
         </Field>
