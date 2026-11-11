@@ -240,6 +240,14 @@ function download(name: string, text: string) {
 const cell = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
 const pesos = (centavos: number) => (centavos / 100).toFixed(2);
 
+const STATEMENT_ICON = {
+  PAYMENT: { icon: 'income', tone: 'income', label: 'Payment' },
+  CHARGE: { icon: 'charge', tone: 'charge', label: 'Charge' },
+  WITHDRAWAL: { icon: 'withdrawal', tone: 'withdrawal', label: 'Withdrawal' },
+  EXPENSE: { icon: 'payout', tone: 'payout', label: 'Pay out from fund' },
+  OPENING: { icon: 'flag', tone: 'opening', label: 'Opening balance' },
+} as const;
+
 /** In the Ledger tab: a student's statement with a running balance, and the CSV export for those who see every record. */
 export function StatementCard({ state }: { state: ClassState }) {
   const [open, setOpen] = useState(false);
@@ -262,15 +270,16 @@ export function StatementCard({ state }: { state: ClassState }) {
     download(`${state.room?.name ?? 'class'} ledger.csv`, [head, ...rows, '', [cell('Student'), cell('Balance')].join(','), ...balances].join('\r\n'));
   }
 
+  const balance = lines.length > 0 ? lines[lines.length - 1].balance : 0;
   return (
-    <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-      <button type="button" className="btn outline" onClick={() => setOpen(true)}>
+    <div className="ch-row ch-wrap ch-gap-2">
+      <Button variant="outline" icon="file" onClick={() => setOpen(true)}>
         My statement
-      </button>
+      </Button>
       {state.seeAll && (
-        <button type="button" className="btn outline" onClick={exportCsv}>
+        <Button variant="outline" icon="download" onClick={exportCsv}>
           Export CSV
-        </button>
+        </Button>
       )}
       {open && (
         <Dialog
@@ -287,19 +296,22 @@ export function StatementCard({ state }: { state: ClassState }) {
             </>
           }
         >
-          {lines.length === 0 && <p className="muted">No records yet.</p>}
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <tbody>
+          {lines.length === 0 ? (
+            <Notice tone="info">No records yet.</Notice>
+          ) : (
+            <Card flush>
               {lines.map(({ r, change, balance }) => (
-                <tr key={r.id}>
-                  <td style={{ padding: '4px 6px 4px 0' }}>{shortDate(r.dateMillis)}</td>
-                  <td style={{ padding: '4px 6px' }}>{r.note || r.type.toLowerCase()}</td>
-                  <td style={{ padding: '4px 6px', textAlign: 'right' }}>{(change >= 0 ? '+' : '−') + formatMoney(Math.abs(change))}</td>
-                  <td style={{ padding: '4px 0 4px 6px', textAlign: 'right', fontWeight: 700 }}>{formatMoney(balance)}</td>
-                </tr>
+                <ListRow
+                  key={r.id}
+                  leading={<TypeIcon icon={STATEMENT_ICON[r.type].icon} tone={STATEMENT_ICON[r.type].tone} size={32} />}
+                  title={r.note || STATEMENT_ICON[r.type].label}
+                  subtitle={`${shortDate(r.dateMillis)} · Balance after: ${formatMoney(balance)}`}
+                  trailing={<Money centavos={change} sign tone={change >= 0 ? 'income' : 'charge'} />}
+                />
               ))}
-            </tbody>
-          </table>
+              <ListRow title="Balance now" trailing={<Money centavos={balance} size="mid" />} />
+            </Card>
+          )}
         </Dialog>
       )}
     </div>
@@ -328,37 +340,48 @@ export function NewsTab({ state }: { state: ClassState }) {
   return (
     <div className="stack">
       {manage && (
-        <button type="button" className="btn solid" style={{ alignSelf: 'flex-start' }} onClick={() => setEditing(newAnnouncement({}))}>
-          New announcement
-        </button>
-      )}
-      {posts && posts.length === 0 && <p className="empty">No announcements yet.</p>}
-      {(posts ?? []).map((p) => (
-        <div key={p.id} className="card stack" style={{ gap: 6 }}>
-          <div className="bold" style={{ fontSize: 17 }}>
-            {p.pinned ? 'Pinned · ' : ''}
-            {p.title}
-          </div>
-          {p.body && <div style={{ whiteSpace: 'pre-wrap' }}>{p.body}</div>}
-          <div className="small muted">
-            {author(p.createdByUid)} · {shortDate(p.createdAtMillis)}
-            {p.editedAtMillis ? ' · edited' : ''}
-            {manage ? ` · Seen by ${seenBy(p.id)} of ${state.members.length}` : ''}
-          </div>
-          {manage && (
-            <div className="row">
-              <button type="button" className="btn text" onClick={() => setEditing(p)}>
-                Edit
-              </button>
-              <button type="button" className="btn text" onClick={() => run(p.pinned ? 'Unpinned.' : 'Pinned.', () => saveAnnouncement(db, state.myUid, state.classId, { ...p, pinned: !p.pinned }))}>
-                {p.pinned ? 'Unpin' : 'Pin'}
-              </button>
-              <button type="button" className="btn text danger" onClick={() => window.confirm(`Delete "${p.title}"?`) && run('Announcement deleted.', () => deleteAnnouncement(db, state.classId, p.id))}>
-                Delete
-              </button>
-            </div>
-          )}
+        <div className="ch-row">
+          <Button icon="bell" onClick={() => setEditing(newAnnouncement({}))}>
+            New announcement
+          </Button>
         </div>
+      )}
+      {posts && posts.length === 0 && <Notice tone="info">No announcements yet.</Notice>}
+      {(posts ?? []).map((p) => (
+        <Card key={p.id}>
+          <div className="stack" style={{ gap: 8 }}>
+            {p.pinned && (
+              <div className="ch-row">
+                <Badge tone="primary" icon="pin">
+                  Pinned
+                </Badge>
+              </div>
+            )}
+            <div className="bold" style={{ fontSize: 18, lineHeight: 1.3 }}>
+              {p.title}
+            </div>
+            {p.body && <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{p.body}</div>}
+            <div className="ch-small ch-muted">
+              {author(p.createdByUid)} · {shortDate(p.createdAtMillis)}
+              {p.editedAtMillis ? ' · edited' : ''}
+            </div>
+            {manage && (
+              <div className="ch-row ch-wrap ch-gap-2">
+                <StatusBadge status="info" icon="eye">{`Seen by ${seenBy(p.id)} of ${state.members.length}`}</StatusBadge>
+                <span style={{ flex: 1 }} />
+                <Button size="small" variant="outline" icon="edit" onClick={() => setEditing(p)}>
+                  Edit
+                </Button>
+                <Button size="small" variant="outline" icon="pin" onClick={() => run(p.pinned ? 'Unpinned.' : 'Pinned.', () => saveAnnouncement(db, state.myUid, state.classId, { ...p, pinned: !p.pinned }))}>
+                  {p.pinned ? 'Unpin' : 'Pin'}
+                </Button>
+                <Button size="small" variant="outline" danger icon="trash" onClick={() => window.confirm(`Delete "${p.title}"?`) && run('Announcement deleted.', () => deleteAnnouncement(db, state.classId, p.id))}>
+                  Delete
+                </Button>
+              </div>
+            )}
+          </div>
+        </Card>
       ))}
       {editing && <PostDialog state={state} post={editing} onClose={() => setEditing(null)} />}
     </div>

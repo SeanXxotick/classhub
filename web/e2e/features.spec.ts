@@ -43,7 +43,8 @@ test('claims, statement, announcements and the timetable', async ({ browser }) =
   await post.getByLabel('Pin to the top').check();
   await post.getByRole('button', { name: 'Post' }).click();
   await expectNotice(page, 'Announcement posted.');
-  await expect(page.getByText('Pinned · No uniform on Friday')).toBeVisible();
+  await expect(page.getByText('No uniform on Friday')).toBeVisible();
+  await expect(page.getByText('Pinned', { exact: true })).toBeVisible();
   await expect(page.getByText('Seen by 1 of 1')).toBeVisible();
 
   // A course, then a weekly meeting on every day so "Today" always has one, then no classes today.
