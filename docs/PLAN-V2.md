@@ -281,6 +281,30 @@ Each phase ends with all tests passing. One exception: the v1 screens and their 
 - Deploy with a named target only (`--only hosting:web`, `--only hosting:main`, `--only firestore:rules`).
 - The class spreadsheet and any real student data stay out of the repository.
 
+## Status on 2026-11-11 and what is left to debug
+
+Built and working on the emulators: phases 0, 1, 3 (on the existing screens), 4, 5, 7 and 8. Not built: phase 6 (notifications).
+
+Done differently from the plan, to save effort:
+
+- **Phase 3:** the existing screens were moved onto the new data layer and given the new features. They were not rebuilt on the shared components in `web/src/design/`. Only the text colors of the approved design were adopted. The components and the gallery are ready for a screen-by-screen rebuild.
+- **Phase 5:** a claim has no screenshot yet.
+- **Phases 7 and 8:** the claims, statement and timetable cards sit above the Ledger, Schedule and Home tabs instead of inside them. There are no switches in Class settings for the News and Timetable modules (both are on).
+
+To check and fix in the debugging round:
+
+1. The browser test "every kind of ledger record" still clicks Delete; it needs rewriting for voids. Tests after it in `class.spec.ts` have not run since the data layer changed (rejoin after removal, renaming, leaving, handing over, deleting an account).
+2. Deleting an account and renaming yourself still use the old code in `authRepo.ts`; they have to use `renameMeEverywhere` and remove the member entries and join requests.
+3. Screens that show other students' balances to someone who may not read every record: the Members tab is done; the member detail screen and Home need a look.
+4. The app does not yet say when a record written offline was refused after 24 hours.
+5. No browser tests for claims, announcements, the timetable, sharing a link, or the offline shell.
+6. Not tried: a 497-student charge, an interrupted class delete, the React hooks on a slow connection.
+7. The old data files `classRepo.ts` and `classDataRepo.ts` are still used for courses, schedule, contents and photos; fold them into the new layer.
+8. CI does not run the emulator data tests yet, and the browser tests are still paused.
+9. The Android shell needs a Java no newer than the build tools support; it builds today with Gradle 9.6 and the Android plugin 9.4.1 on Java 25.
+
+Phase 6 needs three things from the project lead before it can be built and tried: the web push key from the Firebase console, `google-services.json` for the Android shell, and a place for the sender's service account key (a Cloudflare or GitHub secret).
+
 ## Open points
 
 1. The Cloudflare Worker sender has to be proven in a small experiment before phase 6 relies on it.
