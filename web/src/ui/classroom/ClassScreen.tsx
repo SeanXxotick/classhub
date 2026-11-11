@@ -53,7 +53,7 @@ function ClassFrame() {
   }, [roomName]);
 
   return (
-    <div className="accented class-frame" style={{ '--accent': hexColor(state.room?.accentColor) } as CSSProperties}>
+    <div className="accented ch-accented class-frame" style={{ '--accent': hexColor(state.room?.accentColor) } as CSSProperties}>
       <Routes>
         <Route index element={<ClassScreen />} />
         <Route path="member/:memberId" element={<MemberDetailScreen />} />
