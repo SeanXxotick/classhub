@@ -130,9 +130,8 @@ function ClassScreen() {
             ))}
           </nav>
         )}
-        {room && state.me && !state.loading && !state.error && (
+        {room && state.me && !state.loading && !state.error && tab === 'SCHEDULE' && (
           <div className="stack" style={{ marginBottom: 12 }}>
-            {tab === 'HOME' && room.timetableEnabled !== false && <TodayCard state={state} />}
             {tab === 'SCHEDULE' && room.timetableEnabled !== false && <TimetableCard state={state} />}
             {tab === 'SCHEDULE' && room.timetableEnabled !== false && <AttendanceCard state={state} />}
           </div>
@@ -273,7 +272,7 @@ function HomeTab({
   }
 
   // Two columns on wide screens. On a phone the sections line up in the order a student needs them
-  // (the home-order classes): the class, what is due, the money, then the officer tools.
+  // (the home-order classes): the class, the officer's Manage card, today's meetings, what is due, then the money.
   return (
     <div className="home-grid">
       <div className="stack home-col">
@@ -287,6 +286,35 @@ function HomeTab({
             </span>
           </span>
         </section>
+
+        {(canRoles || canCourses) && (
+          <section className="home-section home-order-1">
+            <SectionHead title="Manage" />
+            <div className="card manage-card">
+              {canRoles && (
+                <button className="btn outline small" onClick={() => navigate(`${base}/roles`)}>
+                  Roles ({state.roles.length})
+                </button>
+              )}
+              {canCourses && (
+                <button className="btn outline small" onClick={() => navigate(`${base}/courses`)}>
+                  Courses ({state.courses.length})
+                </button>
+              )}
+              {canCourses && (
+                <button className="btn outline small" onClick={() => navigate(`${base}/settings`)}>
+                  Class settings
+                </button>
+              )}
+            </div>
+          </section>
+        )}
+
+        {room.timetableEnabled !== false && (
+          <div className="home-order-1 home-today">
+            <TodayCard state={state} />
+          </div>
+        )}
 
         {room.scheduleEnabled && (
           <section className="home-section home-order-2">
@@ -308,28 +336,6 @@ function HomeTab({
           </section>
         )}
 
-        {(canRoles || canCourses) && (
-          <section className="home-section home-order-5">
-            <SectionHead title="Manage" />
-            <div className="card manage-card">
-              {canRoles && (
-                <button className="btn outline small" onClick={() => navigate(`${base}/roles`)}>
-                  Roles ({state.roles.length})
-                </button>
-              )}
-              {canCourses && (
-                <button className="btn outline small" onClick={() => navigate(`${base}/courses`)}>
-                  Courses ({state.courses.length})
-                </button>
-              )}
-              {canCourses && (
-                <button className="btn outline small" onClick={() => navigate(`${base}/settings`)}>
-                  Class settings
-                </button>
-              )}
-            </div>
-          </section>
-        )}
       </div>
 
       <div className="stack home-col">

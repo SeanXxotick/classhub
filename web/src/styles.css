@@ -1521,6 +1521,11 @@ a.list-row:hover {
   gap: 20px;
 }
 
+/* The wrapper of today's meetings takes no room when the class has no timetable. */
+.home-today:empty {
+  display: none;
+}
+
 .home-section {
   display: flex;
   flex-direction: column;
