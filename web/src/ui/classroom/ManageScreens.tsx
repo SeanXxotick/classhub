@@ -112,7 +112,7 @@ function MemberDetailContent({ member }: { member: Member }) {
         <RoleChip name={currentRole?.name ?? 'No role'} color={currentRole?.colorHex ?? '#6B768A'} />
       </div>
 
-      {state.room?.ledgerEnabled !== false && (
+      {state.room?.ledgerEnabled !== false && (state.seeAll || member.id === state.myUid) && (
         <div className="card flush">
           <div className="section-label">Balance</div>
           <div className="bold" style={{ fontSize: 18, padding: '0 16px 4px', color: balance < 0 ? 'var(--error)' : undefined }}>{balanceText(balance)}</div>
