@@ -16,7 +16,11 @@ export function hexColor(hex: string | undefined | null, fallback = '#0F766E'): 
 /** Accent choices offered when creating a class or editing its settings. */
 export const ACCENT_CHOICES = ['#0F766E', '#585BE8', '#DB2777', '#CC4A0A', '#2563EB', '#7C3AED'];
 /** Colors a course can have. All are dark enough for white text, and none is red, amber or green (those mean status). */
-export const COURSE_COLORS = ['#2563EB', '#585BE8', '#7C3AED', '#A21CAF', '#DB2777', '#0E7490', '#0F766E', '#475569'];
+export const COURSE_COLORS = [
+  '#1E40AF', '#2563EB', '#0369A1', '#0E7490', '#0F766E',
+  '#4F46E5', '#585BE8', '#7C3AED', '#6D28D9', '#A21CAF',
+  '#DB2777', '#BE185D', '#9D5C8F', '#7C4A2D', '#475569',
+];
 /**
  * Color has three meanings in the app: the accent is the class, a course color is a course, and red, amber and
  * green say that something needs attention (money and status). Everything else is drawn in this neutral.
