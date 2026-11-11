@@ -1746,3 +1746,20 @@ a.list-row:hover {
 .thread .btn.text {
   align-self: flex-start;
 }
+
+.byline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.byline-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  min-width: 0;
+}
+.byline .avatar {
+  flex: none;
+}

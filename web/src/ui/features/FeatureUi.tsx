@@ -47,7 +47,7 @@ import {
 import { Ledger } from '../../domain/ledger';
 import { byLastName, listName } from '../../data/models';
 import { formatMoney, parsePesos } from '../../domain/money';
-import { CourseDot, Dialog, Field, shortDate } from '../common';
+import { Avatar, CourseDot, Dialog, Field, RoleChip, hexColor, shortDate } from '../common';
 import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, Section, StatusBadge, TypeIcon } from '../../design';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 
@@ -347,7 +347,6 @@ export function NewsTab({ state }: { state: ClassState }) {
     if (unseen) markSeen(db, state.classId, state.myUid, unseen.split(',')).catch(() => {});
   }, [unseen, state.classId, state.myUid]);
 
-  const author = (uid: string) => state.members.find((m) => m.id === uid)?.name ?? 'a former member';
   const seenBy = (id: string) => seen.filter((s) => s.announcements[id] && state.members.some((m) => m.id === s.id)).length;
 
   return (
@@ -370,14 +369,11 @@ export function NewsTab({ state }: { state: ClassState }) {
                 </Badge>
               </div>
             )}
+            <Byline state={state} uid={p.createdByUid} fallback="A former member" when={p.createdAtMillis} edited={!!p.editedAtMillis} size={40} />
             <div className="bold" style={{ fontSize: 18, lineHeight: 1.3 }}>
               {p.title}
             </div>
             {p.body && <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{p.body}</div>}
-            <div className="ch-small ch-muted">
-              {author(p.createdByUid)} · {shortDate(p.createdAtMillis)}
-              {p.editedAtMillis ? ' · edited' : ''}
-            </div>
             <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
               <VoteBar state={state} votes={votes} memberIds={memberIds} targetId={p.id} />
               {(!p.commentsOff || p.commentCount > 0) && (
@@ -437,6 +433,30 @@ export function NewsTab({ state }: { state: ClassState }) {
   );
 }
 
+/**
+ * Who wrote something: their photo (or initials in their role colour), name, role when they are an
+ * officer, and the date.
+ */
+function Byline({ state, uid, fallback, when, edited, size }: { state: ClassState; uid: string; fallback: string; when: number; edited?: boolean; size: number }) {
+  const member = state.members.find((m) => m.id === uid);
+  const role = member ? state.roles.find((r) => r.id === member.roleId) : undefined;
+  const name = member?.name ?? fallback;
+  const officer = !!role && (role.locked || role.permissions.length > 0);
+  return (
+    <div className="byline">
+      <Avatar photo={state.avatars.get(uid)} name={name} color={hexColor(role?.colorHex, '#6B768A')} size={size} />
+      <div className="byline-text">
+        <span className="bold comment-name">{name}</span>
+        {officer && role && <RoleChip name={role.name} color={role.colorHex} />}
+        <span className="ch-small ch-muted">
+          {shortDate(when)}
+          {edited ? ' · edited' : ''}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /** Up and down buttons with their counts. Tapping your own choice again takes the vote back. */
 function VoteBar({ state, votes, memberIds, targetId }: { state: ClassState; votes: VoteMarks[]; memberIds: Set<string>; targetId: string }) {
   const { actions } = useClass();
@@ -476,9 +496,7 @@ function Thread({ state, post, votes, memberIds }: { state: ClassState; post: An
 
   const line = (c: Comment, top: Comment) => (
     <div className="comment" key={c.id}>
-      <div className="ch-small ch-muted">
-        <span className="bold comment-name">{nameOf(c)}</span> · {shortDate(c.createdAtMillis)}
-      </div>
+      <Byline state={state} uid={c.uid} fallback={c.name} when={c.createdAtMillis} size={28} />
       {c.removedAtMillis ? (
         <div className="ch-muted" style={{ fontStyle: 'italic' }}>Comment removed</div>
       ) : (
