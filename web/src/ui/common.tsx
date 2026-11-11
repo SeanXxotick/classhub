@@ -107,7 +107,24 @@ export function RoleChip({ name, color }: { name: string; color: string }) {
 }
 
 /** A row of round color swatches; the selected one gets a ring. */
-export function ColorPicker({ choices, selected, onSelect, label }: { choices: string[]; selected: string; onSelect: (hex: string) => void; label: string }) {
+/** Darkens a color until white text on it is readable (a contrast of at least 3 to 1). */
+export function readableColor(hex: string): string {
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return '#0F766E';
+  let rgb = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const light = () => {
+    const [r, g, b] = rgb.map((v) => (v / 255 <= 0.03928 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  for (let i = 0; i < 60 && 1.05 / (light() + 0.05) < 3; i++) rgb = rgb.map((v) => Math.round(v * 0.94));
+  return '#' + rgb.map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+/**
+ * Color swatches. With custom, one more swatch opens the device's color chooser for any color;
+ * a very light choice is darkened so white text on it stays readable.
+ */
+export function ColorPicker({ choices, selected, onSelect, label, custom }: { choices: string[]; selected: string; onSelect: (hex: string) => void; label: string; custom?: boolean }) {
+  const isCustom = !!custom && !choices.some((hex) => hex.toLowerCase() === selected.toLowerCase());
   return (
     <div className="swatches" role="radiogroup" aria-label={label}>
       {choices.map((hex) => {
@@ -125,6 +142,12 @@ export function ColorPicker({ choices, selected, onSelect, label }: { choices: s
           />
         );
       })}
+      {custom && (
+        <label className={'swatch custom' + (isCustom ? ' selected' : '')} style={isCustom ? { background: selected } : undefined} title="Choose your own color">
+          <input type="color" aria-label="Choose your own color" value={hexColor(selected)} onChange={(e) => onSelect(readableColor(e.target.value))} />
+          {!isCustom && <span aria-hidden>+</span>}
+        </label>
+      )}
     </div>
   );
 }

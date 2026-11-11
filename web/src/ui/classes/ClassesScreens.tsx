@@ -190,7 +190,7 @@ export function CreateClassScreen({ user }: { user: AppUser }) {
             <input value={description} placeholder="e.g. 1st Semester, AY 2026-2027" maxLength={ClassRules.MAX_DESCRIPTION} onChange={(e) => setDescription(e.target.value)} />
           </Field>
           <span className="small semibold muted">Accent color</span>
-          <ColorPicker label="Accent color" choices={ACCENT_CHOICES} selected={accent} onSelect={setAccent} />
+          <ColorPicker label="Accent color" choices={ACCENT_CHOICES} selected={accent} onSelect={setAccent} custom />
           <p className="small muted" style={{ margin: 0 }}>
             Default roles are created for you: Mayor, Treasurer, Secretary and Member. You can change them later.
           </p>

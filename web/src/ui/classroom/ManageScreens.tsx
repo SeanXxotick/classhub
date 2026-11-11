@@ -586,7 +586,7 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
           <input value={description} placeholder="e.g. 1st Semester, AY 2026-2027" onChange={(e) => setDescription(e.target.value.slice(0, ClassRules.MAX_DESCRIPTION))} />
         </Field>
         <span className="small semibold muted">Accent color</span>
-        <ColorPicker label="Accent color" choices={ACCENT_CHOICES} selected={accent} onSelect={setAccent} />
+        <ColorPicker label="Accent color" choices={ACCENT_CHOICES} selected={accent} onSelect={setAccent} custom />
       </div>
 
       <div className="card">
