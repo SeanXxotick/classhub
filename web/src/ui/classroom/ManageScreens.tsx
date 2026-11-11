@@ -10,6 +10,7 @@ import { RoleRules } from '../../domain/permissions';
 import {
   ACCENT_CHOICES,
   COURSE_COLORS,
+  NEUTRAL_ICON,
   Avatar,
   ColorPicker,
   ConfirmDialog,
@@ -515,9 +516,9 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
   const [news, setNews] = useState(room.announcementsEnabled);
   const [timetable, setTimetable] = useState(room.timetableEnabled);
   const [scheduleIcons, setScheduleIcons] = useState(room.scheduleIcons);
-  const [scheduleColors, setScheduleColors] = useState(room.scheduleColors);
+  const scheduleColors = room.scheduleColors;
   const [contentIcons, setContentIcons] = useState(room.contentIcons);
-  const [contentColors, setContentColors] = useState(room.contentColors);
+  const contentColors = room.contentColors;
   const [pickingSchedule, setPickingSchedule] = useState<ScheduleKind | null>(null);
   const [pickingContent, setPickingContent] = useState<ContentKind | null>(null);
   const error = ClassRules.checkName(name);
@@ -604,18 +605,18 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
       <div className="card">
         <div className="section-label" style={{ padding: '0 0 6px' }}>Schedule icons</div>
         <p className="small muted" style={{ margin: 0 }}>
-          The icon and color each type of schedule item shows for everyone in the class, including the week strip dots.
+          The icon each type of schedule item shows for everyone in the class. Its color comes from the item's course.
         </p>
         {SCHEDULE_KINDS.map((kind) => {
           const icon = ScheduleIcons.iconFor(kind, scheduleIcons);
-          const color = ScheduleIcons.colorFor(kind, scheduleColors);
+          const color = NEUTRAL_ICON;
           return (
             <IconStyleRow
               key={kind}
               label={scheduleKindLabel(kind)}
               icon={icon}
               color={color}
-              isDefault={icon === ScheduleIcons.DEFAULTS[kind] && color === ScheduleIcons.DEFAULT_COLORS[kind]}
+              isDefault={icon === ScheduleIcons.DEFAULTS[kind]}
               onChange={() => setPickingSchedule(kind)}
             />
           );
@@ -624,17 +625,17 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
 
       <div className="card">
         <div className="section-label" style={{ padding: '0 0 6px' }}>Content icons</div>
-        <p className="small muted" style={{ margin: 0 }}>The icon and color for each type of link in Contents.</p>
+        <p className="small muted" style={{ margin: 0 }}>The icon for each type of link in Contents. One link can have its own icon and color from its edit screen.</p>
         {CONTENT_KINDS.map((kind) => {
           const icon = ContentIcons.iconFor(kind, contentIcons);
-          const color = ContentIcons.colorFor(kind, contentColors);
+          const color = NEUTRAL_ICON;
           return (
             <IconStyleRow
               key={kind}
               label={contentKindLabel(kind)}
               icon={icon}
               color={color}
-              isDefault={icon === ContentIcons.DEFAULTS[kind] && color === ContentIcons.DEFAULT_COLORS[kind]}
+              isDefault={icon === ContentIcons.DEFAULTS[kind]}
               onChange={() => setPickingContent(kind)}
             />
           );
@@ -651,12 +652,12 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
         <IconStylePicker
           title={scheduleKindLabel(pickingSchedule)}
           icon={ScheduleIcons.iconFor(pickingSchedule, scheduleIcons)}
-          color={ScheduleIcons.colorFor(pickingSchedule, scheduleColors)}
+          color={NEUTRAL_ICON}
           defaultIcon={ScheduleIcons.DEFAULTS[pickingSchedule]}
-          defaultColor={ScheduleIcons.DEFAULT_COLORS[pickingSchedule]}
-          onDone={(icon, color) => {
+          defaultColor={NEUTRAL_ICON}
+          noColor
+          onDone={(icon) => {
             setScheduleIcons({ ...scheduleIcons, [pickingSchedule]: icon });
-            setScheduleColors({ ...scheduleColors, [pickingSchedule]: color });
             setPickingSchedule(null);
           }}
           onDismiss={() => setPickingSchedule(null)}
@@ -666,12 +667,12 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
         <IconStylePicker
           title={contentKindLabel(pickingContent)}
           icon={ContentIcons.iconFor(pickingContent, contentIcons)}
-          color={ContentIcons.colorFor(pickingContent, contentColors)}
+          color={NEUTRAL_ICON}
           defaultIcon={ContentIcons.DEFAULTS[pickingContent]}
-          defaultColor={ContentIcons.DEFAULT_COLORS[pickingContent]}
-          onDone={(icon, color) => {
+          defaultColor={NEUTRAL_ICON}
+          noColor
+          onDone={(icon) => {
             setContentIcons({ ...contentIcons, [pickingContent]: icon });
-            setContentColors({ ...contentColors, [pickingContent]: color });
             setPickingContent(null);
           }}
           onDismiss={() => setPickingContent(null)}
@@ -789,12 +790,15 @@ export function IconStylePicker({
   defaultColor,
   onDone,
   onDismiss,
+  noColor,
 }: {
   title: string;
   icon: string;
   color: string;
   defaultIcon: string;
   defaultColor: string;
+  /** Icon only: the color is not the user's to choose here. */
+  noColor?: boolean;
   onDone: (icon: string, color: string) => void;
   onDismiss: () => void;
 }) {
@@ -839,8 +843,8 @@ export function IconStylePicker({
           </button>
         ))}
       </div>
-      <span className="small semibold muted">Color</span>
-      <ColorPicker label="Icon color" choices={IconLibrary.COLORS} selected={pickedColor} onSelect={setPickedColor} />
+      {!noColor && <span className="small semibold muted">Color</span>}
+      {!noColor && <ColorPicker label="Icon color" choices={IconLibrary.COLORS} selected={pickedColor} onSelect={setPickedColor} />}
     </Dialog>
   );
 }

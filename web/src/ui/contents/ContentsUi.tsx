@@ -4,7 +4,7 @@ import { CONTENT_KINDS, newContentItem, type ClassRoom, type ContentItem, type C
 import { CONTENT_SORTS, ContentRules, type ContentFormat, type ContentSort } from '../../domain/contentRules';
 import { ContentIcons, IconLibrary } from '../../domain/iconStyles';
 import { IconStylePicker } from '../classroom/ManageScreens';
-import { ConfirmDialog, CourseDot, Dialog, Field, PickerField, Spinner, StyledIcon, useBack } from '../common';
+import { ConfirmDialog, CourseDot, NEUTRAL_ICON, Dialog, Field, PickerField, Spinner, StyledIcon, useBack } from '../common';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 import { NoAccess, SubPage } from '../classroom/SubPage';
 
@@ -20,15 +20,15 @@ function pluralLabel(kind: ContentKind): string {
 
 function KindBadge({ kind, room }: { kind: ContentKind; room: ClassRoom | null }) {
   // The class's chosen icon and color for this type (or the defaults).
-  return <StyledIcon icon={ContentIcons.iconFor(kind, room?.contentIcons ?? {})} color={ContentIcons.colorFor(kind, room?.contentColors ?? {})} label={kindLabel(kind)} />;
+  return <StyledIcon icon={ContentIcons.iconFor(kind, room?.contentIcons ?? {})} color={NEUTRAL_ICON} label={kindLabel(kind)} />;
 }
 
 /** The row's icon: a format icon (slides, folder...) in the type's color, unless the class picked its own icon for the type. */
 function ContentBadge({ item, format, room }: { item: ContentItem; format: ContentFormat; room: ClassRoom | null }) {
   const icon = ContentIcons.iconFor(item.kind, room?.contentIcons ?? {});
   const own = icon !== ContentIcons.DEFAULTS[item.kind];
-  const typeColor = ContentIcons.colorFor(item.kind, room?.contentColors ?? {});
-  // An icon or color picked for this one item wins over the type's.
+  const typeColor = NEUTRAL_ICON;
+  // An icon or color picked for this one item wins over the type's; without one the icon stays grey.
   const itemIcon = IconLibrary.ICONS.includes(item.icon) ? item.icon : '';
   const color = IconLibrary.COLORS.includes(item.color) ? item.color : typeColor;
   return <StyledIcon icon={itemIcon || (own || !format.icon ? icon : format.icon)} color={color} label={format.label} box={40} tint />;
@@ -368,7 +368,7 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const typeIcon = ContentIcons.iconFor(kind, state.room?.contentIcons ?? {});
-  const typeColor = ContentIcons.colorFor(kind, state.room?.contentColors ?? {});
+  const typeColor = NEUTRAL_ICON;
   const courseName = state.courses.find((c) => c.id === courseId)?.name ?? 'General (no course)';
 
   function submit(e: FormEvent) {

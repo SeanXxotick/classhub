@@ -60,7 +60,7 @@ async function main() {
   }
 
   const courseIds: string[] = [];
-  for (const [name, color] of [['Operations Research', '#2563EB'], ['Software Engineering', '#DB2777'], ['Abstract Algebra', '#B45309']]) {
+  for (const [name, color] of [['Operations Research', '#2563EB'], ['Software Engineering', '#DB2777'], ['Abstract Algebra', '#7C3AED']]) {
     courseIds.push((await addDoc(collection(m, 'classes', classId, 'courses'), { id: '', name, color })).id);
   }
 

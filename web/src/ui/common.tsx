@@ -15,8 +15,13 @@ export function hexColor(hex: string | undefined | null, fallback = '#0F766E'): 
 
 /** Accent choices offered when creating a class or editing its settings. */
 export const ACCENT_CHOICES = ['#0F766E', '#585BE8', '#DB2777', '#CC4A0A', '#2563EB', '#7C3AED'];
-/** Colours a course can have in the timetable. All are dark enough for white text. */
-export const COURSE_COLORS = [...ACCENT_CHOICES, '#B45309', '#15803D', '#475569'];
+/** Colors a course can have. All are dark enough for white text, and none is red, amber or green (those mean status). */
+export const COURSE_COLORS = ['#2563EB', '#585BE8', '#7C3AED', '#A21CAF', '#DB2777', '#0E7490', '#0F766E', '#475569'];
+/**
+ * Color has three meanings in the app: the accent is the class, a course color is a course, and red, amber and
+ * green say that something needs attention (money and status). Everything else is drawn in this neutral.
+ */
+export const NEUTRAL_ICON = '#64748B';
 
 /** Color choices for roles in the role editor. */
 export const ROLE_COLOR_CHOICES = ['#15803D', '#3730A3', '#BE123C', '#EA580C', '#0369A1', '#A21CAF', '#6B768A'];

@@ -5,7 +5,7 @@ import { ScheduleIcons } from '../../domain/iconStyles';
 import { ScheduleLogic } from '../../domain/scheduleLogic';
 import { SCHEDULE_FILTERS, ScheduleForms, ScheduleView, type ScheduleFilter } from '../../domain/scheduleView';
 import { dayOf, monthLong, monthShort, noonMillis, parseDay, plusDays, today, weekday, weekdayLong, weekdayShort, type DayKey } from '../../domain/dates';
-import { ConfirmDialog, DateField, DetailLine, Dialog, Field, PickerField, Spinner, StyledIcon, hexColor, useBack, CourseDot } from '../common';
+import { ConfirmDialog, DateField, DetailLine, Dialog, Field, PickerField, Spinner, StyledIcon, hexColor, useBack, CourseDot, NEUTRAL_ICON } from '../common';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 import { NoAccess, SubPage } from '../classroom/SubPage';
 import { Tag } from '../ledger/LedgerUi';
@@ -37,7 +37,21 @@ function statusColor(item: ScheduleItem, done: boolean, now: number): string {
   if (ScheduleLogic.isCancelled(item)) return GREY;
   if (done) return GREEN;
   if (ScheduleView.isOverdue(item, now)) return RED;
-  return AMBER;
+  // Only what needs attention now is colored; "In 6 days" stays quiet.
+  return ScheduleView.dueLabel(item, now, done) === 'Today' ? AMBER : GREY;
+}
+
+/** The color of each open item's course (grey without one) per day, one dot per course. */
+function courseDotsByDay(items: ScheduleItem[], doneIds: Set<string>, courses: { id: string; color?: string }[]): Map<DayKey, string[]> {
+  const byDay = new Map<DayKey, string[]>();
+  for (const it of items) {
+    if (!ScheduleLogic.isOpen(it, doneIds)) continue;
+    const color = courses.find((c) => c.id === it.courseId)?.color || NEUTRAL_ICON;
+    const list = byDay.get(dayOf(it.dueMillis)) ?? [];
+    if (!list.includes(color)) list.push(color);
+    byDay.set(dayOf(it.dueMillis), list);
+  }
+  return byDay;
 }
 
 /** "Mon, Oct 19" */
@@ -59,12 +73,12 @@ function dayHeader(day: DayKey, now: DayKey): string {
   return longDay(day);
 }
 
-function KindBadge({ kind, room, tint = false }: { kind: ScheduleKind; room: ClassRoom | null; tint?: boolean }) {
-  // The class's chosen icon and color for this type (or the defaults).
+function KindBadge({ kind, room, tint = false, color }: { kind: ScheduleKind; room: ClassRoom | null; tint?: boolean; color?: string }) {
+  // The class's chosen icon for this type, in the color of the item's course (grey without one).
   return (
     <StyledIcon
       icon={ScheduleIcons.iconFor(kind, room?.scheduleIcons ?? {})}
-      color={ScheduleIcons.colorFor(kind, room?.scheduleColors ?? {})}
+      color={color || NEUTRAL_ICON}
       label={kindLabel(kind)}
       box={tint ? 40 : 38}
       tint={tint}
@@ -114,7 +128,7 @@ export function ScheduleRow({
   return (
     <div className={'list-row' + (onClick ? ' clickable' : '')} onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined}
       onKeyDown={onClick ? (e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), onClick()) : undefined}>
-      <KindBadge kind={item.kind} room={state.room} tint />
+      <KindBadge kind={item.kind} room={state.room} tint color={courseDoc?.color} />
       <span className="grow ellipsis-box">
         <span className={'title' + (cancelled ? ' struck' : '') + (cancelled || done ? ' muted' : '')} style={{ display: 'block' }}>
           {item.title}
@@ -130,14 +144,14 @@ export function ScheduleRow({
   );
 }
 
-/** One dot per open item, colored like its type badge, most important first (up to three, then a "+"). */
-function DayDots({ kinds, room }: { kinds: ScheduleKind[]; room: ClassRoom | null }) {
+/** One dot per course with something open that day, in the course's color (up to three, then a "+"). */
+function DayDots({ colors }: { colors: string[] }) {
   return (
     <span className="dots" aria-hidden>
-      {kinds.slice(0, MAX_DOTS).map((kind, i) => (
-        <i key={i} style={{ background: hexColor(ScheduleIcons.colorFor(kind, room?.scheduleColors ?? {})) }} />
+      {colors.slice(0, MAX_DOTS).map((color, i) => (
+        <i key={i} style={{ background: hexColor(color) }} />
       ))}
-      {kinds.length > MAX_DOTS && <b>+</b>}
+      {colors.length > MAX_DOTS && <b>+</b>}
     </span>
   );
 }
@@ -167,7 +181,7 @@ export function ScheduleTab({
   const [showMonth, setShowMonth] = useState(false);
 
   const week = ScheduleView.weekOf(anchor);
-  const kindsByDay = useMemo(() => ScheduleView.openKindsByDay(state.schedule, state.myDone), [state.schedule, state.myDone]);
+  const dotsByDay = useMemo(() => courseDotsByDay(state.schedule, state.myDone, state.courses), [state.schedule, state.myDone, state.courses]);
   const shown = selectedDay ? ScheduleView.onDay(state.schedule, selectedDay) : ScheduleView.filter(state.schedule, filter, now, state.myDone);
   const overdueCount = ScheduleView.filter(state.schedule, 'OVERDUE', now, state.myDone).length;
   const first = parseDay(week[0]);
@@ -216,7 +230,7 @@ export function ScheduleTab({
               >
                 <span className="tiny muted">{weekdayShort(weekday(day))}</span>
                 <span className="num">{parseDay(day).day}</span>
-                <DayDots kinds={kindsByDay.get(day) ?? []} room={state.room} />
+                <DayDots colors={dotsByDay.get(day) ?? []} />
               </button>
             );
           })}
@@ -261,8 +275,7 @@ export function ScheduleTab({
           start={selectedDay ?? anchor}
           todayKey={todayKey}
           selectedDay={selectedDay}
-          kindsByDay={kindsByDay}
-          room={state.room}
+          dotsByDay={dotsByDay}
           onPickDay={(day) => (setShowMonth(false), setAnchor(day), onSelectDay(day))}
           onToday={() => (setShowMonth(false), setAnchor(todayKey), onSelectDay(null))}
           onDismiss={() => setShowMonth(false)}
@@ -293,8 +306,7 @@ function MonthCalendarDialog({
   start,
   todayKey,
   selectedDay,
-  kindsByDay,
-  room,
+  dotsByDay,
   onPickDay,
   onToday,
   onDismiss,
@@ -302,8 +314,7 @@ function MonthCalendarDialog({
   start: DayKey;
   todayKey: DayKey;
   selectedDay: DayKey | null;
-  kindsByDay: Map<DayKey, ScheduleKind[]>;
-  room: ClassRoom | null;
+  dotsByDay: Map<DayKey, string[]>;
   onPickDay: (day: DayKey) => void;
   onToday: () => void;
   onDismiss: () => void;
@@ -360,7 +371,7 @@ function MonthCalendarDialog({
               onClick={() => onPickDay(day)}
             >
               <span className="num">{parseDay(day).day}</span>
-              <DayDots kinds={kindsByDay.get(day) ?? []} room={room} />
+              <DayDots colors={dotsByDay.get(day) ?? []} />
             </button>
           ),
         )}
@@ -416,7 +427,7 @@ function ScheduleDetailsDialog({
     >
       <div className="stack" style={{ gap: 6 }}>
         <div className="row">
-          <KindBadge kind={item.kind} room={state.room} />
+          <KindBadge kind={item.kind} room={state.room} color={state.courses.find((c) => c.id === item.courseId)?.color} />
           <Tag text={ScheduleView.dueLabel(item, now, done)} color={statusColor(item, done, now)} />
         </div>
         <DetailLine label="Type" value={kindLabel(item.kind)} width={76} />
