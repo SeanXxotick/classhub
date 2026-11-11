@@ -533,9 +533,13 @@ export function TimetableCard({ state }: { state: ClassState }) {
   const [editing, setEditing] = useState<Meeting | null>(null);
   const [marking, setMarking] = useState(false);
   const [taking, setTaking] = useState(false);
+  const [fullWeek, setFullWeek] = useState(false);
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
-  const todayKey = manilaDay(Date.now()).dateKey;
+  const now = Date.now();
+  const todayKey = manilaDay(now).dateKey;
+  // Folded, the card shows only today and tomorrow, so the deadlines below stay within reach.
+  const soon: [string, number][] = [['Today', now], ['Tomorrow', now + 86_400_000]];
   const coming = marks.filter((k) => k.dateKey >= todayKey).sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
 
   return (
@@ -569,7 +573,29 @@ export function TimetableCard({ state }: { state: ClassState }) {
         </Notice>
       ) : (
         <Card flush>
-          {DAYS.map((day, i) => {
+          {!fullWeek &&
+            soon.map(([label, millis]) => {
+              const list = meetingsOn(meetings, marks, millis);
+              return (
+                <div key={label}>
+                  <DayHeader>{`${label} · ${DAYS[manilaDay(millis).dayOfWeek]}`}</DayHeader>
+                  {list.length === 0 && <ListRow leading={<TypeIcon icon="moon" tone="neutral" />} title="No classes" />}
+                  {list.map(({ meeting: m, cancelled }) => (
+                    <ListRow
+                      key={m.id}
+                      voided={!!cancelled}
+                      leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} color={courseColor(m.courseId)} />}
+                      title={courseName(m.courseId)}
+                      subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}`}
+                      trailing={cancelled ? <StatusBadge status="danger">{`No classes${cancelled.reason ? `: ${cancelled.reason}` : ''}`}</StatusBadge> : undefined}
+                      chevron={manage}
+                      onClick={manage ? () => setEditing(m) : undefined}
+                    />
+                  ))}
+                </div>
+              );
+            })}
+          {fullWeek && DAYS.map((day, i) => {
             const list = meetings.filter((m) => m.dayOfWeek === i).sort((a, b) => a.startMinutes - b.startMinutes);
             if (list.length === 0) return null;
             return (
@@ -588,6 +614,11 @@ export function TimetableCard({ state }: { state: ClassState }) {
               </div>
             );
           })}
+          <div className="ch-row" style={{ padding: '4px 12px 0' }}>
+            <Button size="small" variant="text" icon={fullWeek ? 'x' : 'list'} onClick={() => setFullWeek(!fullWeek)}>
+              {fullWeek ? 'Show today and tomorrow only' : 'Full week'}
+            </Button>
+          </div>
         </Card>
       )}
       {coming.length > 0 && (
