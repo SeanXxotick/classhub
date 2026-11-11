@@ -45,6 +45,10 @@ import { addOpeningBalance, applyPendingOpeningBalances, listPendingOpeningBalan
 import { watchVisibleRecords, type VisibleRecords } from './ledgerWatch';
 import { reportClientError } from './clientErrors';
 import { newRole } from './models';
+import {
+  addNoClass, cancelClaim, confirmClaim, deleteAnnouncement, markSeen, meetingsOn, newAnnouncement, newClaim, newMeeting,
+  rejectClaim, saveAnnouncement, saveMeeting, sendClaim,
+} from './features';
 
 const PROJECT = 'demo-classhub';
 const HOST = '127.0.0.1';
@@ -366,6 +370,61 @@ describe('who reads which records', () => {
     const v = await waitFor(watch(QUITTER.uid, []), () => true, 'a first answer');
     expect(v).toEqual({ records: [], scope: 'NONE' });
     await deniedRead(getDoc(doc(as(QUITTER.uid), 'classes', classId, 'summary', 'fund')));
+  });
+});
+
+describe('claims, announcements and the timetable', () => {
+  it('a student sends a claim; the Treasurer confirms it into a payment; another is rejected', async () => {
+    const id = await sendClaim(as(STUDENT.uid), STUDENT, classId, { amountCentavos: 15000, method: 'GCASH', reference: 'REF123' });
+    const claim = newClaim({ ...((await getDoc(doc(adminDb, 'classes', classId, 'claims', id))).data() as object), id });
+    expect(claim.status).toBe('PENDING');
+    // A plain member cannot decide it, and cannot read another student's claim.
+    await expect(confirmClaim(as(STUDENT.uid), STUDENT.uid, classId, claim)).rejects.toBeTruthy();
+    await deniedRead(getDoc(doc(as(LATE.uid), 'classes', classId, 'claims', id)));
+    const recordId = await confirmClaim(as(TREASURER.uid), TREASURER.uid, classId, claim);
+    const stored = (await getDoc(doc(adminDb, 'classes', classId, 'claims', id))).data()!;
+    expect(stored.status).toBe('CONFIRMED');
+    expect(stored.recordId).toBe(recordId);
+    const record = (await getDoc(doc(adminDb, 'classes', classId, 'records', recordId))).data()!;
+    expect(record.claimId).toBe(id);
+    expect(record.amountCentavos).toBe(15000);
+    await expectSummaryMatches(classId);
+    // Confirming twice is refused.
+    await expect(confirmClaim(as(TREASURER.uid), TREASURER.uid, classId, claim)).rejects.toBeTruthy();
+
+    const second = await sendClaim(as(STUDENT.uid), STUDENT, classId, { amountCentavos: 500, method: 'CASH', reference: '' });
+    await rejectClaim(as(TREASURER.uid), TREASURER.uid, classId, second, 'No such payment arrived.');
+    expect((await getDoc(doc(adminDb, 'classes', classId, 'claims', second))).get('status')).toBe('REJECTED');
+    const third = await sendClaim(as(STUDENT.uid), STUDENT, classId, { amountCentavos: 700, method: 'MAYA', reference: 'X' });
+    await cancelClaim(as(STUDENT.uid), classId, third);
+    expect((await getDoc(doc(adminDb, 'classes', classId, 'claims', third))).exists()).toBe(false);
+    await expectSummaryMatches(classId);
+  });
+
+  it('the Mayor posts an announcement, a member marks it seen and cannot post', async () => {
+    await saveAnnouncement(as(MAYOR.uid), MAYOR.uid, classId, newAnnouncement({ title: 'No uniform on Friday', body: 'Wear the class shirt.', pinned: true }));
+    const posts = await getDocs(collection(adminDb, 'classes', classId, 'announcements'));
+    expect(posts.size).toBe(1);
+    const post = newAnnouncement({ ...(posts.docs[0].data() as object), id: posts.docs[0].id });
+    await saveAnnouncement(as(MAYOR.uid), MAYOR.uid, classId, { ...post, title: 'No uniform this Friday' });
+    await expect(saveAnnouncement(as(STUDENT.uid), STUDENT.uid, classId, newAnnouncement({ title: 'Hello' }))).rejects.toBeTruthy();
+    await markSeen(as(STUDENT.uid), classId, STUDENT.uid, [post.id]);
+    expect((await getDoc(doc(adminDb, 'classes', classId, 'seen', STUDENT.uid))).get('announcements')[post.id]).toBeGreaterThan(0);
+    await deleteAnnouncement(as(MAYOR.uid), classId, post.id);
+  });
+
+  it('the Mayor adds a weekly meeting and marks a day as no classes; a member cannot', async () => {
+    await saveMeeting(as(MAYOR.uid), classId, newMeeting({ courseId: 'course1', dayOfWeek: 1, startMinutes: 480, endMinutes: 570, room: 'Room 204' }));
+    await addNoClass(as(MAYOR.uid), MAYOR.uid, classId, '2026-11-16', '', 'Holiday');
+    await expect(saveMeeting(as(STUDENT.uid), classId, newMeeting({ courseId: 'course1' }))).rejects.toBeTruthy();
+    await expect(addNoClass(as(STUDENT.uid), STUDENT.uid, classId, '2026-11-17', '', '')).rejects.toBeTruthy();
+    const meetings = (await getDocs(collection(adminDb, 'classes', classId, 'meetings'))).docs.map((d) => newMeeting({ ...(d.data() as object), id: d.id }));
+    const marks = (await getDocs(collection(adminDb, 'classes', classId, 'noClass'))).docs.map((d) => ({ id: d.id, ...(d.data() as { dateKey: string; courseId: string; reason: string; createdByUid: string }) }));
+    // 2026-11-16 is a Monday in Manila.
+    const day = meetingsOn(meetings, marks, Date.UTC(2026, 10, 16, 2));
+    expect(day).toHaveLength(1);
+    expect(day[0].cancelled?.reason).toBe('Holiday');
+    expect(meetingsOn(meetings, marks, Date.UTC(2026, 10, 23, 2))[0].cancelled).toBeNull();
   });
 });
 

@@ -69,7 +69,7 @@ export const openingBalanceRef = (db: Firestore, classId: string, uid: string) =
  * them. claims, announcements, seen, meetings, noClass and outbox are not open yet (no rules), so they hold nothing.
  */
 export const CLASS_SUBCOLLECTIONS = [
-  'records', 'charges', 'summary', 'openingBalances', 'joinRequests', 'schedule', 'contents', 'courses', 'progress', 'members', 'roles',
+  'records', 'charges', 'summary', 'openingBalances', 'joinRequests', 'claims', 'announcements', 'seen', 'meetings', 'noClass', 'schedule', 'contents', 'courses', 'progress', 'members', 'roles',
 ] as const;
 export const classSubCol = (db: Firestore, classId: string, name: (typeof CLASS_SUBCOLLECTIONS)[number]): CollectionReference<DocumentData> =>
   sub(db, classId, name);
