@@ -20,6 +20,7 @@ import {
   saveAttendance,
   sheetId,
   useAttendance,
+  useAttendanceTotals,
   useMyAttendance,
   type AttendanceMark,
   saveAnnouncement,
@@ -642,11 +643,11 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
           </button>
           <button
             className="btn solid"
-            disabled={!meeting}
+            disabled={!meeting || sheets === undefined}
             onClick={() =>
               meeting &&
               run(`Attendance saved: ${students.length - absent - late} present, ${late} late, ${absent} absent.`, () =>
-                saveAttendance(db, state.myUid, state.classId, dateKey, meeting, Object.fromEntries(students.map((m) => [m.id, marks[m.id] ?? 'PRESENT']))), onClose)
+                saveAttendance(db, state.myUid, state.classId, dateKey, meeting, Object.fromEntries(students.map((m) => [m.id, marks[m.id] ?? 'PRESENT'])), !saved), onClose)
             }
           >
             Save
@@ -692,6 +693,8 @@ export function AttendanceCard({ state }: { state: ClassState }) {
   const manage = state.can('ATTENDANCE_MANAGE');
   const mine = useMyAttendance(db, state.classId, state.myUid, true);
   const all = useAttendance(db, state.classId, manage).data ?? [];
+  const totals = useAttendanceTotals(db, state.classId, true);
+  const outOf = (courseId: string) => (totals[courseId] ? ` of ${totals[courseId]} meeting${totals[courseId] === 1 ? '' : 's'}` : '');
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const courseIds = [...new Set([...mine.absent, ...mine.late].map((x) => x.courseId))];
   const perCourse = [...new Set(all.map((x) => x.courseId))].map((courseId) => {
@@ -721,6 +724,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
         return (
           <div key={id}>
             <span className="semibold">{courseName(id)}</span>: absent {a.length} time{a.length === 1 ? '' : 's'}, late {l.length} time{l.length === 1 ? '' : 's'}
+            {outOf(id)}
             {a.length > 0 && <div className="small muted">Absent on {dates(a)}</div>}
             {l.length > 0 && <div className="small muted">Late on {dates(l)}</div>}
           </div>

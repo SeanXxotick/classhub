@@ -67,7 +67,7 @@ test('claims, statement, announcements and the timetable', async ({ browser }) =
   await sheet.getByLabel('Attendance of Nina Castro').selectOption('ABSENT');
   await sheet.getByRole('button', { name: 'Save' }).click();
   await expectNotice(page, 'Attendance saved: 0 present, 0 late, 1 absent.');
-  await expect(page.getByText('Operations Research: absent 1 time, late 0 times')).toBeVisible();
+  await expect(page.getByText('Operations Research: absent 1 time, late 0 times of 1 meeting')).toBeVisible();
   await expect(page.getByText('1 absent · 0 late')).toBeVisible();
 
   await page.getByRole('button', { name: 'No classes' }).click();

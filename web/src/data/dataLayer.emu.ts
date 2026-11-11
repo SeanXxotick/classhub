@@ -438,6 +438,10 @@ describe('attendance', () => {
     const stored = (await getDoc(doc(adminDb, 'classes', classId, 'attendance', sheetId('2026-11-16', 'meetA')))).data()!;
     expect(stored.absent).toEqual([STUDENT.uid]);
     expect(stored.late).toEqual([LATE.uid]);
+    // Saving the same meeting again does not count it twice; every member may read the count.
+    await saveAttendance(as(MAYOR.uid), MAYOR.uid, classId, '2026-11-23', meeting, { [LATE.uid]: 'ABSENT' }, false);
+    expect((await getDoc(doc(as(STUDENT.uid), 'classes', classId, 'attendanceTotals', 'course1'))).get('taken')).toBe(2);
+    await expect(setDoc(doc(as(STUDENT.uid), 'classes', classId, 'attendanceTotals', 'course1'), { taken: 0 })).rejects.toBeTruthy();
 
     const col = (uid: string) => collection(as(uid), 'classes', classId, 'attendance');
     const mine = await getDocs(query(col(STUDENT.uid), where('absent', 'array-contains', STUDENT.uid)));

@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, query, setDoc, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
+import { collection, deleteDoc, doc, increment, query, setDoc, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
 import { Ledger } from '../domain/ledger';
 import { nowMillis, newId } from './dataEnv';
 import { UserError } from './errors';
@@ -260,13 +260,27 @@ const newSheet = (a: Partial<AttendanceSheet>): AttendanceSheet => ({
 export const attendanceCol = (db: Firestore, classId: string) => sub(db, classId, 'attendance');
 export const sheetId = (dateKey: string, meetingId: string) => `${dateKey}_${meetingId}`;
 
-/** Saves the attendance of one meeting on one date (ATTENDANCE_MANAGE). Saving again replaces it. */
+/**
+ * Saves the attendance of one meeting on one date (ATTENDANCE_MANAGE). Saving again replaces it.
+ * isNew: no sheet existed for this meeting and date, so the course's count of meetings taken goes up by one.
+ */
 export async function saveAttendance(
-  db: Firestore, actorUid: string, classId: string, dateKey: string, meeting: Meeting, marks: Record<string, AttendanceMark>,
+  db: Firestore, actorUid: string, classId: string, dateKey: string, meeting: Meeting, marks: Record<string, AttendanceMark>, isNew = true,
 ): Promise<void> {
   const of = (mark: AttendanceMark) => Object.keys(marks).filter((uid) => marks[uid] === mark).sort();
   const sheet = { dateKey, meetingId: meeting.id, courseId: meeting.courseId, absent: of('ABSENT'), late: of('LATE'), takenByUid: actorUid, takenAtMillis: nowMillis() };
-  await explainRefusal(db, classId, () => setDoc(doc(attendanceCol(db, classId), sheetId(dateKey, meeting.id)), sheet));
+  const batch = writeBatch(db);
+  batch.set(doc(attendanceCol(db, classId), sheetId(dateKey, meeting.id)), sheet);
+  if (isNew) batch.set(doc(sub(db, classId, 'attendanceTotals'), meeting.courseId), { taken: increment(1) }, { merge: true });
+  await explainRefusal(db, classId, () => batch.commit());
+}
+
+/** How many times attendance was taken for each course (course id to count). Every member may read it. */
+export function useAttendanceTotals(db: Firestore, classId: string, enabled: boolean): Record<string, number> {
+  const live = useQueryList<{ id: string; taken: number }>(`v2/attendanceTotals/${classId}/${enabled}`, enabled ? sub(db, classId, 'attendanceTotals') : null, (d) =>
+    fromDoc<{ id: string; taken: number }>({ id: '', taken: 0 }, d),
+  );
+  return Object.fromEntries((live.data ?? []).map((t) => [t.id, t.taken]));
 }
 
 /** Every sheet, for officers who take attendance. */
