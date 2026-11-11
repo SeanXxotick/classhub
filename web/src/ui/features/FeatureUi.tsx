@@ -437,7 +437,6 @@ const fromClock = (text: string) => {
 
 /** The start time as a small tile in front of a meeting row ("8:00" over "AM"), in place of a repeated icon. */
 function TimeTile({ minutes, cancelled, color }: { minutes: number; cancelled?: boolean; color?: string }) {
-  const solid = !cancelled && !!color;
   const [clock, half] = clockText(minutes).split(' ');
   return (
     <span
@@ -445,7 +444,7 @@ function TimeTile({ minutes, cancelled, color }: { minutes: number; cancelled?: 
       className={cancelled ? 'ch-tone-danger' : 'ch-tone-primary'}
       style={{
         flex: 'none', width: 52, height: 44, borderRadius: 12, display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        background: solid ? color : 'var(--tb)', color: solid ? '#fff' : 'var(--tc)', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums', textDecoration: cancelled ? 'line-through' : undefined,
+        background: cancelled ? 'var(--tb)' : color || 'var(--ch-primary)', color: cancelled ? 'var(--tc)' : color ? '#fff' : 'var(--ch-on-primary)', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums', textDecoration: cancelled ? 'line-through' : undefined,
       }}
     >
       <span style={{ fontWeight: 800, fontSize: 15 }}>{clock}</span>
