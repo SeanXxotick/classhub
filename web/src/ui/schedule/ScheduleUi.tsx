@@ -205,7 +205,9 @@ export function ScheduleTab({
   return (
     <div className="split">
       <div className="card week-card">
-        <div className="row">
+        {/* Wide screens have room beside the list, so they show the whole month; phones keep the week strip. */}
+        <InlineMonth todayKey={todayKey} selectedDay={selectedDay} dotsByDay={dotsByDay} onSelectDay={onSelectDay} />
+        <div className="row cal-narrow">
           <button type="button" className="btn text" aria-label="Previous week" onClick={() => setAnchor(plusDays(anchor, -7))}>
             ‹
           </button>
@@ -216,7 +218,7 @@ export function ScheduleTab({
             ›
           </button>
         </div>
-        <div className="week">
+        <div className="week cal-narrow">
           {week.map((day) => {
             const selected = day === selectedDay;
             return (
@@ -293,6 +295,64 @@ export function ScheduleTab({
           onToggleDone={(done) => onToggleDone(opened, done)}
           onSetCancelled={(cancelled) => (setOpenedId(null), onSetCancelled(opened, cancelled))}
         />
+      )}
+    </div>
+  );
+}
+
+/** The month shown in place on wide screens. Tapping a day filters the list to it; tapping it again shows all. */
+function InlineMonth({ todayKey, selectedDay, dotsByDay, onSelectDay }: { todayKey: DayKey; selectedDay: DayKey | null; dotsByDay: Map<DayKey, string[]>; onSelectDay: (day: DayKey | null) => void }) {
+  const startParts = parseDay(selectedDay ?? todayKey);
+  const [ym, setYm] = useState({ year: startParts.year, month: startParts.month });
+  const shift = (by: number) => {
+    const index = ym.year * 12 + (ym.month - 1) + by;
+    setYm({ year: Math.floor(index / 12), month: (index % 12) + 1 });
+  };
+  const today = parseDay(todayKey);
+  const onThisMonth = ym.year === today.year && ym.month === today.month;
+  return (
+    <div className="cal-wide">
+      <div className="row">
+        <button type="button" className="btn text" aria-label="Previous month" onClick={() => shift(-1)}>
+          ‹
+        </button>
+        <span className="grow center semibold">
+          {monthLong(ym.month)} {ym.year}
+        </span>
+        <button type="button" className="btn text" aria-label="Next month" onClick={() => shift(1)}>
+          ›
+        </button>
+      </div>
+      <div className="week">
+        {ScheduleView.weekOf(todayKey).map((d) => (
+          <span key={d} className="tiny muted center">
+            {weekdayShort(weekday(d))}
+          </span>
+        ))}
+        {ScheduleView.monthGrid(ym.year, ym.month).map((day, i) =>
+          day === null ? (
+            <span key={`b${i}`} className="day blank" />
+          ) : (
+            <button
+              key={day}
+              type="button"
+              className={'day small-day' + (day === selectedDay ? ' selected' : '') + (day === todayKey ? ' today' : '')}
+              aria-pressed={day === selectedDay}
+              aria-label={longDay(day)}
+              onClick={() => onSelectDay(day === selectedDay ? null : day)}
+            >
+              <span className="num">{parseDay(day).day}</span>
+              <DayDots colors={dotsByDay.get(day) ?? []} />
+            </button>
+          ),
+        )}
+      </div>
+      {(!onThisMonth || selectedDay) && (
+        <div className="row" style={{ justifyContent: 'center' }}>
+          <button type="button" className="btn text" onClick={() => (setYm({ year: today.year, month: today.month }), onSelectDay(null))}>
+            Back to today
+          </button>
+        </div>
       )}
     </div>
   );
