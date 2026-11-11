@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { CONTENT_KINDS, newContentItem, type ClassRoom, type ContentItem, type ContentKind, type Course } from '../../data/models';
 import { CONTENT_SORTS, ContentRules, type ContentFormat, type ContentSort } from '../../domain/contentRules';
 import { ContentIcons } from '../../domain/iconStyles';
@@ -341,8 +341,10 @@ export function ContentFormScreen() {
 function ContentForm({ existing }: { existing: ContentItem | undefined }) {
   const { state, actions } = useClass();
   const back = useBack(`/class/${state.classId}?tab=CONTENTS`);
-  const [title, setTitle] = useState(existing?.title ?? '');
-  const [url, setUrl] = useState(existing?.url ?? '');
+  // A link shared to ClassHub arrives in the address (see ShareScreen).
+  const [shared] = useSearchParams();
+  const [title, setTitle] = useState(existing?.title ?? shared.get('title') ?? '');
+  const [url, setUrl] = useState(existing?.url ?? shared.get('url') ?? '');
   const [note, setNote] = useState(existing?.note ?? '');
   const [courseId, setCourseId] = useState(existing?.courseId ?? '');
   const [kind, setKind] = useState<ContentKind>(existing?.kind ?? 'WEBSITE');

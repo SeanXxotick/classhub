@@ -5,7 +5,7 @@ import type { AppUser } from '../data/models';
 import { useAvatar, useClassPhotos } from '../data/photoRepo';
 import { AccountScreen, ANDROID_DOWNLOAD_URL } from './account/AccountScreen';
 import { AuthScreen, ChangePasswordScreen } from './auth/AuthScreens';
-import { AddClassDialog, ClassesScreen, CreateClassScreen, JoinClassScreen, useMyClasses } from './classes/ClassesScreens';
+import { AddClassDialog, ClassesScreen, CreateClassScreen, JoinClassScreen, ShareScreen, useMyClasses } from './classes/ClassesScreens';
 import { ClassRoute } from './classroom/ClassScreen';
 import { Avatar, Loading, useBack } from './common';
 import { Logo } from './Logo';
@@ -34,6 +34,7 @@ function SignedIn({ user }: { user: AppUser }) {
           <Route path="/account/password" element={<PasswordRoute user={user} />} />
           <Route path="/create" element={<CreateClassScreen user={user} />} />
           <Route path="/join" element={<JoinClassScreen user={user} />} />
+          <Route path="/share" element={<ShareScreen user={user} />} />
           <Route path="/join/:code" element={<JoinClassScreen user={user} />} />
           <Route path="/class/:classId/*" element={<ClassRoute uid={user.uid} />} />
           <Route path="*" element={<Navigate to="/" replace />} />

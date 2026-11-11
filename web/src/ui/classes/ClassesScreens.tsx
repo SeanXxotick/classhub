@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Avatar, ColorPicker, ACCENT_CHOICES, Dialog, Field, Spinner, TopBar, useBack, Loading } from '../common';
 import { db } from '../../data/firebase';
 import { useMyClasses as useMyClassesLive } from '../../data/hooks';
@@ -96,6 +96,35 @@ export function ClassesScreen({ user }: { user: AppUser }) {
         +&nbsp; Add a class
       </button>
       {adding && <AddClassDialog onClose={() => setAdding(false)} onPick={(to) => (setAdding(false), navigate(to))} />}
+    </>
+  );
+}
+
+/** Where a link shared to ClassHub lands: pick the class, and its Add content form opens with the link filled in. */
+export function ShareScreen({ user }: { user: AppUser }) {
+  const { classes } = useMyClasses(user.uid);
+  const [params] = useSearchParams();
+  const back = useBack('/');
+  const text = params.get('text') ?? '';
+  // Many apps put the link in "text" instead of "url".
+  const link = params.get('url') || (/https?:\/\/\S+/.exec(text)?.[0] ?? '');
+  const title = params.get('title') ?? '';
+  const query = new URLSearchParams({ url: link, title }).toString();
+  return (
+    <>
+      <TopBar title="Share to ClassHub" back={back} backLabel="Cancel" />
+      <div className="page narrow">
+        <div className="card stack">
+          <p className="muted" style={{ margin: 0, overflowWrap: 'anywhere' }}>{link ? `Add this link to a class: ${link}` : 'Nothing to add: the shared item has no link.'}</p>
+          {classes === null ? <Loading /> : classes.length === 0 ? <p className="muted">You are not in any classes yet.</p> : null}
+          {link &&
+            (classes ?? []).map((c) => (
+              <Link key={c.classId} className="btn outline block" to={`/class/${c.classId}/content/new?${query}`} replace>
+                {c.className}
+              </Link>
+            ))}
+        </div>
+      </div>
     </>
   );
 }
