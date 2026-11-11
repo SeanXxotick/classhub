@@ -15,7 +15,7 @@ const CLASS = 'class1';
 const CODE = 'K7M4QX';
 const OTHER_CODE = 'QWERTY';
 const NEW_CODE = 'NEW234';
-const PERMS = ['RECORDS_MANAGE', 'SCHEDULE_MANAGE', 'MEMBERS_MANAGE', 'ROLES_MANAGE', 'CLASS_SETTINGS', 'CONTENTS_MANAGE', 'ANNOUNCEMENTS_MANAGE'];
+const PERMS = ['RECORDS_MANAGE', 'SCHEDULE_MANAGE', 'MEMBERS_MANAGE', 'ROLES_MANAGE', 'CLASS_SETTINGS', 'CONTENTS_MANAGE', 'ANNOUNCEMENTS_MANAGE', 'ATTENDANCE_MANAGE'];
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
 
@@ -49,7 +49,7 @@ const omit = (obj, ...keys) => Object.fromEntries(Object.entries(obj).filter(([k
 const ROLES = {
   mayor: { id: '', name: 'Mayor', colorHex: '#7C3AED', permissions: PERMS, locked: true },
   treasurer: { id: '', name: 'Treasurer', colorHex: '#15803D', permissions: ['RECORDS_MANAGE'], locked: false },
-  secretary: { id: '', name: 'Secretary', colorHex: '#3730A3', permissions: ['SCHEDULE_MANAGE', 'CONTENTS_MANAGE', 'ANNOUNCEMENTS_MANAGE'], locked: false },
+  secretary: { id: '', name: 'Secretary', colorHex: '#3730A3', permissions: ['SCHEDULE_MANAGE', 'CONTENTS_MANAGE', 'ANNOUNCEMENTS_MANAGE', 'ATTENDANCE_MANAGE'], locked: false },
   member: { id: '', name: 'Member', colorHex: '#6B768A', permissions: [], locked: false },
 };
 

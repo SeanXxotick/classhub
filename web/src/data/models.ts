@@ -18,6 +18,7 @@ export const PERMISSIONS = [
   'CLASS_SETTINGS',
   'CONTENTS_MANAGE',
   'ANNOUNCEMENTS_MANAGE',
+  'ATTENDANCE_MANAGE',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 

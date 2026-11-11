@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { JoinRequest, Member, ScheduleItem } from '../../data/models';
-import { ClaimsCard, NewsTab, StatementCard, TimetableCard, TodayCard } from '../features/FeatureUi';
+import { AttendanceCard, ClaimsCard, NewsTab, StatementCard, TimetableCard, TodayCard } from '../features/FeatureUi';
 import { JoinLinks } from '../../domain/joinLinks';
 import { LedgerView } from '../../domain/ledgerView';
 import { ScheduleView } from '../../domain/scheduleView';
@@ -133,6 +133,7 @@ function ClassScreen() {
           <div className="stack" style={{ marginBottom: 12 }}>
             {tab === 'HOME' && room.timetableEnabled !== false && <TodayCard state={state} />}
             {tab === 'SCHEDULE' && room.timetableEnabled !== false && <TimetableCard state={state} />}
+            {tab === 'SCHEDULE' && room.timetableEnabled !== false && <AttendanceCard state={state} />}
             {tab === 'LEDGER' && <StatementCard state={state} />}
             {tab === 'LEDGER' && <ClaimsCard state={state} />}
           </div>

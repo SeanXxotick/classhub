@@ -47,10 +47,12 @@ import { reportClientError } from './clientErrors';
 import { newRole } from './models';
 import {
   addNoClass, cancelClaim, confirmClaim, deleteAnnouncement, markSeen, meetingsOn, newAnnouncement, newClaim, newMeeting,
-  rejectClaim, saveAnnouncement, saveMeeting, sendClaim,
+  rejectClaim, saveAnnouncement, saveAttendance, saveMeeting, sendClaim, sheetId,
 } from './features';
+import { query, where } from 'firebase/firestore';
 
-const PROJECT = 'demo-classhub';
+// EMU_PROJECT keeps a run apart from data someone is trying by hand in the same emulator.
+const PROJECT = process.env.EMU_PROJECT || 'demo-classhub';
 const HOST = '127.0.0.1';
 const PORT = 8080;
 
@@ -425,6 +427,26 @@ describe('claims, announcements and the timetable', () => {
     expect(day).toHaveLength(1);
     expect(day[0].cancelled?.reason).toBe('Holiday');
     expect(meetingsOn(meetings, marks, Date.UTC(2026, 10, 23, 2))[0].cancelled).toBeNull();
+  });
+});
+
+describe('attendance', () => {
+  it('an officer saves a sheet; a student reads only sheets that list them, and cannot write one', async () => {
+    const meeting = newMeeting({ id: 'meetA', courseId: 'course1', dayOfWeek: 1 });
+    await saveAttendance(as(MAYOR.uid), MAYOR.uid, classId, '2026-11-16', meeting, { [STUDENT.uid]: 'ABSENT', [LATE.uid]: 'LATE', [TREASURER.uid]: 'PRESENT' });
+    await saveAttendance(as(MAYOR.uid), MAYOR.uid, classId, '2026-11-23', meeting, { [LATE.uid]: 'ABSENT' });
+    const stored = (await getDoc(doc(adminDb, 'classes', classId, 'attendance', sheetId('2026-11-16', 'meetA')))).data()!;
+    expect(stored.absent).toEqual([STUDENT.uid]);
+    expect(stored.late).toEqual([LATE.uid]);
+
+    const col = (uid: string) => collection(as(uid), 'classes', classId, 'attendance');
+    const mine = await getDocs(query(col(STUDENT.uid), where('absent', 'array-contains', STUDENT.uid)));
+    expect(mine.docs.map((d) => d.id)).toEqual([sheetId('2026-11-16', 'meetA')]);
+    // Not the whole list, not a classmate's absences, not a sheet that does not list them.
+    await deniedRead(getDocs(col(STUDENT.uid)));
+    await deniedRead(getDocs(query(col(STUDENT.uid), where('absent', 'array-contains', LATE.uid))));
+    await deniedRead(getDoc(doc(col(STUDENT.uid), sheetId('2026-11-23', 'meetA'))));
+    await expect(saveAttendance(as(STUDENT.uid), STUDENT.uid, classId, '2026-11-16', meeting, {})).rejects.toBeTruthy();
   });
 });
 

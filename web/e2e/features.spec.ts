@@ -61,6 +61,15 @@ test('claims, statement, announcements and the timetable', async ({ browser }) =
   await expectNotice(page, 'Meeting saved.');
   await expect(page.getByText('8:00 AM to 9:00 AM · Operations Research · Room 204')).toBeVisible();
 
+  // Attendance: the Mayor marks themselves absent, and sees it under My attendance.
+  await page.getByRole('button', { name: 'Take attendance' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Take attendance' });
+  await sheet.getByLabel('Attendance of Nina Castro').selectOption('ABSENT');
+  await sheet.getByRole('button', { name: 'Save' }).click();
+  await expectNotice(page, 'Attendance saved: 0 present, 0 late, 1 absent.');
+  await expect(page.getByText('Operations Research: absent 1 time, late 0 times')).toBeVisible();
+  await expect(page.getByText('1 absent · 0 late')).toBeVisible();
+
   await page.getByRole('button', { name: 'No classes' }).click();
   const mark = page.getByRole('dialog', { name: 'No classes' });
   await mark.getByLabel('Which classes').selectOption({ label: 'Operations Research' });

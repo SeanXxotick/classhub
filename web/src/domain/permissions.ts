@@ -24,7 +24,7 @@ export const DefaultRoles = {
     return [
       newRole({ id: ROLE_MAYOR, name: 'Mayor', colorHex: '#7C3AED', permissions: [...PERMISSIONS], locked: true }),
       newRole({ id: ROLE_TREASURER, name: 'Treasurer', colorHex: '#15803D', permissions: ['RECORDS_MANAGE'] }),
-      newRole({ id: ROLE_SECRETARY, name: 'Secretary', colorHex: '#3730A3', permissions: ['SCHEDULE_MANAGE', 'CONTENTS_MANAGE', 'ANNOUNCEMENTS_MANAGE'] }),
+      newRole({ id: ROLE_SECRETARY, name: 'Secretary', colorHex: '#3730A3', permissions: ['SCHEDULE_MANAGE', 'CONTENTS_MANAGE', 'ANNOUNCEMENTS_MANAGE', 'ATTENDANCE_MANAGE'] }),
       newRole({ id: ROLE_MEMBER, name: 'Member', colorHex: '#6B768A', permissions: [] }),
     ];
   },

@@ -550,6 +550,19 @@ service cloud.firestore {
         && d.createdByUid == uid();
     }
 
+    // One document per class meeting on a date: who was absent and who was late (everyone else was present).
+    function isAttendance() {
+      let d = request.resource.data;
+      return hasFields(d, ['dateKey', 'meetingId', 'courseId', 'absent', 'late', 'takenByUid', 'takenAtMillis'])
+        && d.dateKey is string && d.dateKey.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && isId(d.meetingId)
+        && isFilled(d.courseId, 128)
+        && d.absent is list && d.absent.size() <= 500
+        && d.late is list && d.late.size() <= 500
+        && d.takenByUid == uid()
+        && isRecentMillis(d.takenAtMillis);
+    }
+
     // ---- Ledger: records
 
     function recordKeys() {
@@ -858,6 +871,15 @@ service cloud.firestore {
         allow read: if isMember(classId);
         allow create, update: if can(classId, 'SCHEDULE_MANAGE') && isOpen(classId) && isMeeting();
         allow delete: if can(classId, 'SCHEDULE_MANAGE');
+      }
+
+      // Officers who take attendance read every sheet. A student reads only the sheets that list them
+      // as absent or late (their queries ask for exactly those), so nobody sees a classmate's record.
+      match /attendance/{sheetId} {
+        allow read: if can(classId, 'ATTENDANCE_MANAGE')
+          || (isMember(classId) && (uid() in resource.data.absent || uid() in resource.data.late));
+        allow create, update: if can(classId, 'ATTENDANCE_MANAGE') && isOpen(classId) && isAttendance();
+        allow delete: if can(classId, 'ATTENDANCE_MANAGE');
       }
 
       match /noClass/{markId} {

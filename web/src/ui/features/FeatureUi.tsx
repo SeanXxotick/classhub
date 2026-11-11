@@ -17,6 +17,11 @@ import {
   newMeeting,
   rejectClaim,
   removeNoClass,
+  saveAttendance,
+  sheetId,
+  useAttendance,
+  useMyAttendance,
+  type AttendanceMark,
   saveAnnouncement,
   saveMeeting,
   sendClaim,
@@ -424,6 +429,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
   const run = useRun();
   const [editing, setEditing] = useState<Meeting | null>(null);
   const [marking, setMarking] = useState(false);
+  const [taking, setTaking] = useState(false);
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const todayKey = manilaDay(Date.now()).dateKey;
   const coming = marks.filter((k) => k.dateKey >= todayKey).sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
@@ -480,6 +486,12 @@ export function TimetableCard({ state }: { state: ClassState }) {
           )}
         </div>
       ))}
+      {state.can('ATTENDANCE_MANAGE') && meetings.length > 0 && (
+        <button type="button" className="btn solid" style={{ alignSelf: 'flex-start' }} onClick={() => setTaking(true)}>
+          Take attendance
+        </button>
+      )}
+      {taking && <AttendanceDialog state={state} meetings={meetings} onClose={() => setTaking(false)} />}
       {editing && <MeetingDialog state={state} meeting={editing} onClose={() => setEditing(null)} />}
       {marking && <NoClassDialog state={state} meetings={meetings} onClose={() => setMarking(false)} />}
     </div>
@@ -587,5 +599,152 @@ function NoClassDialog({ state, meetings, onClose }: { state: ClassState; meetin
         </Field>
       </div>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------- Attendance
+
+const weekdayOf = (dateKey: string) => (dateKey ? new Date(`${dateKey}T00:00:00Z`).getUTCDay() : -1);
+
+/** The officer marks each student of one meeting on one date. Everyone starts as present. */
+function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; meetings: Meeting[]; onClose: () => void }) {
+  const run = useRun();
+  const sheets = useAttendance(db, state.classId, true).data;
+  const [dateKey, setDateKey] = useState(manilaDay(Date.now()).dateKey);
+  const [pickedId, setPickedId] = useState('');
+  const [marks, setMarks] = useState<Record<string, AttendanceMark>>({});
+  const todays = meetings.filter((m) => m.dayOfWeek === weekdayOf(dateKey)).sort((a, b) => a.startMinutes - b.startMinutes);
+  const meeting = todays.find((m) => m.id === pickedId) ?? todays[0];
+  const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
+  const students = meeting ? state.members.filter((m) => !m.excludedCourseIds.includes(meeting.courseId)) : [];
+  const saved = meeting ? sheets?.find((x) => x.id === sheetId(dateKey, meeting.id)) : undefined;
+  const key = `${dateKey}|${meeting?.id ?? ''}|${saved?.takenAtMillis ?? 0}`;
+
+  // Starts from what was saved for this meeting and date, if anything.
+  useEffect(() => {
+    const next: Record<string, AttendanceMark> = {};
+    for (const uid of saved?.absent ?? []) next[uid] = 'ABSENT';
+    for (const uid of saved?.late ?? []) next[uid] = 'LATE';
+    setMarks(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  const absent = students.filter((m) => marks[m.id] === 'ABSENT').length;
+  const late = students.filter((m) => marks[m.id] === 'LATE').length;
+  return (
+    <Dialog
+      title="Take attendance"
+      onClose={onClose}
+      actions={
+        <>
+          <button className="btn text" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn solid"
+            disabled={!meeting}
+            onClick={() =>
+              meeting &&
+              run(`Attendance saved: ${students.length - absent - late} present, ${late} late, ${absent} absent.`, () =>
+                saveAttendance(db, state.myUid, state.classId, dateKey, meeting, Object.fromEntries(students.map((m) => [m.id, marks[m.id] ?? 'PRESENT']))), onClose)
+            }
+          >
+            Save
+          </button>
+        </>
+      }
+    >
+      <div className="stack">
+        <Field label="Date">
+          <input type="date" value={dateKey} onChange={(e) => setDateKey(e.target.value)} />
+        </Field>
+        {todays.length === 0 ? (
+          <p className="small muted" style={{ margin: 0 }}>The timetable has no classes on that day.</p>
+        ) : (
+          <Field label="Class meeting">
+            <select value={meeting?.id ?? ''} onChange={(e) => setPickedId(e.target.value)}>
+              {todays.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {clockText(m.startMinutes)} · {courseName(m.courseId)}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        {meeting && <div className="small muted">{saved ? 'Already taken. Saving replaces it.' : 'Everyone starts as present. Change only those who were late or absent.'}</div>}
+        {students.map((m) => (
+          <label key={m.id} className="row">
+            <span className="grow">{m.name}</span>
+            <select value={marks[m.id] ?? 'PRESENT'} aria-label={`Attendance of ${m.name}`} style={{ width: 'auto' }} onChange={(e) => setMarks({ ...marks, [m.id]: e.target.value as AttendanceMark })}>
+              <option value="PRESENT">Present</option>
+              <option value="LATE">Late</option>
+              <option value="ABSENT">Absent</option>
+            </select>
+          </label>
+        ))}
+      </div>
+    </Dialog>
+  );
+}
+
+/** In the Schedule tab: a student's own absences and lates per course; officers also get everyone's counts. */
+export function AttendanceCard({ state }: { state: ClassState }) {
+  const manage = state.can('ATTENDANCE_MANAGE');
+  const mine = useMyAttendance(db, state.classId, state.myUid, true);
+  const all = useAttendance(db, state.classId, manage).data ?? [];
+  const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
+  const courseIds = [...new Set([...mine.absent, ...mine.late].map((x) => x.courseId))];
+  const perCourse = [...new Set(all.map((x) => x.courseId))].map((courseId) => {
+    const sheets = all.filter((x) => x.courseId === courseId);
+    const rows = state.members
+      .map((m) => ({ name: m.name, absent: sheets.filter((x) => x.absent.includes(m.id)).length, late: sheets.filter((x) => x.late.includes(m.id)).length }))
+      .filter((r) => r.absent || r.late)
+      .sort((a, b) => b.absent - a.absent || b.late - a.late);
+    return { courseId, taken: sheets.length, rows };
+  });
+  if (!manage && courseIds.length === 0) {
+    return (
+      <div className="card">
+        <div className="bold">My attendance</div>
+        <p className="small muted" style={{ margin: '4px 0 0' }}>No absences or lates recorded for you.</p>
+      </div>
+    );
+  }
+  const dates = (list: { dateKey: string }[]) => list.map((x) => x.dateKey).sort().join(', ');
+  return (
+    <div className="card stack" style={{ gap: 6 }}>
+      <div className="bold">My attendance</div>
+      {courseIds.length === 0 && <div className="small muted">No absences or lates recorded for you.</div>}
+      {courseIds.map((id) => {
+        const a = mine.absent.filter((x) => x.courseId === id);
+        const l = mine.late.filter((x) => x.courseId === id);
+        return (
+          <div key={id}>
+            <span className="semibold">{courseName(id)}</span>: absent {a.length} time{a.length === 1 ? '' : 's'}, late {l.length} time{l.length === 1 ? '' : 's'}
+            {a.length > 0 && <div className="small muted">Absent on {dates(a)}</div>}
+            {l.length > 0 && <div className="small muted">Late on {dates(l)}</div>}
+          </div>
+        );
+      })}
+      {manage && <div className="bold" style={{ marginTop: 6 }}>Class attendance</div>}
+      {manage && perCourse.length === 0 && <div className="small muted">No attendance taken yet.</div>}
+      {manage &&
+        perCourse.map((c) => (
+          <div key={c.courseId}>
+            <div className="small semibold muted">
+              {courseName(c.courseId)} · taken {c.taken} time{c.taken === 1 ? '' : 's'}
+            </div>
+            {c.rows.length === 0 && <div className="small muted">Nobody was absent or late.</div>}
+            {c.rows.map((r) => (
+              <div key={r.name} className="row">
+                <span className="grow">{r.name}</span>
+                <span className="small">
+                  {r.absent} absent · {r.late} late
+                </span>
+              </div>
+            ))}
+          </div>
+        ))}
+    </div>
   );
 }

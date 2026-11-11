@@ -236,3 +236,54 @@ export function meetingsOn(meetings: Meeting[], marks: NoClassMark[], millis: nu
     .sort((a, b) => a.startMinutes - b.startMinutes)
     .map((meeting) => ({ meeting, cancelled: today.find((k) => !k.courseId || k.courseId === meeting.courseId) ?? null }));
 }
+
+// ---------------------------------------------------------------- Attendance
+
+/** One sheet per class meeting on a date. Students not listed were present. */
+export interface AttendanceSheet {
+  id: string;
+  dateKey: string;
+  meetingId: string;
+  courseId: string;
+  absent: string[];
+  late: string[];
+  takenByUid: string;
+  takenAtMillis: number;
+}
+
+export type AttendanceMark = 'PRESENT' | 'LATE' | 'ABSENT';
+
+const newSheet = (a: Partial<AttendanceSheet>): AttendanceSheet => ({
+  id: '', dateKey: '', meetingId: '', courseId: '', absent: [], late: [], takenByUid: '', takenAtMillis: 0, ...a,
+});
+
+export const attendanceCol = (db: Firestore, classId: string) => sub(db, classId, 'attendance');
+export const sheetId = (dateKey: string, meetingId: string) => `${dateKey}_${meetingId}`;
+
+/** Saves the attendance of one meeting on one date (ATTENDANCE_MANAGE). Saving again replaces it. */
+export async function saveAttendance(
+  db: Firestore, actorUid: string, classId: string, dateKey: string, meeting: Meeting, marks: Record<string, AttendanceMark>,
+): Promise<void> {
+  const of = (mark: AttendanceMark) => Object.keys(marks).filter((uid) => marks[uid] === mark).sort();
+  const sheet = { dateKey, meetingId: meeting.id, courseId: meeting.courseId, absent: of('ABSENT'), late: of('LATE'), takenByUid: actorUid, takenAtMillis: nowMillis() };
+  await explainRefusal(db, classId, () => setDoc(doc(attendanceCol(db, classId), sheetId(dateKey, meeting.id)), sheet));
+}
+
+/** Every sheet, for officers who take attendance. */
+export const useAttendance = (db: Firestore, classId: string, enabled: boolean) =>
+  useQueryList<AttendanceSheet>(`v2/attendance/${classId}/${enabled}`, enabled ? attendanceCol(db, classId) : null, (d) => fromDoc(newSheet({}), d));
+
+/** A student's own absences and lates: the only sheets the rules let them read. */
+export function useMyAttendance(db: Firestore, classId: string, uid: string, enabled: boolean) {
+  const absent = useQueryList<AttendanceSheet>(
+    `v2/myAbsent/${classId}/${uid}/${enabled}`,
+    enabled ? query(attendanceCol(db, classId), where('absent', 'array-contains', uid)) : null,
+    (d) => fromDoc(newSheet({}), d),
+  );
+  const late = useQueryList<AttendanceSheet>(
+    `v2/myLate/${classId}/${uid}/${enabled}`,
+    enabled ? query(attendanceCol(db, classId), where('late', 'array-contains', uid)) : null,
+    (d) => fromDoc(newSheet({}), d),
+  );
+  return { absent: absent.data ?? [], late: late.data ?? [] };
+}
