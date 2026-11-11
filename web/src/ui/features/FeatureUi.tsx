@@ -435,6 +435,24 @@ const fromClock = (text: string) => {
   return (h || 0) * 60 + (m || 0);
 };
 
+/** The start time as a small tile in front of a meeting row ("8:00" over "AM"), in place of a repeated icon. */
+function TimeTile({ minutes, cancelled }: { minutes: number; cancelled?: boolean }) {
+  const [clock, half] = clockText(minutes).split(' ');
+  return (
+    <span
+      aria-hidden
+      className={cancelled ? 'ch-tone-danger' : 'ch-tone-primary'}
+      style={{
+        flex: 'none', width: 52, height: 44, borderRadius: 12, display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--tb)', color: 'var(--tc)', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums', textDecoration: cancelled ? 'line-through' : undefined,
+      }}
+    >
+      <span style={{ fontWeight: 800, fontSize: 15 }}>{clock}</span>
+      <span style={{ fontWeight: 700, fontSize: 10, letterSpacing: '0.06em' }}>{half}</span>
+    </span>
+  );
+}
+
 /** Today and tomorrow, for Home. Shows nothing when the class has no timetable. */
 export function TodayCard({ state }: { state: ClassState }) {
   const meetings = useMeetings(db, state.classId, true).data ?? [];
@@ -460,7 +478,7 @@ export function TodayCard({ state }: { state: ClassState }) {
                 <ListRow
                   key={m.id}
                   voided={!!cancelled}
-                  leading={<TypeIcon icon={cancelled ? 'ban' : 'clock'} tone={cancelled ? 'danger' : 'primary'} />}
+                  leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} />}
                   title={courseName(m.courseId)}
                   subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}`}
                   trailing={cancelled ? <StatusBadge status="danger">{`No classes${cancelled.reason ? `: ${cancelled.reason}` : ''}`}</StatusBadge> : undefined}
@@ -527,7 +545,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
                 {list.map((m) => (
                   <ListRow
                     key={m.id}
-                    leading={<TypeIcon icon="clock" tone="primary" />}
+                    leading={<TimeTile minutes={m.startMinutes} />}
                     title={courseName(m.courseId)}
                     subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}`}
                     chevron={manage}
