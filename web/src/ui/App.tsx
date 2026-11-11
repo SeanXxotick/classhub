@@ -2,12 +2,12 @@ import { useMemo, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import * as authRepo from '../data/authRepo';
 import type { AppUser } from '../data/models';
-import { useAvatar, useClassPhotos } from '../data/photoRepo';
+import { useAvatar, useClassAccents, useClassPhotos } from '../data/photoRepo';
 import { AccountScreen, ANDROID_DOWNLOAD_URL } from './account/AccountScreen';
 import { AuthScreen, ChangePasswordScreen } from './auth/AuthScreens';
 import { AddClassDialog, ClassesScreen, CreateClassScreen, JoinClassScreen, ShareScreen, useMyClasses } from './classes/ClassesScreens';
 import { ClassRoute } from './classroom/ClassScreen';
-import { Avatar, Loading, useBack } from './common';
+import { Avatar, Loading, hexColor, useBack } from './common';
 import { Logo } from './Logo';
 
 /** Signed out: sign in or create an account. A temporary password must be changed first. Then the app. */
@@ -52,7 +52,9 @@ function PasswordRoute({ user }: { user: AppUser }) {
 /** The wide-screen sidebar: My classes (pinned first), Add a class, Account and the Android app. Hidden on phones. */
 function Sidebar({ user }: { user: AppUser }) {
   const { classes } = useMyClasses(user.uid);
-  const photos = useClassPhotos(useMemo(() => classes?.map((c) => c.classId) ?? [], [classes]));
+  const classIds = useMemo(() => classes?.map((c) => c.classId) ?? [], [classes]);
+  const photos = useClassPhotos(classIds);
+  const accents = useClassAccents(classIds);
   const avatar = useAvatar(user.uid);
   const [adding, setAdding] = useState(false);
   const navigate = useNavigate();
@@ -73,7 +75,7 @@ function Sidebar({ user }: { user: AppUser }) {
       ) : (
         classes.map((m) => (
           <NavLink key={m.classId} to={`/class/${m.classId}`} className={itemClass} title={m.className}>
-            <Avatar photo={photos.get(m.classId)} name={m.className} color="#0F766E" size={30} circle={false} />
+            <Avatar photo={photos.get(m.classId)} name={m.className} color={hexColor(accents.get(m.classId), '#0F766E')} size={30} circle={false} />
             <span className="grow">{m.className}</span>
           </NavLink>
         ))

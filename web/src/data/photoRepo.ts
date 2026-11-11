@@ -86,6 +86,30 @@ export function useClassPhotos(classIds: string[]): Map<string, string> {
   return photos;
 }
 
+/** The accent colour of each class the user is in, so class icons outside the class match it. */
+export function useClassAccents(classIds: string[]): Map<string, string> {
+  const key = [...new Set(classIds.filter(Boolean))].sort().join(',');
+  const [accents, setAccents] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    const ids = key ? key.split(',') : [];
+    const found = new Map<string, string>();
+    const stops = ids.map((id) =>
+      onSnapshot(
+        doc(db, 'classes', id),
+        (s) => {
+          const color = s.get('accentColor');
+          if (typeof color === 'string') found.set(id, color);
+          else found.delete(id);
+          setAccents(new Map(found));
+        },
+        () => undefined,
+      ),
+    );
+    return () => stops.forEach((stop) => stop());
+  }, [key]);
+  return accents;
+}
+
 export function setAvatar(uid: string, photo: string): Promise<void> {
   return setDoc(doc(avatars, uid), { photo, updatedAtMillis: Date.now() });
 }

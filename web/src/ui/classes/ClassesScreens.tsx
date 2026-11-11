@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Avatar, ColorPicker, ACCENT_CHOICES, Dialog, Field, Spinner, TopBar, useBack, Loading } from '../common';
+import { Avatar, hexColor, ColorPicker, ACCENT_CHOICES, Dialog, Field, Spinner, TopBar, useBack, Loading } from '../common';
 import { db } from '../../data/firebase';
 import { useMyClasses as useMyClassesLive } from '../../data/hooks';
 import { createClass } from '../../data/classes';
 import { cancelJoinRequest, lookupInvite, requestToJoin } from '../../data/membership';
-import { useClassPhotos } from '../../data/photoRepo';
+import { useClassAccents, useClassPhotos } from '../../data/photoRepo';
 import { friendlyMessage } from '../../data/errors';
 import type { AppUser, ClassMembership, JoinRequest } from '../../data/models';
 import { ClassRules } from '../../domain/classRules';
@@ -32,7 +32,9 @@ export function useMyClasses(uid: string): { classes: ClassMembership[] | null; 
 
 export function ClassesScreen({ user }: { user: AppUser }) {
   const { classes, requests, error } = useMyClasses(user.uid);
-  const photos = useClassPhotos(useMemo(() => classes?.map((c) => c.classId) ?? [], [classes]));
+  const classIds = useMemo(() => classes?.map((c) => c.classId) ?? [], [classes]);
+  const photos = useClassPhotos(classIds);
+  const accents = useClassAccents(classIds);
   const [adding, setAdding] = useState(false);
   const navigate = useNavigate();
   useSettingsVersion();
@@ -65,7 +67,7 @@ export function ClassesScreen({ user }: { user: AppUser }) {
             <div className="grid-2">
               {classes.map((m) => (
                 <Link key={m.classId} to={`/class/${m.classId}`} className="card row" style={{ textDecoration: 'none', color: 'inherit', padding: 14 }}>
-                  <Avatar photo={photos.get(m.classId)} name={m.className} color="#0F766E" circle={false} />
+                  <Avatar photo={photos.get(m.classId)} name={m.className} color={hexColor(accents.get(m.classId), '#0F766E')} circle={false} />
                   <span className="grow">
                     <span className="semibold" style={{ display: 'block', fontSize: 16 }}>{m.className}</span>
                     {pinned.has(m.classId) && <span className="small" style={{ color: 'var(--primary)' }}>Pinned</span>}
