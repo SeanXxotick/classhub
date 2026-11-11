@@ -21,7 +21,7 @@ export function kindLabel(kind: ScheduleKind): string {
     case 'RECITATION':
       return 'Recitation';
     case 'FCO':
-      return 'FCO';
+      return 'Project';
   }
 }
 
