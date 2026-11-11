@@ -4,7 +4,7 @@ import { Ledger } from '../../domain/ledger';
 import { LEDGER_FILTERS, LedgerView, type ChargeBatch, type LedgerEntry, type LedgerFilter } from '../../domain/ledgerView';
 import { formatMoney } from '../../domain/money';
 import { dayOf, monthShort, parseDay, plusDays, today, weekday, weekdayShort } from '../../domain/dates';
-import { Avatar, DetailLine, Dialog, hexColor } from '../common';
+import { Avatar, DetailLine, Dialog, Field, hexColor } from '../common';
 import type { ClassState } from '../classroom/ClassContext';
 
 // ---------------------------------------------------------------- Labels, colors and dates
@@ -320,32 +320,46 @@ export function LedgerSettingsCard({ state, onSave }: { state: ClassState; onSav
   const room = state.room;
   const [visibility, setVisibility] = useState<BalanceVisibility>(room?.balanceVisibility ?? 'EVERYONE');
   const [info, setInfo] = useState(room?.paymentInfo ?? '');
+  const [open, setOpen] = useState(false);
   if (!room) return null;
   const changed = visibility !== room.balanceVisibility || info.trim() !== room.paymentInfo;
   return (
-    <div className="card stack">
-      <div className="bold">Ledger settings</div>
-      <label className="small semibold muted">
-        Who can see every balance
-        <select value={visibility} style={{ display: 'block', width: '100%', marginTop: 4 }} onChange={(e) => setVisibility(e.target.value as BalanceVisibility)}>
-          {BALANCE_VISIBILITIES.map((v) => (
-            <option key={v} value={v}>
-              {VISIBILITY_LABELS[v]}
-            </option>
-          ))}
-        </select>
-      </label>
-      <p className="small muted" style={{ margin: 0 }}>
-        Everyone always sees their own records, the fund totals and the pay-outs. The Mayor and the treasurers always see everything.
-      </p>
-      <label className="small semibold muted">
-        How to pay (shown to the class)
-        <textarea value={info} rows={3} maxLength={500} placeholder="e.g. GCash 09XX XXX XXXX, or cash to the treasurer" style={{ display: 'block', width: '100%', marginTop: 4 }} onChange={(e) => setInfo(e.target.value)} />
-      </label>
-      <button type="button" className="btn outline" disabled={!changed} onClick={() => onSave(visibility, info)}>
-        Save ledger settings
+    <>
+      <button type="button" className="btn outline" style={{ alignSelf: 'flex-start' }} onClick={() => setOpen(true)}>
+        Ledger settings
       </button>
-    </div>
+      {open && (
+        <Dialog
+          title="Ledger settings"
+          onClose={() => setOpen(false)}
+          actions={
+            <>
+              <button className="btn text" onClick={() => setOpen(false)}>
+                Cancel
+              </button>
+              <button className="btn solid" disabled={!changed} onClick={() => (onSave(visibility, info), setOpen(false))}>
+                Save
+              </button>
+            </>
+          }
+        >
+          <div className="stack">
+            <Field label="Who can see every balance" help="Everyone always sees their own records, the fund totals and the pay-outs. The Mayor and the treasurers always see everything.">
+              <select value={visibility} onChange={(e) => setVisibility(e.target.value as BalanceVisibility)}>
+                {BALANCE_VISIBILITIES.map((v) => (
+                  <option key={v} value={v}>
+                    {VISIBILITY_LABELS[v]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="How to pay (shown to the class)">
+              <textarea value={info} rows={3} maxLength={500} placeholder="e.g. GCash 09XX XXX XXXX, or cash to the treasurer" onChange={(e) => setInfo(e.target.value)} />
+            </Field>
+          </div>
+        </Dialog>
+      )}
+    </>
   );
 }
 
@@ -357,8 +371,11 @@ export function LedgerTab({
   onUndoCharge,
   onRecordPayout,
   onSaveSettings,
+  extras,
 }: {
   state: ClassState;
+  /** Shown under the fund summary: the statement and the payment claims. */
+  extras?: ReactNode;
   onSaveSettings: (visibility: BalanceVisibility, paymentInfo: string) => void;
   onDeleteRecord: (record: LedgerRecord, reason: string) => void;
   onUndoCharge: (batch: ChargeBatch, reason: string) => void;
@@ -375,6 +392,7 @@ export function LedgerTab({
         <div className="stack">
           <LedgerSummaryCard state={state} />
           {state.can('RECORDS_MANAGE') && <div className="semibold muted">{myBalanceLine(state.balanceOf(state.myUid))}</div>}
+          {extras}
           {state.can('RECORDS_MANAGE') && <LedgerSettingsCard key={`${state.room?.balanceVisibility}|${state.room?.paymentInfo}`} state={state} onSave={onSaveSettings} />}
         </div>
         <div className="stack">

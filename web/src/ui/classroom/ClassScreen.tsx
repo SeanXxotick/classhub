@@ -134,8 +134,6 @@ function ClassScreen() {
             {tab === 'HOME' && room.timetableEnabled !== false && <TodayCard state={state} />}
             {tab === 'SCHEDULE' && room.timetableEnabled !== false && <TimetableCard state={state} />}
             {tab === 'SCHEDULE' && room.timetableEnabled !== false && <AttendanceCard state={state} />}
-            {tab === 'LEDGER' && <StatementCard state={state} />}
-            {tab === 'LEDGER' && <ClaimsCard state={state} />}
           </div>
         )}
         {state.loading ? (
@@ -151,6 +149,12 @@ function ClassScreen() {
         ) : tab === 'LEDGER' ? (
           <LedgerTab
             state={state}
+            extras={
+              <>
+                <StatementCard state={state} />
+                <ClaimsCard state={state} />
+              </>
+            }
             onDeleteRecord={actions.deleteRecord}
             onUndoCharge={actions.undoCharge}
             onSaveSettings={(visibility, info) => actions.saveLedgerSettings(visibility, info)}

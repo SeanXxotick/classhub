@@ -743,7 +743,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
         {students.map((m) => (
           <label key={m.id} className="row">
             <span className="grow">{m.name}</span>
-            <select value={marks[m.id] ?? 'PRESENT'} aria-label={`Attendance of ${m.name}`} style={{ width: 'auto' }} onChange={(e) => setMarks({ ...marks, [m.id]: e.target.value as AttendanceMark })}>
+            <select className="input" value={marks[m.id] ?? 'PRESENT'} aria-label={`Attendance of ${m.name}`} style={{ width: 'auto', minHeight: 40, padding: '6px 10px' }} onChange={(e) => setMarks({ ...marks, [m.id]: e.target.value as AttendanceMark })}>
               <option value="PRESENT">Present</option>
               <option value="LATE">Late</option>
               <option value="ABSENT">Absent</option>
@@ -778,6 +778,8 @@ export function AttendanceCard({ state }: { state: ClassState }) {
       {late > 0 && <Badge tone="warning">{`${late} late`}</Badge>}
     </>
   );
+  // Nothing to show until attendance has been taken at least once.
+  if (Object.keys(totals).length === 0 && courseIds.length === 0 && perCourse.length === 0) return null;
   return (
     <>
       <Section title="My attendance">
