@@ -24,7 +24,7 @@
     {
       "target": "web",
       "public": "web/dist",
-      "ignore": ["**/.*", "**/node_modules/**"],
+      "ignore": ["**/node_modules/**"],
       "rewrites": [
         { "source": "**", "destination": "/index.html" }
       ],
