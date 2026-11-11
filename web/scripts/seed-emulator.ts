@@ -4,11 +4,11 @@
  * Invented names only. Run from web/ while the emulators are up:  npx vite-node scripts/seed-emulator.ts
  */
 import { initializeApp } from 'firebase/app';
-import { addDoc, collection, connectFirestoreEmulator, doc, initializeFirestore, setDoc, updateDoc, type Firestore } from 'firebase/firestore';
+import { addDoc, collection, connectFirestoreEmulator, doc, getDocs, initializeFirestore, setDoc, updateDoc, type Firestore } from 'firebase/firestore';
 import { createClass } from '../src/data/classes';
 import { approveJoinRequest, requestToJoin } from '../src/data/membership';
 import { addPayment, addWithdrawal, chargeStudents } from '../src/data/ledgerStore';
-import { confirmClaim, manilaDay, newAnnouncement, newClaim, newMeeting, saveAnnouncement, saveAttendance, saveMeeting, sendClaim } from '../src/data/features';
+import { addComment, confirmClaim, manilaDay, newAnnouncement, setVote, newClaim, newMeeting, saveAnnouncement, saveAttendance, saveMeeting, sendClaim } from '../src/data/features';
 
 const PROJECT = 'demo-classhub';
 const PASSWORD = 'classhub123';
@@ -93,7 +93,17 @@ async function main() {
   }
 
   // News
-  await saveAnnouncement(m, mayor.uid, classId, newAnnouncement({ title: 'Class shirt sizes due Friday', body: 'Send your size to the Mayor.\nSmall, medium, large or extra large.', pinned: true }));
+  const shirtId = await saveAnnouncement(m, mayor.uid, classId, newAnnouncement({ title: 'Class shirt sizes due Friday', body: 'Send your size to the Mayor.\nSmall, medium, large or extra large.', pinned: true }));
+  const shirt = newAnnouncement({ id: shirtId, title: 'Class shirt sizes due Friday', createdByUid: mayor.uid });
+  await addComment(as(others[0].uid), others[0], classId, shirt, '', 'How much is the shirt?', mayor.uid);
+  await addComment(as(others[1].uid), others[1], classId, shirt, '', 'Can we choose the color?', mayor.uid);
+  const asked = (await getDocs(collection(m, 'classes', classId, 'comments'))).docs.find((d) => d.get('uid') === others[0].uid)!;
+  await addComment(m, mayor, classId, shirt, asked.id, '250 pesos, to be charged next week.', others[0].uid);
+  await addComment(as(student.uid), student, classId, shirt, asked.id, 'Thank you!', mayor.uid);
+  for (const [i, s] of [student, ...others].entries()) {
+    await setVote(as(s.uid), classId, s.uid, shirtId, i === 3 ? -1 : 1);
+    if (i < 3) await setVote(as(s.uid), classId, s.uid, asked.id, 1);
+  }
   await saveAnnouncement(m, mayor.uid, classId, newAnnouncement({ title: 'No uniform on Wednesday', body: 'Wear the organization shirt instead.' }));
 
   // Timetable: a meeting on every weekday, and two taken attendance sheets

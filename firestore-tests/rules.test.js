@@ -628,6 +628,91 @@ async function main() {
     await assertFails(getDocs(collection(db('mayor'), `classes/${CLASS}/outbox`)));
   });
 
+  await test('Comments: members comment under their own name, one level of replies, count kept by the same batch', async () => {
+    const P = `classes/${CLASS}/announcements`;
+    const C = `classes/${CLASS}/comments`;
+    const now = Date.now();
+    const post = { title: 'Quiz moved', body: '', pinned: false, createdByUid: 'mayor', createdAtMillis: now, editedAtMillis: 0 };
+    await assertSucceeds(setDoc(doc(db('mayor'), `${P}/p1`), post));
+    await assertFails(setDoc(doc(db('mayor'), `${P}/p9`), { ...post, commentCount: 5 }));
+    const read = async (path) => {
+      let data;
+      await admin(async (a) => (data = (await getDoc(doc(a, path))).data()));
+      return data;
+    };
+    const nameOf = async (who) => (await read(`classes/${CLASS}/members/${who}`)).name;
+    const names = { student: await nameOf('student'), mayor: await nameOf('mayor') };
+    const add = (who, id, fields = {}, bump = {}) => {
+      const d = db(who);
+      const b = writeBatch(d);
+      b.set(doc(d, `${C}/${id}`), { postId: 'p1', parentId: '', uid: who, name: names[who], text: 'Hello', createdAtMillis: Date.now(), removedAtMillis: 0, ...fields });
+      b.update(doc(d, `${P}/p1`), { commentCount: increment(1), lastCommentId: id, ...bump });
+      return b.commit();
+    };
+    await assertSucceeds(add('student', 'c1'));
+    await assertSucceeds(add('mayor', 'r1', { parentId: 'c1' }));
+    expect((await read(`${P}/p1`)).commentCount === 2, 'the count should be 2');
+    await assertFails(add('student', 'c2', { name: 'Mayor' }));
+    await assertFails(add('student', 'c2', { uid: 'mayor' }));
+    await assertFails(add('student', 'c2', { text: '  ' }));
+    await assertFails(add('student', 'c2', { text: 'x'.repeat(501) }));
+    await assertFails(add('student', 'c2', { removedAtMillis: 5 }));
+    await assertFails(add('student', 'c2', { extra: 1 }));
+    await assertFails(add('student', 'c2', { parentId: 'r1' }));
+    await assertFails(add('student', 'c2', { parentId: 'nothing' }));
+    await assertFails(add('student', 'c2', {}, { commentCount: increment(2) }));
+    await assertFails(add('student', 'c2', {}, { title: 'Hacked' }));
+    await assertFails(add('student', 'c2', {}, { lastCommentId: 'c1' }));
+    // Not without the count, and no count without a new comment.
+    await assertFails(setDoc(doc(db('student'), `${C}/c3`), { postId: 'p1', parentId: '', uid: 'student', name: names.student, text: 'Hi', createdAtMillis: Date.now(), removedAtMillis: 0 }));
+    await assertFails(updateDoc(doc(db('student'), `${P}/p1`), { commentCount: increment(1), lastCommentId: 'c1' }));
+    await assertFails(updateDoc(doc(db('student'), `${P}/p1`), { commentCount: increment(1), lastCommentId: 'ghost' }));
+    await assertFails(updateDoc(doc(db('student'), `${P}/p1`), { pinned: true }));
+    // An officer edits the announcement but not its count.
+    await assertSucceeds(updateDoc(doc(db('mayor'), `${P}/p1`), { title: 'Quiz moved to Friday', editedAtMillis: Date.now() }));
+    await assertFails(updateDoc(doc(db('mayor'), `${P}/p1`), { commentCount: 0 }));
+    // Outsiders see and write nothing.
+    await assertFails(getDoc(doc(db('outsider'), `${C}/c1`)));
+    await assertSucceeds(getDocs(query(collection(db('student'), C), where('postId', '==', 'p1'))));
+    // Removing: the writer or an announcements officer, once, text blanked; never an edit.
+    await assertFails(updateDoc(doc(db('student'), `${C}/c1`), { text: 'Edited' }));
+    await assertFails(updateDoc(doc(db('student'), `${C}/r1`), { text: '', removedAtMillis: Date.now() }));
+    await assertFails(updateDoc(doc(db('student'), `${C}/c1`), { text: '', removedAtMillis: Date.now(), name: 'X' }));
+    await assertSucceeds(updateDoc(doc(db('student'), `${C}/c1`), { text: '', removedAtMillis: Date.now() }));
+    await assertFails(updateDoc(doc(db('student'), `${C}/c1`), { text: '', removedAtMillis: Date.now() }));
+    await assertSucceeds(updateDoc(doc(db('mayor'), `${C}/r1`), { text: '', removedAtMillis: Date.now() }));
+    await assertFails(deleteDoc(doc(db('student'), `${C}/c1`)));
+    // Comments switched off.
+    await assertSucceeds(updateDoc(doc(db('mayor'), `${P}/p1`), { commentsOff: true }));
+    await assertFails(add('student', 'c4'));
+    await assertSucceeds(updateDoc(doc(db('mayor'), `${P}/p1`), { commentsOff: false }));
+    await assertSucceeds(add('student', 'c4'));
+    // The notice for a comment.
+    const notice = (who, fields) => setDoc(doc(db(who), `classes/${CLASS}/outbox/n-${who}-${Math.random().toString(36).slice(2)}`),
+      { kind: 'COMMENT', audience: 'USER', audienceId: 'mayor', title: 'Hello', body: '', createdByUid: who, createdAtMillis: Date.now(), ...fields });
+    await assertSucceeds(notice('student', {}));
+    await assertFails(notice('student', { audience: 'CLASS' }));
+    await assertFails(notice('outsider', {}));
+    await assertSucceeds(deleteDoc(doc(db('mayor'), `${C}/c4`)));
+    await assertSucceeds(deleteDoc(doc(db('mayor'), `${C}/c1`)));
+    await assertSucceeds(deleteDoc(doc(db('mayor'), `${C}/r1`)));
+    await assertSucceeds(deleteDoc(doc(db('mayor'), `${P}/p1`)));
+  });
+
+  await test('Votes: one document per member, written only by them, read by the class', async () => {
+    const V = `classes/${CLASS}/votes`;
+    await assertSucceeds(setDoc(doc(db('student'), `${V}/student`), { marks: { p1: 1 } }, { merge: true }));
+    await assertSucceeds(setDoc(doc(db('student'), `${V}/student`), { marks: { p1: deleteField(), c1: -1 } }, { merge: true }));
+    await assertFails(setDoc(doc(db('student'), `${V}/mayor`), { marks: { p1: 1 } }));
+    await assertFails(setDoc(doc(db('student'), `${V}/student`), { marks: { p1: 1 }, extra: 1 }));
+    await assertFails(setDoc(doc(db('student'), `${V}/student`), { marks: 'up' }));
+    await assertFails(setDoc(doc(db('outsider'), `${V}/outsider`), { marks: { p1: 1 } }));
+    await assertSucceeds(getDocs(collection(db('mayor'), V)));
+    await assertFails(getDocs(collection(db('outsider'), V)));
+    await assertFails(deleteDoc(doc(db('mayor'), `${V}/student`)));
+    await assertSucceeds(deleteDoc(doc(db('student'), `${V}/student`)));
+  });
+
   await test('A device token belongs to its owner only', async () => {
     const device = (who, fields = {}) => ({ uid: who, token: 'tok-' + who, platform: 'WEB', muted: [], updatedAtMillis: Date.now(), ...fields });
     await assertSucceeds(setDoc(doc(db('student'), 'devices/student_a'), device('student')));

@@ -63,7 +63,7 @@ export function tokensFor(kind, devices) {
 
 /** Where a tap on the notification opens. */
 export function linkOf(notice, classId) {
-  const tab = { ANNOUNCEMENT: 'NEWS', SCHEDULE_NEW: 'SCHEDULE', DUE_TOMORROW: 'SCHEDULE', NO_CLASS: 'SCHEDULE', CLAIM_SENT: 'LEDGER', CLAIM_DECIDED: 'LEDGER', JOIN_REQUEST: 'MEMBERS' }[notice.kind];
+  const tab = { ANNOUNCEMENT: 'NEWS', COMMENT: 'NEWS', SCHEDULE_NEW: 'SCHEDULE', DUE_TOMORROW: 'SCHEDULE', NO_CLASS: 'SCHEDULE', CLAIM_SENT: 'LEDGER', CLAIM_DECIDED: 'LEDGER', JOIN_REQUEST: 'MEMBERS' }[notice.kind];
   return `/class/${classId}${tab ? `?tab=${tab}` : ''}`;
 }
 

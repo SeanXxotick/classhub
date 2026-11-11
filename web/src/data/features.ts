@@ -1,5 +1,5 @@
 import { queueNotice } from './notify';
-import { collection, deleteDoc, doc, increment, query, setDoc, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
+import { collection, deleteDoc, deleteField, doc, getDocs, increment, query, setDoc, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
 import { Ledger } from '../domain/ledger';
 import { nowMillis, newId } from './dataEnv';
 import { UserError } from './errors';
@@ -118,32 +118,49 @@ export interface Announcement {
   createdByUid: string;
   createdAtMillis: number;
   editedAtMillis: number;
+  /** How many comments and replies were ever added (removed ones keep their place, so they count). */
+  commentCount: number;
+  lastCommentId: string;
+  /** An officer switched comments off for this announcement. */
+  commentsOff: boolean;
 }
 
 export const newAnnouncement = (a: Partial<Announcement>): Announcement => ({
-  id: '', title: '', body: '', pinned: false, createdByUid: '', createdAtMillis: 0, editedAtMillis: 0, ...a,
+  id: '', title: '', body: '', pinned: false, createdByUid: '', createdAtMillis: 0, editedAtMillis: 0, commentCount: 0, lastCommentId: '', commentsOff: false, ...a,
 });
 
 export const announcementsCol = (db: Firestore, classId: string) => sub(db, classId, 'announcements');
 
-/** Posts a new announcement, or saves an edited one (ANNOUNCEMENTS_MANAGE). */
-export async function saveAnnouncement(db: Firestore, actorUid: string, classId: string, post: Announcement): Promise<void> {
+/** Posts a new announcement, or saves an edited one (ANNOUNCEMENTS_MANAGE). Returns its id. */
+export async function saveAnnouncement(db: Firestore, actorUid: string, classId: string, post: Announcement): Promise<string> {
   const title = post.title.trim().slice(0, 120);
   if (!title) throw new UserError('NAME_MISSING', 'Give the announcement a title.');
   const body = post.body.trim().slice(0, 4000);
   if (!post.id) {
-    const fresh = newAnnouncement({ title, body, pinned: post.pinned, createdByUid: actorUid, createdAtMillis: nowMillis() });
-    await explainRefusal(db, classId, () => setDoc(doc(announcementsCol(db, classId), newId()), withoutId(fresh)));
+    const fresh = newAnnouncement({ title, body, pinned: post.pinned, commentsOff: post.commentsOff, createdByUid: actorUid, createdAtMillis: nowMillis() });
+    const id = newId();
+    await explainRefusal(db, classId, () => setDoc(doc(announcementsCol(db, classId), id), withoutId(fresh)));
     void queueNotice(db, actorUid, classId, { kind: 'ANNOUNCEMENT', audience: 'CLASS', title: `Announcement: ${title}`, body });
-  } else {
-    await explainRefusal(db, classId, () => updateDoc(doc(announcementsCol(db, classId), post.id), { title, body, pinned: post.pinned, editedAtMillis: nowMillis() }));
+    return id;
   }
+  await explainRefusal(db, classId, () =>
+    updateDoc(doc(announcementsCol(db, classId), post.id), { title, body, pinned: post.pinned, commentsOff: post.commentsOff, editedAtMillis: nowMillis() }));
+  return post.id;
 }
 
 export const setPinned = (db: Firestore, classId: string, postId: string, pinned: boolean) =>
   updateDoc(doc(announcementsCol(db, classId), postId), { pinned });
 
-export const deleteAnnouncement = (db: Firestore, classId: string, postId: string) => deleteDoc(doc(announcementsCol(db, classId), postId));
+/** Deletes an announcement together with its comments (ANNOUNCEMENTS_MANAGE). */
+export async function deleteAnnouncement(db: Firestore, classId: string, postId: string): Promise<void> {
+  const comments = await getDocs(query(commentsCol(db, classId), where('postId', '==', postId)));
+  for (let i = 0; i < comments.docs.length; i += 400) {
+    const batch = writeBatch(db);
+    for (const d of comments.docs.slice(i, i + 400)) batch.delete(d.ref);
+    await batch.commit();
+  }
+  await deleteDoc(doc(announcementsCol(db, classId), postId));
+}
 
 /** Pinned first, then newest. */
 export function useAnnouncements(db: Firestore, classId: string, enabled: boolean) {
@@ -169,6 +186,83 @@ export function markSeen(db: Firestore, classId: string, uid: string, postIds: s
 
 export const useSeen = (db: Firestore, classId: string, enabled: boolean) =>
   useQueryList<SeenMarks>(`v2/seen/${classId}/${enabled}`, enabled ? sub(db, classId, 'seen') : null, (d) => fromDoc<SeenMarks>({ id: '', announcements: {} }, d));
+
+// ---------------------------------------------------------------- Comments and votes
+
+/** A comment under an announcement. parentId is '' for a comment and the comment's id for a reply to it. */
+export interface Comment {
+  id: string;
+  postId: string;
+  parentId: string;
+  uid: string;
+  /** The writer's name when it was written; the screen prefers their current member name. */
+  name: string;
+  text: string;
+  createdAtMillis: number;
+  /** Not 0 once removed: the text is gone but the comment keeps its place. */
+  removedAtMillis: number;
+}
+
+export const newComment = (c: Partial<Comment>): Comment => ({ id: '', postId: '', parentId: '', uid: '', name: '', text: '', createdAtMillis: 0, removedAtMillis: 0, ...c });
+export const commentsCol = (db: Firestore, classId: string) => sub(db, classId, 'comments');
+
+/**
+ * Adds a comment (parentId '') or a reply, and raises the announcement's count in the same batch.
+ * notifyUid is who should hear about it: the announcement's author, or the person replied to.
+ */
+export async function addComment(
+  db: Firestore, actor: { uid: string; name: string }, classId: string, post: Announcement, parentId: string, text: string, notifyUid: string,
+): Promise<void> {
+  const body = text.trim().slice(0, 500);
+  if (!body) throw new UserError('NAME_MISSING', 'Write a comment first.');
+  const id = newId();
+  const comment = newComment({ postId: post.id, parentId, uid: actor.uid, name: actor.name, text: body, createdAtMillis: nowMillis() });
+  const batch = writeBatch(db);
+  batch.set(doc(commentsCol(db, classId), id), withoutId(comment));
+  batch.update(doc(announcementsCol(db, classId), post.id), { commentCount: increment(1), lastCommentId: id });
+  await explainRefusal(db, classId, () => batch.commit());
+  if (notifyUid && notifyUid !== actor.uid) {
+    const title = parentId ? `${actor.name} replied to your comment` : `${actor.name} commented on "${post.title}"`;
+    void queueNotice(db, actor.uid, classId, { kind: 'COMMENT', audience: 'USER', audienceId: notifyUid, title, body });
+  }
+}
+
+/** Removes a comment's text (its writer, or ANNOUNCEMENTS_MANAGE). It keeps its place in the thread. */
+export const removeComment = (db: Firestore, classId: string, commentId: string) =>
+  updateDoc(doc(commentsCol(db, classId), commentId), { text: '', removedAtMillis: nowMillis() });
+
+/** The comments of one announcement, oldest first. Loaded only while its thread is open. */
+export function useComments(db: Firestore, classId: string, postId: string) {
+  const live = useQueryList<Comment>(`v2/comments/${classId}/${postId}`, query(commentsCol(db, classId), where('postId', '==', postId)), (d) => fromDoc(newComment({}), d));
+  return { ...live, data: live.data ? [...live.data].sort((a, b) => a.createdAtMillis - b.createdAtMillis) : live.data };
+}
+
+/** One member's votes: the id of an announcement or comment mapped to 1 (up) or -1 (down). */
+export interface VoteMarks {
+  id: string;
+  marks: Record<string, number>;
+}
+
+/** Casts, changes or (value 0) takes back this member's vote on an announcement or comment. */
+export function setVote(db: Firestore, classId: string, uid: string, targetId: string, value: 1 | -1 | 0): Promise<void> {
+  return setDoc(doc(db, 'classes', classId, 'votes', uid), { marks: { [targetId]: value === 0 ? deleteField() : value } }, { merge: true });
+}
+
+export const useVotes = (db: Firestore, classId: string, enabled: boolean) =>
+  useQueryList<VoteMarks>(`v2/votes/${classId}/${enabled}`, enabled ? sub(db, classId, 'votes') : null, (d) => fromDoc<VoteMarks>({ id: '', marks: {} }, d));
+
+/** Up and down counts for one target, counting current members only, and what this member chose. */
+export function tally(votes: VoteMarks[], targetId: string, memberIds: Set<string>, myUid: string): { up: number; down: number; mine: number } {
+  const result = { up: 0, down: 0, mine: 0 };
+  for (const v of votes) {
+    const mark = v.marks[targetId];
+    if ((mark !== 1 && mark !== -1) || !memberIds.has(v.id)) continue;
+    if (mark === 1) result.up++;
+    else result.down++;
+    if (v.id === myUid) result.mine = mark;
+  }
+  return result;
+}
 
 // ---------------------------------------------------------------- Timetable
 

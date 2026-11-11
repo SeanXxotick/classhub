@@ -477,6 +477,7 @@ service cloud.firestore {
           || (d.kind == 'CLAIM_DECIDED' && d.audience == 'USER' && can(c, 'RECORDS_MANAGE'))
           || (d.kind == 'JOIN_REQUEST' && d.audience == 'PERMISSION' && d.audienceId == 'MEMBERS_MANAGE' && exists(requestPath(c, uid())))
           || (d.kind == 'JOIN_APPROVED' && d.audience == 'USER' && can(c, 'MEMBERS_MANAGE'))
+          || (d.kind == 'COMMENT' && d.audience == 'USER' && isMember(c))
         );
     }
 
@@ -576,14 +577,46 @@ service cloud.firestore {
 
     // ---- Announcements and the timetable
 
+    // commentCount and lastCommentId are kept by the comment batch (see the member update below);
+    // commentsOff is the officer's switch for one announcement.
     function isAnnouncement() {
       let d = request.resource.data;
-      return hasFields(d, ['title', 'body', 'pinned', 'createdByUid', 'createdAtMillis', 'editedAtMillis'])
+      return d.keys().hasAll(['title', 'body', 'pinned', 'createdByUid', 'createdAtMillis', 'editedAtMillis'])
+        && d.keys().hasOnly(['title', 'body', 'pinned', 'createdByUid', 'createdAtMillis', 'editedAtMillis', 'commentCount', 'lastCommentId', 'commentsOff', 'id'])
+        && d.get('id', '') == ''
         && isFilled(d.title, 120)
         && isText(d.body, 4000)
         && d.pinned is bool
         && d.createdAtMillis is int
-        && d.editedAtMillis is int;
+        && d.editedAtMillis is int
+        && d.get('commentCount', 0) is int
+        && d.get('lastCommentId', '') is string
+        && d.get('commentsOff', false) is bool;
+    }
+
+    function postPath(c, p) {
+      return /databases/$(database)/documents/classes/$(c)/announcements/$(p);
+    }
+
+    function commentPath(c, id) {
+      return /databases/$(database)/documents/classes/$(c)/comments/$(id);
+    }
+
+    // A comment on an announcement, or a reply to a top-level comment of the same announcement (one level only).
+    // The name must be the writer's own member name, so nobody can comment as someone else.
+    function isComment(c) {
+      let d = request.resource.data;
+      return hasFields(d, ['postId', 'parentId', 'uid', 'name', 'text', 'createdAtMillis', 'removedAtMillis'])
+        && d.uid == uid()
+        && d.name == get(memberPath(c, uid())).data.name
+        && isFilled(d.text, 500)
+        && isRecentMillis(d.createdAtMillis)
+        && d.removedAtMillis == 0
+        && isFilled(d.postId, 128)
+        && isText(d.parentId, 128)
+        && get(postPath(c, d.postId)).data.get('commentsOff', false) == false
+        && (d.parentId == ''
+          || (get(commentPath(c, d.parentId)).data.postId == d.postId && get(commentPath(c, d.parentId)).data.parentId == ''));
     }
 
     function isMeeting() {
@@ -907,11 +940,47 @@ service cloud.firestore {
         allow create: if can(classId, 'ANNOUNCEMENTS_MANAGE') && isOpen(classId) && isAnnouncement()
           && request.resource.data.createdByUid == uid()
           && isRecentMillis(request.resource.data.createdAtMillis)
-          && request.resource.data.editedAtMillis == 0;
-        allow update: if can(classId, 'ANNOUNCEMENTS_MANAGE') && isOpen(classId) && isAnnouncement()
-          && request.resource.data.createdByUid == resource.data.createdByUid
-          && request.resource.data.createdAtMillis == resource.data.createdAtMillis;
+          && request.resource.data.editedAtMillis == 0
+          && request.resource.data.get('commentCount', 0) == 0;
+        // An officer edits the announcement but never its comment count. Any member raises the count by
+        // exactly one, and only in the same batch that adds the comment it names.
+        allow update: if (can(classId, 'ANNOUNCEMENTS_MANAGE') && isOpen(classId) && isAnnouncement()
+            && request.resource.data.createdByUid == resource.data.createdByUid
+            && request.resource.data.createdAtMillis == resource.data.createdAtMillis
+            && request.resource.data.get('commentCount', 0) == resource.data.get('commentCount', 0))
+          || (isMember(classId) && isOpen(classId)
+            && changesOnly(['commentCount', 'lastCommentId'])
+            && request.resource.data.commentCount == resource.data.get('commentCount', 0) + 1
+            && request.resource.data.lastCommentId is string
+            && !exists(commentPath(classId, request.resource.data.lastCommentId))
+            && getAfter(commentPath(classId, request.resource.data.lastCommentId)).data.postId == postId);
         allow delete: if can(classId, 'ANNOUNCEMENTS_MANAGE');
+      }
+
+      // Comments and replies under announcements. Removing one blanks its text and keeps its place, so
+      // the replies under it still make sense. Nobody edits a comment.
+      match /comments/{commentId} {
+        allow read: if isMember(classId);
+        allow create: if isMember(classId) && isOpen(classId) && isComment(classId)
+          && getAfter(postPath(classId, request.resource.data.postId)).data.lastCommentId == commentId;
+        allow update: if isMember(classId)
+          && (resource.data.uid == uid() || can(classId, 'ANNOUNCEMENTS_MANAGE'))
+          && resource.data.removedAtMillis == 0
+          && changesOnly(['text', 'removedAtMillis'])
+          && request.resource.data.text == ''
+          && isRecentMillis(request.resource.data.removedAtMillis);
+        allow delete: if can(classId, 'ANNOUNCEMENTS_MANAGE') || isOwnerClosing(classId);
+      }
+
+      // Each member's up and down votes on announcements and comments: one document per member holding
+      // a map from the announcement or comment id to 1 or -1. Only they write it; every member may read it.
+      match /votes/{voterId} {
+        allow read: if isMember(classId);
+        allow create, update: if isMember(classId) && voterId == uid()
+          && request.resource.data.keys().hasOnly(['marks'])
+          && request.resource.data.marks is map
+          && request.resource.data.marks.size() <= 3000;
+        allow delete: if (signedIn() && voterId == uid()) || isOwnerClosing(classId);
       }
 
       // Which announcements each student has opened. Only they write it; every member may read it.

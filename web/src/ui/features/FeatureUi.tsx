@@ -4,7 +4,15 @@ import { friendlyMessage } from '../../data/errors';
 import {
   CLAIM_METHODS,
   CLAIM_METHOD_LABELS,
+  addComment,
   addNoClass,
+  removeComment,
+  setVote,
+  tally,
+  useComments,
+  useVotes,
+  type Comment,
+  type VoteMarks,
   cancelClaim,
   clockText,
   confirmClaim,
@@ -40,7 +48,7 @@ import { Ledger } from '../../domain/ledger';
 import { byLastName, listName } from '../../data/models';
 import { formatMoney, parsePesos } from '../../domain/money';
 import { CourseDot, Dialog, Field, shortDate } from '../common';
-import { Badge, Button, Card, DayHeader, ListRow, Money, Notice, Section, StatusBadge, TypeIcon } from '../../design';
+import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, Section, StatusBadge, TypeIcon } from '../../design';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 
 /** Runs a write and shows the result in the snackbar. */
@@ -325,7 +333,10 @@ export function NewsTab({ state }: { state: ClassState }) {
   const manage = state.can('ANNOUNCEMENTS_MANAGE');
   const posts = useAnnouncements(db, state.classId, true).data;
   const seen = useSeen(db, state.classId, true).data ?? [];
+  const votes = useVotes(db, state.classId, true).data ?? [];
+  const memberIds = useMemo(() => new Set(state.members.map((m) => m.id)), [state.members]);
   const run = useRun();
+  const [openId, setOpenId] = useState('');
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [seenOf, setSeenOf] = useState<Announcement | null>(null);
   const mySeen = seen.find((s) => s.id === state.myUid)?.announcements ?? {};
@@ -367,7 +378,13 @@ export function NewsTab({ state }: { state: ClassState }) {
               {author(p.createdByUid)} · {shortDate(p.createdAtMillis)}
               {p.editedAtMillis ? ' · edited' : ''}
             </div>
-            <div className="ch-row">
+            <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
+              <VoteBar state={state} votes={votes} memberIds={memberIds} targetId={p.id} />
+              {(!p.commentsOff || p.commentCount > 0) && (
+                <Button size="small" variant={openId === p.id ? 'solid' : 'outline'} icon="comment" aria-expanded={openId === p.id} onClick={() => setOpenId(openId === p.id ? '' : p.id)}>
+                  {p.commentCount === 0 ? 'Comment' : `${p.commentCount} comment${p.commentCount === 1 ? '' : 's'}`}
+                </Button>
+              )}
               <Button size="small" variant="outline" icon="eye" onClick={() => setSeenOf(p)}>
                 {`Seen by ${seenBy(p.id)} of ${state.members.length}`}
               </Button>
@@ -385,6 +402,7 @@ export function NewsTab({ state }: { state: ClassState }) {
                 </Button>
               </div>
             )}
+            {openId === p.id && <Thread state={state} post={p} votes={votes} memberIds={memberIds} />}
           </div>
         </Card>
       ))}
@@ -419,8 +437,147 @@ export function NewsTab({ state }: { state: ClassState }) {
   );
 }
 
+/** Up and down buttons with their counts. Tapping your own choice again takes the vote back. */
+function VoteBar({ state, votes, memberIds, targetId }: { state: ClassState; votes: VoteMarks[]; memberIds: Set<string>; targetId: string }) {
+  const { actions } = useClass();
+  const t = tally(votes, targetId, memberIds, state.myUid);
+  const cast = (value: 1 | -1) =>
+    setVote(db, state.classId, state.myUid, targetId, t.mine === value ? 0 : value).catch((e) => actions.showNotice(friendlyMessage(e)));
+  return (
+    <div className="vote-bar" role="group" aria-label="Votes">
+      <button type="button" className={`vote${t.mine === 1 ? ' on' : ''}`} aria-pressed={t.mine === 1} aria-label={`Upvote, ${t.up} so far`} onClick={() => cast(1)}>
+        <Icon name="up" size={16} />
+        {t.up}
+      </button>
+      <button type="button" className={`vote${t.mine === -1 ? ' on' : ''}`} aria-pressed={t.mine === -1} aria-label={`Downvote, ${t.down} so far`} onClick={() => cast(-1)}>
+        <Icon name="down" size={16} />
+        {t.down}
+      </button>
+    </div>
+  );
+}
+
+/** The comments under one announcement: comments by score, replies under each in the order they came. */
+function Thread({ state, post, votes, memberIds }: { state: ClassState; post: Announcement; votes: VoteMarks[]; memberIds: Set<string> }) {
+  const run = useRun();
+  const comments = useComments(db, state.classId, post.id).data;
+  const manage = state.can('ANNOUNCEMENTS_MANAGE');
+  const [text, setText] = useState('');
+  const [replyTo, setReplyTo] = useState<{ top: Comment; to: Comment } | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const me = { uid: state.myUid, name: state.members.find((m) => m.id === state.myUid)?.name ?? '' };
+  const nameOf = (c: Comment) => state.members.find((m) => m.id === c.uid)?.name ?? c.name;
+  const score = (c: Comment) => {
+    const t = tally(votes, c.id, memberIds, state.myUid);
+    return t.up - t.down;
+  };
+  const tops = (comments ?? []).filter((c) => !c.parentId).sort((a, b) => score(b) - score(a) || a.createdAtMillis - b.createdAtMillis);
+
+  const line = (c: Comment, top: Comment) => (
+    <div className="comment" key={c.id}>
+      <div className="ch-small ch-muted">
+        <span className="bold comment-name">{nameOf(c)}</span> · {shortDate(c.createdAtMillis)}
+      </div>
+      {c.removedAtMillis ? (
+        <div className="ch-muted" style={{ fontStyle: 'italic' }}>Comment removed</div>
+      ) : (
+        <>
+          <div className="comment-text">{c.text}</div>
+          <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
+            <VoteBar state={state} votes={votes} memberIds={memberIds} targetId={c.id} />
+            {!post.commentsOff && (
+              <button
+                type="button"
+                className="btn text"
+                onClick={() => {
+                  setReplyTo({ top, to: c });
+                  setReplyText(c.id === top.id ? '' : `@${nameOf(c)} `);
+                }}
+              >
+                Reply
+              </button>
+            )}
+            {(c.uid === state.myUid || manage) && (
+              <button type="button" className="btn text" onClick={() => window.confirm('Remove this comment?') && run('Comment removed.', () => removeComment(db, state.classId, c.id))}>
+                Remove
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="thread">
+      {post.commentsOff ? (
+        <Notice tone="info">Comments are turned off for this announcement.</Notice>
+      ) : (
+        <div className="stack" style={{ gap: 8 }}>
+          <Field label="Write a comment">
+            <textarea value={text} rows={2} maxLength={500} onChange={(e) => setText(e.target.value)} />
+          </Field>
+          <div className="ch-row">
+            <Button size="small" disabled={!text.trim()} onClick={() => run('Comment posted.', () => addComment(db, me, state.classId, post, '', text, post.createdByUid), () => setText(''))}>
+              Post comment
+            </Button>
+          </div>
+        </div>
+      )}
+      {comments && comments.length === 0 && !post.commentsOff && <div className="ch-small ch-muted">No comments yet.</div>}
+      {tops.map((top) => {
+        const replies = (comments ?? []).filter((c) => c.parentId === top.id);
+        const shown = expanded[top.id] ? replies : replies.slice(0, 3);
+        const hidden = replies.length - shown.length;
+        const replying = replyTo?.top.id === top.id ? replyTo : null;
+        return (
+          <div className="comment-group" key={top.id}>
+            {line(top, top)}
+            {(replies.length > 0 || replying) && (
+              <div className="replies">
+                {shown.map((r) => line(r, top))}
+                {hidden > 0 && (
+                  <button type="button" className="btn text" onClick={() => setExpanded({ ...expanded, [top.id]: true })}>
+                    {`Show ${hidden} more ${hidden === 1 ? 'reply' : 'replies'}`}
+                  </button>
+                )}
+                {replying && (
+                  <div className="stack" style={{ gap: 8 }}>
+                    <Field label={`Reply to ${nameOf(replying.to)}`}>
+                      <textarea autoFocus value={replyText} rows={2} maxLength={500} onChange={(e) => setReplyText(e.target.value)} />
+                    </Field>
+                    <div className="ch-row ch-gap-2">
+                      <Button
+                        size="small"
+                        disabled={!replyText.trim()}
+                        onClick={() =>
+                          run('Reply posted.', () => addComment(db, me, state.classId, post, top.id, replyText, replying.to.uid), () => {
+                            setReplyTo(null);
+                            setExpanded({ ...expanded, [top.id]: true });
+                          })
+                        }
+                      >
+                        Post reply
+                      </Button>
+                      <Button size="small" variant="text" onClick={() => setReplyTo(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function PostDialog({ state, post, onClose }: { state: ClassState; post: Announcement; onClose: () => void }) {
   const run = useRun();
+  const [comments, setComments] = useState(!post.commentsOff);
   const [title, setTitle] = useState(post.title);
   const [body, setBody] = useState(post.body);
   const [pinned, setPinned] = useState(post.pinned);
@@ -436,7 +593,7 @@ function PostDialog({ state, post, onClose }: { state: ClassState; post: Announc
           <button
             className="btn solid"
             disabled={!title.trim()}
-            onClick={() => run(post.id ? 'Announcement saved.' : 'Announcement posted.', () => saveAnnouncement(db, state.myUid, state.classId, { ...post, title, body, pinned }), onClose)}
+            onClick={() => run(post.id ? 'Announcement saved.' : 'Announcement posted.', () => saveAnnouncement(db, state.myUid, state.classId, { ...post, title, body, pinned, commentsOff: !comments }), onClose)}
           >
             {post.id ? 'Save' : 'Post'}
           </button>
@@ -452,6 +609,9 @@ function PostDialog({ state, post, onClose }: { state: ClassState; post: Announc
         </Field>
         <label className="row">
           <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} /> Pin to the top
+        </label>
+        <label className="row">
+          <input type="checkbox" checked={comments} onChange={(e) => setComments(e.target.checked)} /> Allow comments
         </label>
       </div>
     </Dialog>

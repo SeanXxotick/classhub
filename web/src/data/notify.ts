@@ -10,7 +10,7 @@ import { collection, deleteDoc, doc, setDoc, type Firestore } from 'firebase/fir
 import { app } from './firebase';
 import { newId, nowMillis } from './dataEnv';
 
-export const NOTICE_KINDS = ['ANNOUNCEMENT', 'SCHEDULE_NEW', 'DUE_TOMORROW', 'NO_CLASS', 'CLAIM_DECIDED', 'JOIN_APPROVED', 'CLAIM_SENT', 'JOIN_REQUEST'] as const;
+export const NOTICE_KINDS = ['ANNOUNCEMENT', 'SCHEDULE_NEW', 'DUE_TOMORROW', 'NO_CLASS', 'CLAIM_DECIDED', 'JOIN_APPROVED', 'COMMENT', 'CLAIM_SENT', 'JOIN_REQUEST'] as const;
 export type NoticeKind = (typeof NOTICE_KINDS)[number];
 
 /** What each switch in Account says. The last two only ever reach officers. */
@@ -21,6 +21,7 @@ export const NOTICE_LABELS: Record<NoticeKind, string> = {
   NO_CLASS: 'No classes',
   CLAIM_DECIDED: 'My payment claim was confirmed or rejected',
   JOIN_APPROVED: 'I was approved to join a class',
+  COMMENT: 'Comments on my announcements and replies to my comments',
   CLAIM_SENT: 'A student sent a payment claim (officers)',
   JOIN_REQUEST: 'Someone asked to join (officers)',
 };
