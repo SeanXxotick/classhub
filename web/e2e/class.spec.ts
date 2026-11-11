@@ -164,13 +164,19 @@ test.describe.serial('a class from start to finish', () => {
     await expect(page.getByText('Paid out', { exact: true })).toHaveCount(2);
     await page.screenshot({ path: shots('desktop-ledger-officer'), fullPage: true });
 
-    // Deleting a pay-out puts its charge back on the waiting list; undoing a paid-out charge is refused.
+    // Voiding a pay-out puts its charge back on the waiting list.
     await page.locator('.list-row', { hasText: 'Paid out from fund to Prof. Santos' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
-    await page.getByRole('dialog', { name: 'Delete this record?' }).getByRole('button', { name: 'Delete' }).click();
-    await expectNotice(page, 'Pay-out deleted. Its charge is waiting to be paid out again.');
+    await page.getByRole('dialog').getByRole('button', { name: 'Void record' }).click();
+    const confirm = page.getByRole('dialog', { name: 'Void this record?' });
+    // A reason is required.
+    await expect(confirm.getByRole('button', { name: 'Void record' })).toBeDisabled();
+    await confirm.getByLabel('Reason for voiding').fill('Paid to the wrong person');
+    await confirm.getByRole('button', { name: 'Void record' }).click();
+    await expectNotice(page, 'Pay-out voided. Its charge is waiting to be paid out again.');
+    // The voided pay-out stays in the list, marked.
+    await expect(page.locator('.list-row', { hasText: 'Voided' })).toHaveCount(1);
     await expect(fund).toContainText('Waiting to be paid out₱10.00');
-    await page.locator('.list-row', { hasText: 'OR handout' }).first().click();
+    await page.locator('.list-row', { hasText: 'OR handout' }).filter({ hasText: 'Charge ·' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Record pay-out' }).click();
     await page.getByLabel('Paid to (optional)').fill('Prof. Santos');
     await page.getByRole('button', { name: 'Pay out ₱10.00' }).click();
@@ -278,7 +284,7 @@ test.describe.serial('a class from start to finish', () => {
     await signUp(k, kim.first, kim.last, kim.email, `/join/${firstCode}`);
     await expect(k.getByText('That code does not match any class.')).toBeVisible();
     await k.getByLabel('Invite code').fill(newCode.toLowerCase());
-    await k.getByRole('button', { name: 'Join Test Class' }).click();
+    await joinWithApproval(k, page, 'Test Class', classUrl, 'Kim Lee');
     await expect(k.getByText('3 members')).toBeVisible();
     await k.screenshot({ path: shots('phone-dark-home'), fullPage: true });
   });
@@ -298,31 +304,22 @@ test.describe.serial('a class from start to finish', () => {
 
     const code = (await page.locator('.invite-code').textContent())!.trim();
     await k.goto(`/join/${code}`);
-    await k.getByRole('button', { name: 'Join Test Class' }).click();
+    await joinWithApproval(k, page, 'Test Class', classUrl, 'Kim Lee');
     await expect(k.getByText('3 members')).toBeVisible();
     await expect(page.getByText('3 members')).toBeVisible();
   });
 
-  test('a class the student is still in comes back to their list', async () => {
-    // Kim's list entry goes missing while Kim is still a member (a passing sign-in error used to cause this).
+  test('the class is in the student\'s list without a saved copy', async () => {
+    // My classes is a live query on the member entries, so there is no list entry that can go missing.
     const k = kim.page;
-    await k.goto('/account');
-    const classId = classUrl.split('/class/')[1].split(/[/?#]/)[0];
-    const removed = await fetch(`${EMULATOR_DOCS}/users/${await uidOf('Kim Lee')}/memberships/${classId}`, { method: 'DELETE', headers: OWNER });
-    expect(removed.ok).toBe(true);
     await k.goto('/');
-    await expect(k.getByRole('heading', { name: 'Hi, Kim Lee!' })).toBeVisible();
-
-    // Opening the class link loads the class and puts it back in the list.
-    await k.goto(classUrl);
-    await expect(k.getByText('3 members')).toBeVisible();
-    await k.getByRole('button', { name: '‹ Classes' }).click();
     await k.locator('.grid-2').getByRole('link', { name: /Test Class/ }).click();
     await expect(k.getByText('3 members')).toBeVisible();
   });
 
   test('class settings: rename and turn a module off', async () => {
     const { page } = maya;
+    await openTab(page, 'Home');
     await page.getByRole('button', { name: 'Class settings' }).click();
     await page.getByLabel('Class name').fill('Test Class Renamed');
     await page.getByRole('radio', { name: '#DB2777' }).first().click();

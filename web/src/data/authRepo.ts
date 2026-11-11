@@ -11,15 +11,14 @@ import {
   updatePassword,
   type User,
 } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, onSnapshot, setDoc, writeBatch } from 'firebase/firestore';
+import { collectionGroup, doc, getDoc, getDocs, onSnapshot, query, setDoc, where, writeBatch } from 'firebase/firestore';
+import { renameMeEverywhere } from './membership';
 import { FirebaseError } from 'firebase/app';
 import { auth, db } from './firebase';
 import type { AppUser } from './models';
 import { NameRules, type PersonName } from '../domain/nameRules';
 
 const userDoc = (uid: string) => doc(db, 'users', uid);
-const membershipsOf = (uid: string) => collection(db, 'users', uid, 'memberships');
-const classDoc = (classId: string) => doc(db, 'classes', classId);
 
 export type Session = { state: 'loading' } | { state: 'signedOut' } | { state: 'signedIn'; user: AppUser };
 
@@ -99,36 +98,36 @@ export async function sendPasswordReset(email: string): Promise<void> {
   }
 }
 
+/** The user's member entries and waiting join requests in every class (the v2 "My classes" queries). */
+async function myEntries(uid: string) {
+  const [members, requests] = await Promise.all([
+    getDocs(query(collectionGroup(db, 'members'), where('uid', '==', uid))),
+    getDocs(query(collectionGroup(db, 'joinRequests'), where('uid', '==', uid))),
+  ]);
+  return { members: members.docs, requests: requests.docs };
+}
+
 /** Saves a new name on the profile and on the member entry of every class the user is in, in one batch. */
 export async function updateName(name: PersonName): Promise<void> {
   const uid = currentUser().uid;
   const parts = NameRules.cleaned(name);
-  const display = NameRules.display(parts);
-  const memberships = await getDocs(membershipsOf(uid));
-  const batch = writeBatch(db);
-  batch.set(userDoc(uid), { displayName: display, firstName: parts.first, middleInitial: parts.middleInitial, lastName: parts.last }, { merge: true });
-  // Only entries that still exist and show a different name: classes the user was removed from are skipped.
-  const entries = memberships.docs.map((m) => doc(db, 'classes', m.id, 'members', uid));
-  const current = await Promise.all(entries.map((entry) => getDoc(entry).catch(() => null)));
-  entries.forEach((entry, i) => {
-    if (current[i]?.exists() && current[i]!.get('name') !== display) batch.update(entry, { name: display });
+  await renameMeEverywhere(db, uid, NameRules.display(parts), {
+    displayName: NameRules.display(parts), firstName: parts.first, middleInitial: parts.middleInitial, lastName: parts.last,
   });
-  await batch.commit();
 }
 
 /** Names of the classes where the signed-in user is the Mayor. They must hand those over before deleting their account. */
 export async function classesIOwn(): Promise<string[]> {
   const uid = auth.currentUser?.uid;
   if (!uid) return [];
-  const memberships = (await getDocs(membershipsOf(uid))).docs;
-  // A class the user was removed from can no longer be read; they do not own it.
-  const rooms = await Promise.all(memberships.map((m) => getDoc(classDoc(m.id)).catch(() => null)));
-  return memberships.flatMap((m, i) => (rooms[i]?.get('ownerUid') === uid ? [rooms[i]!.get('name') ?? m.get('className')] : []));
+  const { members } = await myEntries(uid);
+  const rooms = await Promise.all(members.map((m) => getDoc(m.ref.parent.parent!).catch(() => null)));
+  return rooms.flatMap((room) => (room?.get('ownerUid') === uid ? [(room.get('name') as string) ?? 'a class'] : []));
 }
 
 /**
  * Deletes the signed-in account for good: confirms the password, leaves every class (member entry,
- * membership and done marks), removes the profile and photo, then deletes the sign-in.
+ * done marks, seen marks and waiting requests), removes the profile and photo, then deletes the sign-in.
  * Ledger records about the student stay, because they are part of the class fund's history.
  */
 export async function deleteAccount(password: string): Promise<void> {
@@ -138,17 +137,15 @@ export async function deleteAccount(password: string): Promise<void> {
   const uid = user.uid;
   if ((await classesIOwn()).length > 0) throw new Error('You are still the Mayor of a class. Make someone else the Mayor first.');
 
+  const { members, requests } = await myEntries(uid);
   const batch = writeBatch(db);
-  const memberships = (await getDocs(membershipsOf(uid))).docs;
-  // Skip classes the user was already removed from; deleting there would be refused.
-  const stillIn = await Promise.all(memberships.map((m) => getDoc(doc(db, 'classes', m.id, 'members', uid)).then((s) => s.exists()).catch(() => false)));
-  memberships.forEach((m, i) => {
-    if (stillIn[i]) {
-      batch.delete(doc(db, 'classes', m.id, 'members', uid));
-      batch.delete(doc(db, 'classes', m.id, 'progress', uid));
-    }
+  for (const m of members) {
+    const room = m.ref.parent.parent!;
     batch.delete(m.ref);
-  });
+    batch.delete(doc(room, 'progress', uid));
+    batch.delete(doc(room, 'seen', uid));
+  }
+  for (const r of requests) batch.delete(r.ref);
   batch.delete(doc(db, 'avatars', uid));
   batch.delete(userDoc(uid));
   await batch.commit();
