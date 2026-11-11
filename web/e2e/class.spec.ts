@@ -100,7 +100,7 @@ test.describe.serial('a class from start to finish', () => {
     const { page } = maya;
     await page.goto(classUrl);
     await openTab(page, 'Members');
-    await page.getByRole('button', { name: /Stu Dent/ }).click();
+    await page.getByRole('button', { name: /Stu Dent|Dent, Stu/ }).click();
     await page.getByRole('switch', { name: /Operations Research/ }).uncheck();
     await expect(page.getByText('Skipped when charging this course')).toBeVisible();
     await page.getByRole('button', { name: 'Save courses' }).click();
@@ -259,7 +259,7 @@ test.describe.serial('a class from start to finish', () => {
 
   test('a new role takes effect for the student right away', async () => {
     await openTab(maya.page, 'Members');
-    await maya.page.getByRole('button', { name: /Stu Dent/ }).click();
+    await maya.page.getByRole('button', { name: /Stu Dent|Dent, Stu/ }).click();
     await maya.page.getByRole('radio', { name: 'Treasurer' }).check();
     await maya.page.getByRole('button', { name: 'Save role' }).click();
     await expectNotice(maya.page, "Stu Dent's role was updated.");
@@ -295,7 +295,7 @@ test.describe.serial('a class from start to finish', () => {
     await k.goto('/account');
     const { page } = maya;
     await openTab(page, 'Members');
-    await page.getByRole('button', { name: /Kim Lee/ }).click();
+    await page.getByRole('button', { name: /Kim Lee|Lee, Kim/ }).click();
     await page.getByRole('button', { name: 'Remove from class' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Remove' }).click();
     await expectNotice(page, 'Kim Lee was removed from the class.');
@@ -340,7 +340,7 @@ test.describe.serial('a class from start to finish', () => {
     await page.getByRole('button', { name: 'Save name' }).click();
     await expectNotice(page, 'Name saved. It now shows in all your classes.');
     await openTab(maya.page, 'Members');
-    await expect(maya.page.getByRole('button', { name: /Stuart Dent/ })).toBeVisible();
+    await expect(maya.page.getByRole('button', { name: /Stuart Dent|Dent, Stuart/ })).toBeVisible();
   });
 
   test('the student leaves, with a reminder of their balance', async () => {

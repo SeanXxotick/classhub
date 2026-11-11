@@ -37,6 +37,7 @@ import {
   type Meeting,
 } from '../../data/features';
 import { Ledger } from '../../domain/ledger';
+import { byLastName, listName } from '../../data/models';
 import { formatMoney, parsePesos } from '../../domain/money';
 import { Dialog, Field, shortDate } from '../common';
 import { Badge, Button, Card, DayHeader, ListRow, Money, Notice, Section, StatusBadge, TypeIcon } from '../../design';
@@ -326,6 +327,7 @@ export function NewsTab({ state }: { state: ClassState }) {
   const seen = useSeen(db, state.classId, true).data ?? [];
   const run = useRun();
   const [editing, setEditing] = useState<Announcement | null>(null);
+  const [seenOf, setSeenOf] = useState<Announcement | null>(null);
   const mySeen = seen.find((s) => s.id === state.myUid)?.announcements ?? {};
   const unseen = (posts ?? []).filter((p) => !mySeen[p.id]).map((p) => p.id).join(',');
 
@@ -365,10 +367,13 @@ export function NewsTab({ state }: { state: ClassState }) {
               {author(p.createdByUid)} · {shortDate(p.createdAtMillis)}
               {p.editedAtMillis ? ' · edited' : ''}
             </div>
+            <div className="ch-row">
+              <Button size="small" variant="outline" icon="eye" onClick={() => setSeenOf(p)}>
+                {`Seen by ${seenBy(p.id)} of ${state.members.length}`}
+              </Button>
+            </div>
             {manage && (
               <div className="ch-row ch-wrap ch-gap-2">
-                <StatusBadge status="info" icon="eye">{`Seen by ${seenBy(p.id)} of ${state.members.length}`}</StatusBadge>
-                <span style={{ flex: 1 }} />
                 <Button size="small" variant="outline" icon="edit" onClick={() => setEditing(p)}>
                   Edit
                 </Button>
@@ -384,6 +389,32 @@ export function NewsTab({ state }: { state: ClassState }) {
         </Card>
       ))}
       {editing && <PostDialog state={state} post={editing} onClose={() => setEditing(null)} />}
+      {seenOf && (
+        <Dialog
+          title="Seen by"
+          onClose={() => setSeenOf(null)}
+          actions={
+            <button className="btn text" onClick={() => setSeenOf(null)}>
+              Close
+            </button>
+          }
+        >
+          <p className="small muted" style={{ marginTop: 0 }}>{seenOf.title}</p>
+          {[true, false].map((did) => {
+            const list = byLastName(state.members).filter((m) => !!seen.find((x) => x.id === m.id)?.announcements[seenOf.id] === did);
+            return (
+              list.length > 0 && (
+                <Card flush key={String(did)}>
+                  <DayHeader>{did ? `Seen (${list.length})` : `Not yet (${list.length})`}</DayHeader>
+                  {list.map((m) => (
+                    <ListRow key={m.id} leading={<TypeIcon icon={did ? 'check' : 'hourglass'} tone={did ? 'success' : 'neutral'} size={32} />} title={listName(m)} />
+                  ))}
+                </Card>
+              )
+            );
+          })}
+        </Dialog>
+      )}
     </div>
   );
 }
@@ -704,7 +735,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
   const todays = meetings.filter((m) => m.dayOfWeek === weekdayOf(dateKey)).sort((a, b) => a.startMinutes - b.startMinutes);
   const meeting = todays.find((m) => m.id === pickedId) ?? todays[0];
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
-  const students = meeting ? state.members.filter((m) => !m.excludedCourseIds.includes(meeting.courseId)) : [];
+  const students = meeting ? byLastName(state.members.filter((m) => !m.excludedCourseIds.includes(meeting.courseId))) : [];
   const saved = meeting ? sheets?.find((x) => x.id === sheetId(dateKey, meeting.id)) : undefined;
   const key = `${dateKey}|${meeting?.id ?? ''}|${saved?.takenAtMillis ?? 0}`;
 
@@ -762,7 +793,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
         {meeting && <div className="small muted">{saved ? 'Already taken. Saving replaces it.' : 'Everyone starts as present. Change only those who were late or absent.'}</div>}
         {students.map((m) => (
           <label key={m.id} className="row">
-            <span className="grow">{m.name}</span>
+            <span className="grow">{listName(m)}</span>
             <select className="input" value={marks[m.id] ?? 'PRESENT'} aria-label={`Attendance of ${m.name}`} style={{ width: 'auto', minHeight: 40, padding: '6px 10px' }} onChange={(e) => setMarks({ ...marks, [m.id]: e.target.value as AttendanceMark })}>
               <option value="PRESENT">Present</option>
               <option value="LATE">Late</option>

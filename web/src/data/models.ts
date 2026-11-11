@@ -130,6 +130,22 @@ export interface Member {
   joinedAtMillis: number;
   excludedCourseIds: string[];
   approvedByUid: string;
+  /** "Garcia, Paolo M.": the name in lists sorted by last name. Set by the member's own app; empty until then. */
+  sortName?: string;
+}
+
+/** A member's name in a list sorted by last name. Falls back to the display name. */
+export const listName = (m: { name: string; sortName?: string }): string => m.sortName || m.name;
+
+/** Members in last-name order (those without a last-name form sort by their display name). */
+export const byLastName = <T extends { name: string; sortName?: string }>(members: T[]): T[] =>
+  [...members].sort((a, b) => listName(a).localeCompare(listName(b), 'en', { sensitivity: 'base' }));
+
+/** "Garcia, Paolo M." from the profile's name parts; empty when there is no last name. */
+export function sortNameOf(first: string, middleInitial: string, last: string): string {
+  const mi = middleInitial.trim().replace(/\.$/, '');
+  if (!last.trim() || !first.trim()) return '';
+  return `${last.trim()}, ${first.trim()}${mi ? ` ${mi}.` : ''}`.slice(0, 100);
 }
 
 /** Firestore: classes/{classId}/joinRequests/{uid}. A student who used the code and waits for an officer. */

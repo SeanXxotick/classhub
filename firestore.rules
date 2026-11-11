@@ -417,11 +417,24 @@ service cloud.firestore {
       let name = request.resource.data.name;
       return signedIn()
         && memberId == uid()
-        && changesOnly(['name'])
+        && changesOnly(['name', 'sortName'])
         && name != resource.data.name
         && name is string
         && name.size() > 0
-        && name.size() <= 90;
+        && name.size() <= 90
+        && request.resource.data.get('sortName', '') is string
+        && request.resource.data.get('sortName', '').size() <= 100;
+    }
+
+    // A member sets how their own name reads in lists sorted by last name ("Garcia, Paolo M.").
+    function isOwnSortName(memberId) {
+      let sortName = request.resource.data.sortName;
+      return signedIn()
+        && memberId == uid()
+        && changesOnly(['sortName'])
+        && sortName is string
+        && sortName.size() > 0
+        && sortName.size() <= 100;
     }
 
     // ---- Join requests
@@ -773,7 +786,8 @@ service cloud.firestore {
           || isCoursesChangeByManager(classId)
           || isReassignAfterRoleDelete(classId)
           || isNewMayorInHandover(classId, memberId)
-          || isOwnRename(memberId);
+          || isOwnRename(memberId)
+          || isOwnSortName(memberId);
 
         // A members manager removes someone else, or a member leaves on their own. The owner can only
         // leave in the batch that hands the class to a new Mayor, or with the class itself. A member

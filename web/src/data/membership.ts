@@ -1,3 +1,4 @@
+import { sortNameOf } from './models';
 import {
   collectionGroup,
   deleteDoc,
@@ -253,9 +254,11 @@ export async function renameMeEverywhere(db: Firestore, uid: string, name: strin
   const entries = await getDocs(query(collectionGroup(db, 'members'), where('uid', '==', uid)));
   const batch = writeBatch(db);
   let changed = 0;
+  // With the name parts at hand, the last-name-first form changes in the same write.
+  const sortName = profile ? sortNameOf(profile.firstName ?? '', profile.middleInitial ?? '', profile.lastName ?? '') : '';
   for (const d of entries.docs) {
     if (d.get('name') !== clean) {
-      batch.update(d.ref, { name: clean });
+      batch.update(d.ref, sortName ? { name: clean, sortName } : { name: clean });
       changed++;
     }
   }

@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
-import { doc } from 'firebase/firestore';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../data/firebase';
 import { fromDoc, useDocValue, useQueryList } from '../../data/live';
 import { friendlyMessage, isPermissionDenied } from '../../data/errors';
@@ -15,6 +15,7 @@ import {
   newClassRoom,
   newContentItem,
   newMember,
+  sortNameOf,
   newRole,
   newScheduleItem,
   type BalanceVisibility,
@@ -140,6 +141,23 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
   const me = useDocValue(`me/${classId}/${uid}`, doc(classRepo.membersOf(classId), uid), (d) => fromDoc(newMember({}), d));
   // The other lists are read only while the user is a member; the rules refuse them otherwise.
   const allowed = !!me.data;
+
+  // Keeps this member's last-name-first form in step with their profile, so lists can sort by last name.
+  const myName = me.data?.name;
+  const mySortName = me.data?.sortName ?? '';
+  useEffect(() => {
+    if (!myName) return;
+    let stale = false;
+    getDoc(doc(db, 'users', uid))
+      .then((profile) => {
+        const wanted = sortNameOf(profile.get('firstName') ?? '', profile.get('middleInitial') ?? '', profile.get('lastName') ?? '');
+        if (!stale && wanted && wanted !== mySortName) return updateDoc(doc(classRepo.membersOf(classId), uid), { sortName: wanted });
+      })
+      .catch(() => undefined);
+    return () => {
+      stale = true;
+    };
+  }, [classId, uid, myName, mySortName]);
   const roles = useQueryList(`roles/${classId}/${allowed}`, allowed ? classRepo.rolesOf(classId) : null, (d) => fromDoc(newRole({}), d));
   const members = useQueryList(`members/${classId}/${allowed}`, allowed ? classRepo.membersOf(classId) : null, (d) => fromDoc(newMember({}), d));
   const courses = useQueryList(`courses/${classId}/${allowed}`, allowed ? classRepo.coursesOf(classId) : null, (d) => fromDoc<Course>({ id: '', name: '', color: '' }, d));

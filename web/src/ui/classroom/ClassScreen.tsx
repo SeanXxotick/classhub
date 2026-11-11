@@ -13,6 +13,7 @@ import { AddRecordChooser, balanceText, EntryRow, LedgerSummaryCard, LedgerTab, 
 import { ChargeStudentsScreen, RecordRoute } from '../ledger/RecordForms';
 import { monthDay, ScheduleFormScreen, ScheduleRow, ScheduleTab } from '../schedule/ScheduleUi';
 import { ClassProvider, useClass, type ClassState } from './ClassContext';
+import { byLastName, listName } from '../../data/models';
 import { CLASS_TABS, tabShownIn, type ClassTabId } from './classTabs';
 import { ClassSettingsScreen, CoursesScreen, MemberDetailScreen, RoleEditorScreen, RolesScreen } from './ManageScreens';
 import { MySettingsScreen } from './MySettingsScreen';
@@ -488,7 +489,7 @@ function MembersList({ state, canManage, onOpenMember }: { state: ClassState; ca
         {canManage ? '  ·  Tap someone to set their role or courses' : ''}
       </div>
       <div className="members-grid">
-        {state.members.map((member) => (
+        {byLastName(state.members).map((member) => (
           <MemberRow key={member.id} member={member} state={state} isMe={member.id === state.myUid} onClick={canManage ? () => onOpenMember(member.id) : undefined} />
         ))}
       </div>
@@ -510,7 +511,7 @@ function MemberRow({ member, state, isMe, onClick }: { member: Member; state: Cl
     <>
       <Avatar photo={state.avatars.get(member.id)} name={member.name} color={hexColor(role?.colorHex, '#6B768A')} />
       <span className="grow ellipsis-box">
-        <span className="title ellipsis">{isMe ? `${member.name} (you)` : member.name}</span>
+        <span className="title ellipsis">{isMe ? `${listName(member)} (you)` : listName(member)}</span>
         {details.length > 0 && (
           <span className="sub ellipsis" style={balance < 0 ? { color: 'var(--error)' } : undefined}>
             {details.join('  ·  ')}

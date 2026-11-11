@@ -4,7 +4,7 @@
  * Invented names only. Run from web/ while the emulators are up:  npx vite-node scripts/seed-emulator.ts
  */
 import { initializeApp } from 'firebase/app';
-import { addDoc, collection, connectFirestoreEmulator, doc, initializeFirestore, setDoc, type Firestore } from 'firebase/firestore';
+import { addDoc, collection, connectFirestoreEmulator, doc, initializeFirestore, setDoc, updateDoc, type Firestore } from 'firebase/firestore';
 import { createClass } from '../src/data/classes';
 import { approveJoinRequest, requestToJoin } from '../src/data/membership';
 import { addPayment, addWithdrawal, chargeStudents } from '../src/data/ledgerStore';
@@ -53,6 +53,11 @@ async function main() {
     await approveJoinRequest(m, mayor.uid, classId, s.uid);
   }
   const members = [mayor, ...everyone];
+  // The app sets this itself when a member opens the class; the classmates here never sign in.
+  for (const s of members) {
+    const [first, last] = s.name.split(' ');
+    await updateDoc(doc(as(s.uid), 'classes', classId, 'members', s.uid), { sortName: `${last}, ${first}` });
+  }
 
   const courseIds: string[] = [];
   for (const name of ['Operations Research', 'Software Engineering', 'Abstract Algebra']) {

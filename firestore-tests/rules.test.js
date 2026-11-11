@@ -610,6 +610,15 @@ async function main() {
     await assertSucceeds(updateDoc(doc(db('student'), `classes/${CLASS}/members/student`), { name: 'Student Two' }));
   });
 
+  await test('A member sets their own last-name-first form, and nobody else\'s', async () => {
+    await assertSucceeds(updateDoc(doc(db('student'), `classes/${CLASS}/members/student`), { sortName: 'Two, Student' }));
+    await assertFails(updateDoc(doc(db('student'), `classes/${CLASS}/members/student`), { sortName: '' }));
+    await assertFails(updateDoc(doc(db('student'), `classes/${CLASS}/members/student`), { sortName: 'x'.repeat(101) }));
+    await assertFails(updateDoc(doc(db('student'), `classes/${CLASS}/members/student`), { sortName: 'Two, Student', roleId: 'mayor' }));
+    await assertFails(updateDoc(doc(db('student'), `classes/${CLASS}/members/mayor`), { sortName: 'Hacked, Name' }));
+    await assertFails(updateDoc(doc(db('mayor'), `classes/${CLASS}/members/student`), { sortName: 'Other, Name' }));
+  });
+
   // ---------------------------------------------------------------- Join requests: other officers
 
   await test('A Treasurer (no MEMBERS_MANAGE) cannot list, approve or reject requests', async () => {
