@@ -150,19 +150,36 @@ export function Tag({ text, color }: { text: string; color: string }) {
 }
 
 /** One ledger line. Used on the Ledger tab and in "Recent" on Home. */
-export function EntryRow({ entry, state, onClick }: { entry: LedgerEntry; state: ClassState; onClick?: () => void }) {
+export function EntryRow({ entry, state, onClick, mine }: { entry: LedgerEntry; state: ClassState; onClick?: () => void; mine?: boolean }) {
   const paidOut = useMemo(() => Ledger.paidOutBatchIds(state.records), [state.records]);
   let title: string;
   let subtitle: string;
+  const courseOf = (id: string) => state.courses.find((c) => c.id === id)?.name ?? '';
+  // In a list of only the viewer's own records, their name on every row says nothing: the row leads with what it was for.
+  const own = entry.kind === 'single' && entry.record.memberId === state.myUid && (!!mine || !state.seeAll);
   if (entry.kind === 'batch') {
     const each = entry.perMemberCentavos !== null ? ' × ' + formatMoney(entry.perMemberCentavos) : '';
-    const course = state.courses.find((c) => c.id === entry.courseId)?.name;
-    title = entry.note;
+    const course = courseOf(entry.courseId);
+    title = entry.note.trim() || course || 'Charge';
     subtitle = `Charge · ${entry.count} student${s(entry.count)}${each}` + (course ? ` · ${course}` : '');
   } else {
     const r = entry.record;
     const withNote = (text: string) => text + (r.note.trim() ? ` · ${r.note}` : '');
-    switch (r.type) {
+    const course = courseOf(r.courseId);
+    const note = r.note.trim();
+    switch (own ? `OWN_${r.type}` : r.type) {
+      case 'OWN_PAYMENT':
+        [title, subtitle] = [note || 'Payment', 'Payment'];
+        break;
+      case 'OWN_WITHDRAWAL':
+        [title, subtitle] = [note || 'Withdrawal', 'Withdrawal from balance'];
+        break;
+      case 'OWN_OPENING':
+        [title, subtitle] = [note || 'Opening balance', 'Opening balance'];
+        break;
+      case 'OWN_CHARGE':
+        [title, subtitle] = [note || course || 'Charge', 'Charge' + (note && course ? ` · ${course}` : '')];
+        break;
       case 'PAYMENT':
         [title, subtitle] = [r.memberName, withNote('Payment')];
         break;
@@ -176,13 +193,13 @@ export function EntryRow({ entry, state, onClick }: { entry: LedgerEntry; state:
         [title, subtitle] = [r.memberName, withNote('Opening balance')];
         break;
       default:
-        [title, subtitle] = [r.note.trim() || 'Charge', `Charge · ${r.memberName}`];
+        [title, subtitle] = [note || course || 'Charge', `Charge · ${r.memberName}` + (note && course ? ` · ${course}` : '')];
     }
   }
   const amount = LedgerView.displayAmount(entry);
   const voided = entry.kind === 'batch' ? entry.voided : entry.record.voidedAtMillis > 0;
   const struck = voided ? { textDecoration: 'line-through', opacity: 0.6 } : undefined;
-  const photoOwner = entry.kind === 'single' && entry.record.memberId ? entry.record : null;
+  const photoOwner = entry.kind === 'single' && entry.record.memberId && !own ? entry.record : null;
   const role = photoOwner ? state.roleOf(state.members.find((m) => m.id === photoOwner.memberId)) : null;
   const content = (
     <>
@@ -416,7 +433,7 @@ export function LedgerTab({
               return (
                 <div key={entry.key}>
                   {showHeader && <div className="section-label">{header}</div>}
-                  <EntryRow entry={entry} state={state} onClick={() => setSelected(entry)} />
+                  <EntryRow entry={entry} state={state} mine={filter === 'MINE'} onClick={() => setSelected(entry)} />
                 </div>
               );
             })}
