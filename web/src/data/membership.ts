@@ -1,3 +1,4 @@
+import { queueNotice } from './notify';
 import { sortNameOf } from './models';
 import {
   collectionGroup,
@@ -86,6 +87,7 @@ export async function requestToJoin(db: Firestore, actor: Actor, rawCode: string
     if (isDenied(e)) throw new UserError('JOIN_REFUSED');
     throw e;
   }
+  void queueNotice(db, actor.uid, classId, { kind: 'JOIN_REQUEST', audience: 'PERMISSION', audienceId: 'MEMBERS_MANAGE', title: `${name} asked to join ${className}`, body: 'Open Members to approve or reject.' });
   return { classId, className };
 }
 
@@ -135,6 +137,7 @@ export async function approveJoinRequest(db: Firestore, approverUid: string, cla
     if (fresh && !fresh.exists()) throw new UserError('REQUEST_GONE');
     throw e;
   }
+  void queueNotice(db, approverUid, classId, { kind: 'JOIN_APPROVED', audience: 'USER', audienceId: studentUid, title: `You are now in ${room.name}`, body: 'Your request to join was approved.' });
   return { openingApplied };
 }
 

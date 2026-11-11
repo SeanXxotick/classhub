@@ -1,3 +1,4 @@
+import { refreshPush, turnOffPush } from './notify';
 import { useEffect, useState } from 'react';
 import {
   EmailAuthProvider,
@@ -38,6 +39,7 @@ export function useSession(): Session {
       setSession({ state: 'signedOut' });
       return;
     }
+    void refreshPush(db, firebaseUser.uid);
     const email = firebaseUser.email ?? '';
     const fallbackName = email.split('@')[0];
     const build = (data: Record<string, unknown> | undefined): AppUser => ({
@@ -152,6 +154,8 @@ export async function deleteAccount(password: string): Promise<void> {
   await deleteUser(user);
 }
 
-export function signOut(): Promise<void> {
-  return firebaseSignOut(auth);
+export async function signOut(): Promise<void> {
+  // The next person to sign in on this browser must not get this person's notifications.
+  await turnOffPush(db);
+  await firebaseSignOut(auth);
 }

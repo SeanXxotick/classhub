@@ -87,6 +87,11 @@ async function main() {
   await sendClaim(as(student.uid), student, classId, { amountCentavos: 15000, method: 'MAYA', reference: 'MY 5566 7788' });
   await sendClaim(as(others[1].uid), others[1], classId, { amountCentavos: 30000, method: 'BANK', reference: 'BDO 0091' });
 
+  // Pretend devices, so "node sender/local.mjs" has someone to send to (the tokens are not real).
+  for (const s of [student, others[0], others[1]]) {
+    await setDoc(doc(as(s.uid), 'devices', `${s.uid}_seed`), { uid: s.uid, token: `fake-token-${s.uid}`, platform: 'WEB', muted: s === others[1] ? ['ANNOUNCEMENT'] : [], updatedAtMillis: now });
+  }
+
   // News
   await saveAnnouncement(m, mayor.uid, classId, newAnnouncement({ title: 'Class shirt sizes due Friday', body: 'Send your size to the Mayor.\nSmall, medium, large or extra large.', pinned: true }));
   await saveAnnouncement(m, mayor.uid, classId, newAnnouncement({ title: 'No uniform on Wednesday', body: 'Wear the organization shirt instead.' }));

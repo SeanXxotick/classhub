@@ -1,3 +1,5 @@
+import { db } from '../../data/firebase';
+import { NOTICE_KINDS, NOTICE_LABELS, mutedKinds, pushState, setMutedKinds, turnOffPush, turnOnPush, type NoticeKind, type PushState } from '../../data/notify';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as authRepo from '../../data/authRepo';
@@ -114,6 +116,8 @@ export function AccountScreen({ user }: { user: AppUser }) {
               ))}
             </div>
           </div>
+
+          <NotificationsCard uid={user.uid} notice={notice} />
 
           <div className="card stack" style={{ gap: 8 }}>
             <div className="bold">Get the Android app</div>
@@ -282,5 +286,61 @@ function DeleteAccountDialog({ step, busy, onDelete, onCancel }: { step: DeleteS
       </form>
       {step.error && <span className="sr-only" role="alert">{step.error}</span>}
     </Dialog>
+  );
+}
+
+/** Notifications on this phone or browser: on or off, and which kinds. */
+function NotificationsCard({ uid, notice }: { uid: string; notice: (message: string) => void }) {
+  const [state, setState] = useState<PushState>(pushState());
+  const [muted, setMuted] = useState<NoticeKind[]>(mutedKinds());
+  const [working, setWorking] = useState(false);
+
+  async function turnOn() {
+    setWorking(true);
+    try {
+      const next = await turnOnPush(db, uid);
+      setState(next);
+      notice(next === 'on' ? 'Notifications are on for this device.' : next === 'blocked' ? 'Notifications are blocked. Allow them for this site in your browser settings.' : 'Notifications were not turned on.');
+    } catch {
+      notice('Notifications could not be turned on. Check your connection and try again.');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  function toggle(kind: NoticeKind) {
+    const next = muted.includes(kind) ? muted.filter((k) => k !== kind) : [...muted, kind];
+    setMuted(next);
+    setMutedKinds(db, uid, next).catch(() => notice('That could not be saved. Try again.'));
+  }
+
+  return (
+    <div className="card stack" style={{ gap: 8 }}>
+      <div className="bold">Notifications</div>
+      {state === 'unsupported' && <p className="small muted" style={{ margin: 0 }}>This browser cannot show notifications. On an iPhone, add ClassHub to the Home Screen first.</p>}
+      {state === 'blocked' && <p className="small muted" style={{ margin: 0 }}>Notifications are blocked for this site. Allow them in your browser settings, then come back here.</p>}
+      {state === 'off' && (
+        <>
+          <p className="small muted" style={{ margin: 0 }}>Get a notification on this device for announcements, new deadlines, reminders and your payment claims.</p>
+          <button className="btn solid" disabled={working} onClick={turnOn}>
+            Turn on notifications
+          </button>
+        </>
+      )}
+      {state === 'on' && (
+        <>
+          <p className="small muted" style={{ margin: 0 }}>On for this device. Choose what you want to hear about.</p>
+          {NOTICE_KINDS.map((kind) => (
+            <label key={kind} className="row" style={{ gap: 10 }}>
+              <input type="checkbox" checked={!muted.includes(kind)} onChange={() => toggle(kind)} />
+              <span>{NOTICE_LABELS[kind]}</span>
+            </label>
+          ))}
+          <button className="btn outline" disabled={working} onClick={() => turnOffPush(db).then(() => (setState('off'), notice('Notifications are off for this device.')))}>
+            Turn off notifications
+          </button>
+        </>
+      )}
+    </div>
   );
 }

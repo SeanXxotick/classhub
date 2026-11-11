@@ -153,6 +153,26 @@ service cloud.firestore {
       allow read, write: if signedIn() && userId == uid();
     }
 
+    // ============================================================ Devices (push tokens)
+
+    // One document per phone or browser that turned notifications on: its push token and the kinds it muted.
+    // Only its owner reads or writes it; the notification sender reads them with its own (admin) access.
+    function isDevice() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['uid', 'token', 'platform', 'muted', 'updatedAtMillis'])
+        && d.uid == uid()
+        && d.token is string && d.token.size() > 0 && d.token.size() <= 4096
+        && d.platform in ['ANDROID', 'WEB']
+        && d.muted is list && d.muted.size() <= 20
+        && d.updatedAtMillis is int;
+    }
+
+    match /devices/{deviceId} {
+      allow get, list, delete: if signedIn() && resource.data.uid == uid();
+      allow create: if signedIn() && isDevice();
+      allow update: if signedIn() && resource.data.uid == uid() && isDevice();
+    }
+
     // ============================================================ Photos
 
     // A small square JPEG stored as Base64 text (the app makes them about 30 KB; the limit allows some room).
@@ -435,6 +455,29 @@ service cloud.firestore {
         && sortName is string
         && sortName.size() > 0
         && sortName.size() <= 100;
+    }
+
+    // ---- Notification requests (outbox)
+
+    // { kind, audience, audienceId, title, body, createdByUid, createdAtMillis }. Each kind may only be queued
+    // by someone who could cause that event, to the audience that kind is for.
+    function isNewNotice(c) {
+      let d = request.resource.data;
+      return signedIn()
+        && d.keys().hasOnly(['kind', 'audience', 'audienceId', 'title', 'body', 'createdByUid', 'createdAtMillis'])
+        && d.createdByUid == uid()
+        && isRecentMillis(d.createdAtMillis)
+        && isFilled(d.title, 120)
+        && isText(d.body, 300)
+        && isText(d.audienceId, 128)
+        && (
+          (d.kind == 'ANNOUNCEMENT' && d.audience == 'CLASS' && can(c, 'ANNOUNCEMENTS_MANAGE'))
+          || (d.kind in ['NO_CLASS', 'SCHEDULE_NEW'] && d.audience in ['CLASS', 'COURSE'] && can(c, 'SCHEDULE_MANAGE'))
+          || (d.kind == 'CLAIM_SENT' && d.audience == 'PERMISSION' && d.audienceId == 'RECORDS_MANAGE' && isMember(c))
+          || (d.kind == 'CLAIM_DECIDED' && d.audience == 'USER' && can(c, 'RECORDS_MANAGE'))
+          || (d.kind == 'JOIN_REQUEST' && d.audience == 'PERMISSION' && d.audienceId == 'MEMBERS_MANAGE' && exists(requestPath(c, uid())))
+          || (d.kind == 'JOIN_APPROVED' && d.audience == 'USER' && can(c, 'MEMBERS_MANAGE'))
+        );
     }
 
     // ---- Join requests
@@ -905,6 +948,12 @@ service cloud.firestore {
           && request.resource.data.taken is int
           && request.resource.data.taken >= 0;
         allow delete: if can(classId, 'ATTENDANCE_MANAGE');
+      }
+
+      // Notification requests. Write-only for the app: the sender reads and deletes them with admin access.
+      match /outbox/{noticeId} {
+        allow read, update, delete: if false;
+        allow create: if isNewNotice(classId);
       }
 
       match /noClass/{markId} {

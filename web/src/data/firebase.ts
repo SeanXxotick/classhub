@@ -12,7 +12,7 @@ const env = import.meta.env;
 /** True when the app talks to the local emulators ("npm run dev:emu"), never to the real database. */
 export const usingEmulators = env.VITE_USE_EMULATORS === '1';
 
-const app = initializeApp({
+export const app = initializeApp({
   apiKey: env.VITE_FIREBASE_API_KEY,
   authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: env.VITE_FIREBASE_PROJECT_ID,

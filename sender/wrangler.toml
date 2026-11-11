@@ -1,0 +1,13 @@
+# ClassHub notification sender. Deploy from this folder:  npx wrangler deploy
+# The service account is a secret, set once with:        npx wrangler secret put SERVICE_ACCOUNT
+name = "classhub-sender"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = false
+
+[vars]
+APP_URL = "https://classhub-web.web.app"
+
+[triggers]
+# Every minute: send what is queued. 10:00 UTC (6 PM in the Philippines): queue "due tomorrow".
+crons = ["* * * * *", "0 10 * * *"]

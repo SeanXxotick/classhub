@@ -10,6 +10,7 @@ import * as ledgerStore from '../../data/ledgerStore';
 import * as openings from '../../data/openingBalances';
 import { useCharges, useFundSummary, useJoinRequests, useLedgerUpkeep, usePendingOpeningBalances, useVisibleRecords } from '../../data/hooks';
 import * as dataRepo from '../../data/classDataRepo';
+import { queueNotice } from '../../data/notify';
 import * as photoRepo from '../../data/photoRepo';
 import {
   newClassRoom,
@@ -485,7 +486,13 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         const problem = ScheduleForms.check(item.title);
         if (problem) return deny(problem);
         const clean = { ...item, title: item.title.trim(), note: item.note.trim() };
-        if (!clean.id) runAction(`Added "${clean.title}".`, onDone, () => dataRepo.addScheduleItem(classId, { ...clean, createdByUid: uid }));
+        if (!clean.id) {
+          runAction(`Added "${clean.title}".`, onDone, async () => {
+            await dataRepo.addScheduleItem(classId, { ...clean, createdByUid: uid });
+            const due = new Date(clean.dueMillis).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+            void queueNotice(db, uid, classId, { kind: 'SCHEDULE_NEW', audience: clean.courseId ? 'COURSE' : 'CLASS', audienceId: clean.courseId, title: `New on the schedule: ${clean.title}`, body: `Due ${due}` });
+          });
+        }
         else runAction(`Saved "${clean.title}".`, onDone, () => dataRepo.updateScheduleItem(classId, clean));
       },
 

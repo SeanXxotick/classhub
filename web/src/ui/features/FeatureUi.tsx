@@ -156,7 +156,7 @@ export function ClaimsCard({ state }: { state: ClassState }) {
               <button
                 className="btn text danger"
                 disabled={!reason.trim()}
-                onClick={() => run('Claim rejected.', () => rejectClaim(db, state.myUid, state.classId, rejecting.id, reason), () => setRejecting(null))}
+                onClick={() => run('Claim rejected.', () => rejectClaim(db, state.myUid, state.classId, rejecting.id, reason, rejecting.memberId), () => setRejecting(null))}
               >
                 Reject claim
               </button>

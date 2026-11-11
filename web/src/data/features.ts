@@ -1,3 +1,4 @@
+import { queueNotice } from './notify';
 import { collection, deleteDoc, doc, increment, query, setDoc, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
 import { Ledger } from '../domain/ledger';
 import { nowMillis, newId } from './dataEnv';
@@ -55,6 +56,10 @@ export async function sendClaim(
   });
   const id = newId();
   await explainRefusal(db, classId, () => setDoc(doc(claimsCol(db, classId), id), withoutId(claim)));
+  void queueNotice(db, actor.uid, classId, {
+    kind: 'CLAIM_SENT', audience: 'PERMISSION', audienceId: 'RECORDS_MANAGE',
+    title: `${claim.memberName} sent a payment claim`, body: `₱${(input.amountCentavos / 100).toFixed(2)} by ${CLAIM_METHOD_LABELS[input.method]}. Open the Ledger to confirm it.`,
+  });
   return id;
 }
 
@@ -76,16 +81,21 @@ export async function confirmClaim(db: Firestore, actorUid: string, classId: str
   batch.update(doc(claimsCol(db, classId), claim.id), { status: 'CONFIRMED', decidedByUid: actorUid, decidedAtMillis: now, recordId });
   bumpSummary(batch, db, classId, Ledger.summaryDelta(record));
   await explainRefusal(db, classId, () => batch.commit());
+  void queueNotice(db, actorUid, classId, {
+    kind: 'CLAIM_DECIDED', audience: 'USER', audienceId: claim.memberId,
+    title: 'Your payment claim was confirmed', body: `₱${(claim.amountCentavos / 100).toFixed(2)} was added to your balance.`,
+  });
   return recordId;
 }
 
 /** Rejects a waiting claim with a reason the student can read. */
-export async function rejectClaim(db: Firestore, actorUid: string, classId: string, claimId: string, reason: string): Promise<void> {
+export async function rejectClaim(db: Firestore, actorUid: string, classId: string, claimId: string, reason: string, memberId = ''): Promise<void> {
   const why = reason.trim().slice(0, 200);
   if (!why) throw new UserError('NAME_MISSING', 'Write the reason.');
   await explainRefusal(db, classId, () =>
     updateDoc(doc(claimsCol(db, classId), claimId), { status: 'REJECTED', decidedByUid: actorUid, decidedAtMillis: nowMillis(), rejectReason: why }),
   );
+  if (memberId) void queueNotice(db, actorUid, classId, { kind: 'CLAIM_DECIDED', audience: 'USER', audienceId: memberId, title: 'Your payment claim was rejected', body: `Reason: ${why}` });
 }
 
 /** Every claim for a records manager; a student's own claims for everyone else. Newest first. */
@@ -124,6 +134,7 @@ export async function saveAnnouncement(db: Firestore, actorUid: string, classId:
   if (!post.id) {
     const fresh = newAnnouncement({ title, body, pinned: post.pinned, createdByUid: actorUid, createdAtMillis: nowMillis() });
     await explainRefusal(db, classId, () => setDoc(doc(announcementsCol(db, classId), newId()), withoutId(fresh)));
+    void queueNotice(db, actorUid, classId, { kind: 'ANNOUNCEMENT', audience: 'CLASS', title: `Announcement: ${title}`, body });
   } else {
     await explainRefusal(db, classId, () => updateDoc(doc(announcementsCol(db, classId), post.id), { title, body, pinned: post.pinned, editedAtMillis: nowMillis() }));
   }
@@ -202,6 +213,10 @@ export const deleteMeeting = (db: Firestore, classId: string, meetingId: string)
 export async function addNoClass(db: Firestore, actorUid: string, classId: string, dateKey: string, courseId: string, reason: string): Promise<void> {
   const mark = { dateKey, courseId, reason: reason.trim().slice(0, 200), createdByUid: actorUid };
   await explainRefusal(db, classId, () => setDoc(doc(noClassCol(db, classId), newId()), mark));
+  const day = new Date(`${dateKey}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  void queueNotice(db, actorUid, classId, {
+    kind: 'NO_CLASS', audience: courseId ? 'COURSE' : 'CLASS', audienceId: courseId, title: `No classes on ${day}`, body: mark.reason,
+  });
 }
 
 export const removeNoClass = (db: Firestore, classId: string, markId: string) => deleteDoc(doc(noClassCol(db, classId), markId));

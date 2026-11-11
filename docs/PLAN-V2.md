@@ -303,7 +303,7 @@ Still open:
 6. The Android shell builds with Gradle 9.6 and the Android plugin 9.4.1 on Java 25, newer than Capacitor 7 expects.
 7. The screens are not rebuilt on the shared components, and a claim has no screenshot. The project lead asked on 2026-11-11 to improve the UI for readability later; the attendance, claims, timetable and statement cards are the plainest and should go first.
 
-Phase 6 needs three things from the project lead before it can be built and tried: the web push key from the Firebase console, `google-services.json` for the Android shell, and a place for the sender's service account key (a Cloudflare or GitHub secret).
+Phase 6 (Nov 12): built for the web app and tried only locally. The app queues requests in `classes/{classId}/outbox` (best effort, after the action, not in its batch); `sender/` is the Cloudflare Worker, and `node sender/local.mjs` runs it against the emulator without sending. Two changes from the data model above: push tokens live in top-level `devices/{id}` (with a `uid` field, so the sender finds a class's devices in one or two queries without a collection-group index), and an outbox request carries its own `title` and `body`. Still to do: deploy the worker and prove it under the free CPU limit, the Android shell (Capacitor push plugin and a new APK), and the weekly "You owe" notice. Original note: Phase 6 needs three things from the project lead before it can be built and tried: the web push key from the Firebase console, `google-services.json` for the Android shell, and a place for the sender's service account key (a Cloudflare or GitHub secret).
 
 ## Open points
 

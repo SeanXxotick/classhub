@@ -610,6 +610,38 @@ async function main() {
     await assertSucceeds(updateDoc(doc(db('student'), `classes/${CLASS}/members/student`), { name: 'Student Two' }));
   });
 
+  await test('Notification requests: each kind only from someone who can cause it; nobody reads the queue', async () => {
+    const notice = (who, fields) => setDoc(doc(db(who), `classes/${CLASS}/outbox/n-${who}-${fields.kind}-${Math.random().toString(36).slice(2)}`),
+      { audience: 'CLASS', audienceId: '', title: 'Hello', body: '', createdByUid: who, createdAtMillis: Date.now(), ...fields });
+    await assertSucceeds(notice('mayor', { kind: 'ANNOUNCEMENT' }));
+    await assertSucceeds(notice('mayor', { kind: 'SCHEDULE_NEW', audience: 'COURSE', audienceId: 'or' }));
+    await assertSucceeds(notice('student', { kind: 'CLAIM_SENT', audience: 'PERMISSION', audienceId: 'RECORDS_MANAGE' }));
+    await assertSucceeds(notice('mayor', { kind: 'CLAIM_DECIDED', audience: 'USER', audienceId: 'student' }));
+    await assertFails(notice('student', { kind: 'ANNOUNCEMENT' }));
+    await assertFails(notice('student', { kind: 'NO_CLASS' }));
+    await assertFails(notice('student', { kind: 'CLAIM_DECIDED', audience: 'USER', audienceId: 'mayor' }));
+    await assertFails(notice('student', { kind: 'CLAIM_SENT', audience: 'CLASS' }));
+    await assertFails(notice('mayor', { kind: 'ANNOUNCEMENT', title: '' }));
+    await assertFails(notice('mayor', { kind: 'ANNOUNCEMENT', createdByUid: 'student' }));
+    await assertFails(notice('mayor', { kind: 'ANNOUNCEMENT', extra: 1 }));
+    await assertFails(notice('outsider', { kind: 'CLAIM_SENT', audience: 'PERMISSION', audienceId: 'RECORDS_MANAGE' }));
+    await assertFails(getDocs(collection(db('mayor'), `classes/${CLASS}/outbox`)));
+  });
+
+  await test('A device token belongs to its owner only', async () => {
+    const device = (who, fields = {}) => ({ uid: who, token: 'tok-' + who, platform: 'WEB', muted: [], updatedAtMillis: Date.now(), ...fields });
+    await assertSucceeds(setDoc(doc(db('student'), 'devices/student_a'), device('student')));
+    await assertSucceeds(setDoc(doc(db('student'), 'devices/student_a'), device('student', { muted: ['NO_CLASS'] })));
+    await assertSucceeds(getDoc(doc(db('student'), 'devices/student_a')));
+    await assertFails(getDoc(doc(db('mayor'), 'devices/student_a')));
+    await assertFails(setDoc(doc(db('mayor'), 'devices/student_a'), device('mayor')));
+    await assertFails(setDoc(doc(db('mayor'), 'devices/mayor_a'), device('student')));
+    await assertFails(setDoc(doc(db('mayor'), 'devices/mayor_a'), device('mayor', { platform: 'IOS' })));
+    await assertFails(setDoc(doc(db('mayor'), 'devices/mayor_a'), device('mayor', { token: '' })));
+    await assertFails(deleteDoc(doc(db('mayor'), 'devices/student_a')));
+    await assertSucceeds(deleteDoc(doc(db('student'), 'devices/student_a')));
+  });
+
   await test('A member sets their own last-name-first form, and nobody else\'s', async () => {
     await assertSucceeds(updateDoc(doc(db('student'), `classes/${CLASS}/members/student`), { sortName: 'Two, Student' }));
     await assertFails(updateDoc(doc(db('student'), `classes/${CLASS}/members/student`), { sortName: '' }));

@@ -5,7 +5,7 @@
  * - /assets/ (file names carry a hash): cache first.
  * Bump VERSION to drop old caches.
  */
-const VERSION = 'classhub-shell-v1';
+const VERSION = 'classhub-shell-v2';
 const SHELL = ['/', '/manifest.webmanifest', '/icon.svg', '/icon-192.png'];
 
 self.addEventListener('install', (event) => {
@@ -55,4 +55,40 @@ self.addEventListener('fetch', (event) => {
       ),
     );
   }
+});
+
+// ---------------------------------------------------------------- Notifications
+// Firebase Cloud Messaging delivers a push as JSON: { notification: { title, body }, data: { url, ... } }.
+
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (e) {
+    payload = {};
+  }
+  const note = payload.notification || {};
+  const data = payload.data || {};
+  event.waitUntil(
+    self.registration.showNotification(note.title || 'ClassHub', {
+      body: note.body || '',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: data.kind && data.classId ? data.kind + ':' + data.classId : undefined,
+      data: { url: data.url || '/' },
+    }),
+  );
+});
+
+// A tap opens the class at the right tab, in the open ClassHub window when there is one.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+      const open = windows.find((w) => new URL(w.url).origin === self.location.origin);
+      if (open) return open.navigate(url).then((w) => (w || open).focus());
+      return self.clients.openWindow(url);
+    }),
+  );
 });
