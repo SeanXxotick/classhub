@@ -63,7 +63,7 @@ export async function expectNotice(page: Page, text: string | RegExp) {
 }
 
 /** Opens a class tab, from the top tabs on wide screens or the bottom bar on phones. */
-export async function openTab(page: Page, name: 'Home' | 'Ledger' | 'Schedule' | 'Contents' | 'Members') {
+export async function openTab(page: Page, name: 'Home' | 'Ledger' | 'Schedule' | 'Contents' | 'News' | 'Members') {
   const nav = page.getByRole('navigation', { name: 'Class sections' }).filter({ visible: true });
   await nav.getByRole('button', { name }).click();
 }

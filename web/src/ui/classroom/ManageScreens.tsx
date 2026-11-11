@@ -500,6 +500,8 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
   const [ledger, setLedger] = useState(room.ledgerEnabled);
   const [schedule, setSchedule] = useState(room.scheduleEnabled);
   const [contents, setContents] = useState(room.contentsEnabled);
+  const [news, setNews] = useState(room.announcementsEnabled);
+  const [timetable, setTimetable] = useState(room.timetableEnabled);
   const [scheduleIcons, setScheduleIcons] = useState(room.scheduleIcons);
   const [scheduleColors, setScheduleColors] = useState(room.scheduleColors);
   const [contentIcons, setContentIcons] = useState(room.contentIcons);
@@ -515,6 +517,8 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
     ledger !== room.ledgerEnabled ||
     schedule !== room.scheduleEnabled ||
     contents !== room.contentsEnabled ||
+    news !== room.announcementsEnabled ||
+    timetable !== room.timetableEnabled ||
     !sameMap(ScheduleIcons.sanitize(scheduleIcons), ScheduleIcons.sanitize(room.scheduleIcons)) ||
     !sameMap(ScheduleIcons.sanitizeColors(scheduleColors), ScheduleIcons.sanitizeColors(room.scheduleColors)) ||
     !sameMap(ContentIcons.sanitize(contentIcons), ContentIcons.sanitize(room.contentIcons)) ||
@@ -529,6 +533,8 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
       ledgerEnabled: ledger,
       scheduleEnabled: schedule,
       contentsEnabled: contents,
+      announcementsEnabled: news,
+      timetableEnabled: timetable,
       scheduleIcons,
       scheduleColors,
       contentIcons,
@@ -578,6 +584,8 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
         <Switch label="Ledger" sub="Class fund, charges, payments and balances" checked={ledger} onChange={setLedger} />
         <Switch label="Schedule" sub="Deadlines, quizzes and exams" checked={schedule} onChange={setSchedule} />
         <Switch label="Contents" sub="Links to files, videos and websites" checked={contents} onChange={setContents} />
+        <Switch label="News" sub="Announcements from the officers" checked={news} onChange={setNews} />
+        <Switch label="Timetable" sub="Weekly class meetings and no-classes days, shown on Home and Schedule" checked={timetable} onChange={setTimetable} />
         <Switch label="Members" sub="Always on" checked disabled onChange={() => {}} />
       </div>
 

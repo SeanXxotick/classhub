@@ -64,7 +64,33 @@ jobs:
           path: ~/.cache/firebase/emulators
           key: firebase-emulators-${{ runner.os }}-firebase-tools-15
       - run: firebase emulators:exec --only firestore --project demo-classhub "node firestore-tests/rules.test.js"
+      # The data layer against the same emulator, under the real rules.
+      - run: npm ci
+        working-directory: web
+      - run: firebase emulators:exec --only firestore --project demo-classhub "npm --prefix web run test:emu:run"
 
-  # The Playwright browser tests (web/e2e) are paused until phase 3 of
-  # docs/PLAN-V2.md. Add an "e2e" job here then: install Chromium, then run
-  # firebase emulators:exec --only auth,firestore ... "npm --prefix web run e2e".
+  e2e:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+        working-directory: web
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      - run: npm i -g firebase-tools@15
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-firebase-tools-15
+      - run: firebase emulators:exec --only auth,firestore --project demo-classhub "npm --prefix web run e2e"
