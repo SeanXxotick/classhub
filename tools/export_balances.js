@@ -50,10 +50,12 @@ async function listDocs(parent, collectionId) {
 
 /** A Firestore REST document as a plain object (only the value kinds a ledger record uses). */
 function plain(doc) {
-  const o = { id: doc.name.split('/').pop() };
+  const o = {};
   for (const [key, v] of Object.entries(doc.fields || {})) {
     o[key] = 'integerValue' in v ? Number(v.integerValue) : 'doubleValue' in v ? v.doubleValue : 'booleanValue' in v ? v.booleanValue : 'stringValue' in v ? v.stringValue : null;
   }
+  // Last, so a stored field called "id" can never replace the real document id.
+  o.id = doc.name.split('/').pop();
   return o;
 }
 
