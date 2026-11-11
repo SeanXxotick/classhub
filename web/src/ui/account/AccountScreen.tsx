@@ -300,7 +300,7 @@ function NotificationsCard({ uid, notice }: { uid: string; notice: (message: str
     try {
       const next = await turnOnPush(db, uid);
       setState(next);
-      notice(next === 'on' ? 'Notifications are on for this device.' : next === 'blocked' ? 'Notifications are blocked. Allow them for this site in your browser settings.' : 'Notifications were not turned on.');
+      notice(next === 'on' ? 'Notifications are on for this device.' : next === 'blocked' ? 'Notifications are blocked. Allow them for ClassHub in your settings.' : 'Notifications were not turned on.');
     } catch {
       notice('Notifications could not be turned on. Check your connection and try again.');
     } finally {
@@ -318,7 +318,7 @@ function NotificationsCard({ uid, notice }: { uid: string; notice: (message: str
     <div className="card stack" style={{ gap: 8 }}>
       <div className="bold">Notifications</div>
       {state === 'unsupported' && <p className="small muted" style={{ margin: 0 }}>This browser cannot show notifications. On an iPhone, add ClassHub to the Home Screen first.</p>}
-      {state === 'blocked' && <p className="small muted" style={{ margin: 0 }}>Notifications are blocked for this site. Allow them in your browser settings, then come back here.</p>}
+      {state === 'blocked' && <p className="small muted" style={{ margin: 0 }}>Notifications are blocked for ClassHub. Allow them in your settings, then come back here.</p>}
       {state === 'off' && (
         <>
           <p className="small muted" style={{ margin: 0 }}>Get a notification on this device for announcements, new deadlines, reminders and your payment claims.</p>

@@ -79,7 +79,9 @@ export function mutedKinds(): NoticeKind[] {
 
 /** Whether this browser shows notifications for the signed-in user. */
 export function pushState(): PushState {
-  if (isNative() || !('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported';
+  // In the Android app the permission is asked through the phone, so only our own record says whether it is on.
+  if (isNative()) return read(DEVICE_KEY) ? 'on' : 'off';
+  if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported';
   if (Notification.permission === 'denied') return 'blocked';
   return Notification.permission === 'granted' && read(DEVICE_KEY) ? 'on' : 'off';
 }
@@ -95,15 +97,47 @@ async function webToken(): Promise<string> {
   return getToken(getMessaging(app), { vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY, serviceWorkerRegistration: registration });
 }
 
+/**
+ * The Android app (Capacitor): asks the phone for permission and for its push token. ask is false on app
+ * start, when it must not show a prompt. Also opens the right screen when a notification is tapped.
+ */
+let nativeTapWired = false;
+async function nativeToken(ask: boolean): Promise<string | 'blocked'> {
+  const { PushNotifications } = await import('@capacitor/push-notifications');
+  const permission = ask ? await PushNotifications.requestPermissions() : await PushNotifications.checkPermissions();
+  if (permission.receive !== 'granted') return 'blocked';
+  // The sender names this channel; without it Android 8 and later would drop the notification.
+  await PushNotifications.createChannel({ id: 'classhub', name: 'Class updates', importance: 4, visibility: 1 });
+  if (!nativeTapWired) {
+    nativeTapWired = true;
+    await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+      const url = (action.notification.data as { url?: string } | undefined)?.url;
+      if (url && url.startsWith('/')) window.location.assign(url);
+    });
+  }
+  return new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('The phone did not answer. Check your connection and try again.')), 15000);
+    void PushNotifications.addListener('registration', (t) => (clearTimeout(timer), resolve(t.value)));
+    void PushNotifications.addListener('registrationError', (e) => (clearTimeout(timer), reject(new Error(e.error))));
+    void PushNotifications.register();
+  });
+}
+
 async function saveDevice(db: Firestore, uid: string, token: string): Promise<void> {
   let id = read(DEVICE_KEY);
   if (!id.startsWith(`${uid}_`)) id = `${uid}_${newId()}`;
-  await setDoc(doc(db, 'devices', id), { uid, token, platform: 'WEB', muted: mutedKinds(), updatedAtMillis: nowMillis() });
+  await setDoc(doc(db, 'devices', id), { uid, token, platform: isNative() ? 'ANDROID' : 'WEB', muted: mutedKinds(), updatedAtMillis: nowMillis() });
   write(DEVICE_KEY, id);
 }
 
 /** Asks for permission (it must follow a tap) and registers this browser. Returns the new state. */
 export async function turnOnPush(db: Firestore, uid: string): Promise<PushState> {
+  if (isNative()) {
+    const token = await nativeToken(true);
+    if (token === 'blocked') return 'blocked';
+    await saveDevice(db, uid, token);
+    return 'on';
+  }
   if (pushState() === 'unsupported') return 'unsupported';
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return permission === 'denied' ? 'blocked' : 'off';
@@ -114,7 +148,9 @@ export async function turnOnPush(db: Firestore, uid: string): Promise<PushState>
 /** On opening the app: keeps the stored token fresh when notifications are already on. Never throws. */
 export async function refreshPush(db: Firestore, uid: string): Promise<void> {
   try {
-    if (pushState() === 'on') await saveDevice(db, uid, await webToken());
+    if (pushState() !== 'on') return;
+    const token = isNative() ? await nativeToken(false) : await webToken();
+    if (token !== 'blocked') await saveDevice(db, uid, token);
   } catch {
     /* offline or the push service is unreachable: the stored token stays */
   }
