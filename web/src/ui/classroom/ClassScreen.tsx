@@ -442,7 +442,7 @@ function PermissionLine({ label, allowed }: { label: string; allowed: boolean })
   return (
     <div className="row" style={{ padding: '3px 0', gap: 0 }}>
       <span className="bold" style={{ width: 22, color: allowed ? 'var(--primary)' : 'var(--muted)' }} aria-hidden>
-        {allowed ? '✓' : '–'}
+        {allowed ? '✓' : '✕'}
       </span>
       <span className={allowed ? '' : 'muted'}>
         {label}

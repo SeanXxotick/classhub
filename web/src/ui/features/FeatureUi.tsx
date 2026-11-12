@@ -49,6 +49,8 @@ import { Ledger } from '../../domain/ledger';
 import { byLastName, listName } from '../../data/models';
 import { formatMoney, parsePesos } from '../../domain/money';
 import { courseShortName, layoutWeek } from '../../domain/weekGrid';
+import { attendanceExportSheets } from '../../domain/attendanceExport';
+import { xlsxFile } from '../../domain/xlsx';
 import { Avatar, CourseDot, Dialog, Field, RoleChip, hexColor, shortDate } from '../common';
 import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, Section, StatusBadge, TypeIcon } from '../../design';
 import { useClass, type ClassState } from '../classroom/ClassContext';
@@ -240,7 +242,11 @@ function ClaimDialog({ state, onClose }: { state: ClassState; onClose: () => voi
 // ---------------------------------------------------------------- Statement and export
 
 function download(name: string, text: string) {
-  const url = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' }));
+  downloadBlob(name, new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' }));
+}
+
+function downloadBlob(name: string, blob: Blob) {
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = name;
@@ -905,7 +911,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
         </Card>
       )}
       {taking && <AttendanceDialog state={state} meetings={meetings} onClose={() => setTaking(false)} />}
-      {editing && <MeetingDialog state={state} meeting={editing} onClose={() => setEditing(null)} />}
+      {editing && <MeetingDialog state={state} meeting={editing} meetings={everyMeeting} onClose={() => setEditing(null)} />}
       {viewing && (
         <Dialog title={courseName(viewing.courseId)} onClose={() => setViewing(null)} actions={<button className="btn text" onClick={() => setViewing(null)}>Close</button>}>
           <p>{`${DAYS[viewing.dayOfWeek]}, ${clockText(viewing.startMinutes)} to ${clockText(viewing.endMinutes)}`}</p>
@@ -919,9 +925,18 @@ export function TimetableCard({ state }: { state: ClassState }) {
   );
 }
 
-function MeetingDialog({ state, meeting, onClose }: { state: ClassState; meeting: Meeting; onClose: () => void }) {
+function MeetingDialog({ state, meeting, meetings, onClose }: { state: ClassState; meeting: Meeting; meetings: Meeting[]; onClose: () => void }) {
   const run = useRun();
-  const [m, setM] = useState(meeting);
+  // A course usually has one professor: the name already saved on another meeting of the course is filled in.
+  const knownInstructor = (courseId: string) => meetings.find((x) => x.courseId === courseId && x.id !== meeting.id && x.instructor)?.instructor ?? '';
+  const [m, setM] = useState(() => (meeting.id ? meeting : { ...meeting, instructor: knownInstructor(meeting.courseId) }));
+  // Once the officer types a name, changing the course leaves it alone.
+  const [typedInstructor, setTypedInstructor] = useState(false);
+  const pickCourse = (courseId: string) => {
+    if (typedInstructor) return setM({ ...m, courseId });
+    const saved = meeting.id && courseId === meeting.courseId ? meeting.instructor : '';
+    setM({ ...m, courseId, instructor: saved || knownInstructor(courseId) });
+  };
   return (
     <Dialog
       title={meeting.id ? 'Edit meeting' : 'Add meeting'}
@@ -944,7 +959,7 @@ function MeetingDialog({ state, meeting, onClose }: { state: ClassState; meeting
     >
       <div className="stack">
         <Field label="Course">
-          <select value={m.courseId} onChange={(e) => setM({ ...m, courseId: e.target.value })}>
+          <select value={m.courseId} onChange={(e) => pickCourse(e.target.value)}>
             {state.courses.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -971,7 +986,7 @@ function MeetingDialog({ state, meeting, onClose }: { state: ClassState; meeting
           <input value={m.room} maxLength={60} onChange={(e) => setM({ ...m, room: e.target.value })} />
         </Field>
         <Field label="Professor or instructor (optional)">
-          <input value={m.instructor} maxLength={80} onChange={(e) => setM({ ...m, instructor: e.target.value })} />
+          <input value={m.instructor} maxLength={80} onChange={(e) => (setTypedInstructor(true), setM({ ...m, instructor: e.target.value }))} />
         </Field>
       </div>
     </Dialog>
@@ -1116,6 +1131,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
   const manage = state.can('ATTENDANCE_MANAGE');
   const mine = useMyAttendance(db, state.classId, state.myUid, true);
   const [openCourse, setOpenCourse] = useState<string | null>(null);
+  const [openMine, setOpenMine] = useState<string | null>(null);
   const all = useAttendance(db, state.classId, manage).data ?? [];
   const totals = useAttendanceTotals(db, state.classId, true);
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
@@ -1130,13 +1146,21 @@ export function AttendanceCard({ state }: { state: ClassState }) {
       .sort((a, b) => b.absent - a.absent || b.late - a.late);
     return { courseId, taken: sheets.length, rows };
   });
-  const dates = (list: { dateKey: string }[]) => list.map((x) => x.dateKey).sort().map(niceDate).join(', ');
   const counts = (absent: number, late: number) => (
     <>
       {absent > 0 && <Badge tone="danger">{`${absent} absent`}</Badge>}
       {late > 0 && <Badge tone="warning">{`${late} late`}</Badge>}
     </>
   );
+  function exportAttendance() {
+    const courses = [...state.courses].sort((x, y) => x.name.localeCompare(y.name));
+    const students = byLastName(state.members).map((m) => ({ id: m.id, name: listName(m), excludedCourseIds: m.excludedCourseIds }));
+    // One sheet per course. Columns: name, days attended, then a column per day attendance was taken.
+    const sheets = attendanceExportSheets(courses, students, all).map((s) => ({ ...s, widths: [30, 10, ...s.rows[0].slice(2).map(() => 10)] }));
+    if (sheets.length === 0) return;
+    const bytes = xlsxFile(sheets);
+    downloadBlob(`${state.room?.name ?? 'class'} attendance.xlsx`, new Blob([bytes.buffer as ArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  }
   // Nothing to show until attendance has been taken at least once.
   if (Object.keys(totals).length === 0 && courseIds.length === 0 && perCourse.length === 0) return null;
   return (
@@ -1152,21 +1176,61 @@ export function AttendanceCard({ state }: { state: ClassState }) {
               return (
                 <ListRow
                   key={id}
-                  leading={<TypeIcon icon="alert" tone={a.length > 0 ? 'danger' : 'warning'} />}
-                  title={<><CourseDot color={state.courses.find((c) => c.id === id)?.color} />{courseName(id)}</>}
-                  subtitle={`Absent ${times(a.length)}, late ${times(l.length)}${totals[id] ? `, out of ${totals[id]} meeting${totals[id] === 1 ? '' : 's'}` : ''}`}
-                  trailing={counts(a.length, l.length)}
-                >
-                  {a.length > 0 && <span className="ch-small ch-muted ch-block">Absent: {dates(a)}</span>}
-                  {l.length > 0 && <span className="ch-small ch-muted ch-block">Late: {dates(l)}</span>}
-                </ListRow>
+                  title={
+                    <span className="ch-row ch-wrap" style={{ gap: 8 }}>
+                      <span className="ch-grow">
+                        <CourseDot color={state.courses.find((c) => c.id === id)?.color} />
+                        {courseName(id)}
+                      </span>
+                      <span className="ch-row" style={{ gap: 6 }}>{counts(a.length, l.length)}</span>
+                    </span>
+                  }
+                  subtitle={totals[id] ? `Out of ${totals[id]} meeting${totals[id] === 1 ? '' : 's'}` : undefined}
+                  chevron
+                  onClick={() => setOpenMine(id)}
+                />
               );
             })}
           </Card>
         )}
+        {openMine && (
+          <Dialog
+            title={`My attendance: ${courseName(openMine)}`}
+            onClose={() => setOpenMine(null)}
+            actions={
+              <button className="btn text" onClick={() => setOpenMine(null)}>
+                Close
+              </button>
+            }
+          >
+            <div className="stack">
+              {([['Absent', mine.absent], ['Late', mine.late]] as const).map(([label, list]) => {
+                const days = list.filter((x) => x.courseId === openMine).map((x) => x.dateKey).sort();
+                if (days.length === 0) return null;
+                return (
+                  <div key={label}>
+                    <div className="ch-small ch-muted" style={{ fontWeight: 700, marginBottom: 4 }}>{`${label} (${days.length})`}</div>
+                    {days.map((day) => (
+                      <div key={day}>{niceDate(day)}</div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </Dialog>
+        )}
       </Section>
       {manage && (
-        <Section title="Class attendance">
+        <Section
+          title="Class attendance"
+          action={
+            perCourse.length > 0 ? (
+              <Button size="small" variant="text" icon="download" onClick={exportAttendance}>
+                Export to Excel
+              </Button>
+            ) : undefined
+          }
+        >
           {perCourse.length === 0 ? (
             <Notice tone="info">No attendance taken yet. Use "Take attendance" in the timetable above.</Notice>
           ) : (
@@ -1174,7 +1238,6 @@ export function AttendanceCard({ state }: { state: ClassState }) {
               {perCourse.map((c) => (
                 <ListRow
                   key={c.courseId}
-                  leading={<TypeIcon icon={c.rows.length === 0 ? 'check' : 'list'} tone={c.rows.length === 0 ? 'success' : 'neutral'} />}
                   title={<><CourseDot color={state.courses.find((x) => x.id === c.courseId)?.color} />{courseName(c.courseId)}</>}
                   subtitle={`Taken ${times(c.taken)} · ${c.rows.length === 0 ? 'nobody absent or late' : `${c.rows.length} student${c.rows.length === 1 ? '' : 's'} with absences or lates`}`}
                   chevron={c.rows.length > 0}
