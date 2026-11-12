@@ -372,7 +372,8 @@ export function SetupChecklist({ state, go }: { state: ClassState; go: { courses
   const room = state.room!;
   const officer = isOfficer(state);
   const [hidden, setHidden] = useState(() => !!read(hiddenKey(state.classId)));
-  const watching = officer && !hidden;
+  // Watched even while hidden, so the collapsed card still knows whether any step is left.
+  const watching = officer;
   const timetableOn = room.timetableEnabled !== false;
   const newsOn = room.announcementsEnabled !== false;
   const meetings = useMeetings(db, state.classId, watching && timetableOn).data;
@@ -405,43 +406,46 @@ export function SetupChecklist({ state, go }: { state: ClassState; go: { courses
         <button
           type="button"
           className="btn text"
+          aria-expanded={!hidden}
           onClick={() => {
-            write(hiddenKey(state.classId), '1');
-            setHidden(true);
+            write(hiddenKey(state.classId), hidden ? '' : '1');
+            setHidden(!hidden);
           }}
         >
-          Hide
+          {hidden ? 'Show' : 'Hide'}
         </button>
       </div>
-      <div className="card flush">
-        <p className="small muted" style={{ margin: 0, padding: '14px 16px 6px' }}>
-          {steps.length - open.length} of {steps.length} done. Every officer sees this list.
-        </p>
-        {steps.map((s) => {
-          const allowed = state.can(s.permission);
-          const body = (
-            <>
-              <span className={'setup-tick' + (s.done ? ' done' : '')} aria-hidden>
-                {s.done && <Icon name="check" size={16} />}
-              </span>
-              <span className="grow">
-                <span className="title" style={{ display: 'block', textDecoration: s.done ? 'line-through' : undefined }}>{s.label}</span>
-                {!s.done && !allowed && <span className="sub">{whoCan(s.permission)}</span>}
-              </span>
-              {!s.done && allowed && <span className="muted">›</span>}
-            </>
-          );
-          return s.done || !allowed ? (
-            <div key={s.id} className={'list-row' + (s.done || !allowed ? ' setup-quiet' : '')} aria-label={`${s.label}${s.done ? ', done' : ''}`}>
-              {body}
-            </div>
-          ) : (
-            <button key={s.id} type="button" className="list-row" onClick={s.go}>
-              {body}
-            </button>
-          );
-        })}
-      </div>
+      {!hidden && (
+        <div className="card flush">
+          <p className="small muted" style={{ margin: 0, padding: '14px 16px 6px' }}>
+            {steps.length - open.length} of {steps.length} done. Every officer sees this list.
+          </p>
+          {steps.map((s) => {
+            const allowed = state.can(s.permission);
+            const body = (
+              <>
+                <span className={'setup-tick' + (s.done ? ' done' : '')} aria-hidden>
+                  {s.done && <Icon name="check" size={16} />}
+                </span>
+                <span className="grow">
+                  <span className="title" style={{ display: 'block', textDecoration: s.done ? 'line-through' : undefined }}>{s.label}</span>
+                  {!s.done && !allowed && <span className="sub">{whoCan(s.permission)}</span>}
+                </span>
+                {!s.done && allowed && <span className="muted">›</span>}
+              </>
+            );
+            return s.done || !allowed ? (
+              <div key={s.id} className={'list-row' + (s.done || !allowed ? ' setup-quiet' : '')} aria-label={`${s.label}${s.done ? ', done' : ''}`}>
+                {body}
+              </div>
+            ) : (
+              <button key={s.id} type="button" className="list-row" onClick={s.go}>
+                {body}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

@@ -13,9 +13,9 @@ import { AddRecordChooser, balanceText, EntryRow, LedgerSummaryCard, LedgerTab, 
 import { ChargeStudentsScreen, RecordRoute } from '../ledger/RecordForms';
 import { monthDay, ScheduleFormScreen, ScheduleRow, ScheduleTab } from '../schedule/ScheduleUi';
 import { ClassProvider, useClass, type ClassState } from './ClassContext';
-import { byLastName, listName } from '../../data/models';
+import { byLastName, listName, PERMISSIONS } from '../../data/models';
 import { CLASS_TABS, tabShownIn, type ClassTabId } from './classTabs';
-import { ClassSettingsScreen, CoursesScreen, MemberDetailScreen, RoleEditorScreen, RolesScreen } from './ManageScreens';
+import { ClassSettingsScreen, CoursesScreen, MemberDetailScreen, permissionLabel, RoleEditorScreen, RolesScreen } from './ManageScreens';
 import { MySettingsScreen } from './MySettingsScreen';
 import { SetupChecklist, Welcome } from './Onboarding';
 
@@ -402,12 +402,10 @@ function HomeTab({
         <section className="home-section home-order-7">
           <SectionHead title="What you can do" />
           <div className="card">
-            <PermissionLine label="Manage ledger records" allowed={state.can('RECORDS_MANAGE')} />
-            <PermissionLine label="Manage schedule" allowed={state.can('SCHEDULE_MANAGE')} />
-            <PermissionLine label="Manage members" allowed={state.can('MEMBERS_MANAGE')} />
-            <PermissionLine label="Manage roles" allowed={state.can('ROLES_MANAGE')} />
-            <PermissionLine label="Change class settings" allowed={state.can('CLASS_SETTINGS')} />
-            <PermissionLine label="Manage class contents" allowed={state.can('CONTENTS_MANAGE')} />
+            {/* Every permission, named as in the role editor, so a new one shows here too. */}
+            {PERMISSIONS.map((p) => (
+              <PermissionLine key={p} label={permissionLabel(p)[0]} allowed={state.can(p)} />
+            ))}
           </div>
         </section>
       </div>
