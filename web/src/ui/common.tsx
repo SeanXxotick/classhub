@@ -278,6 +278,12 @@ export function shortDate(millis: number): string {
   return `${monthShort(month)} ${day}`;
 }
 
+/** "Nov 12, 3:45 PM": the day and the time on this device's clock, for posts and comments. */
+export function shortDateTime(millis: number): string {
+  const time = new Date(millis).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s/g, ' ');
+  return `${shortDate(millis)}, ${time}`;
+}
+
 /**
  * A date field. Records dated today keep the current time (so same-day records stay in order);
  * other days, and every dayOnly date such as a deadline, are stored at local noon.

@@ -51,7 +51,7 @@ import { formatMoney, parsePesos } from '../../domain/money';
 import { courseShortName, layoutWeek } from '../../domain/weekGrid';
 import { attendanceExportSheets } from '../../domain/attendanceExport';
 import { xlsxFile } from '../../domain/xlsx';
-import { Avatar, ConfirmDialog, CourseDot, Dialog, EXPORT_IN_BROWSER, Field, RoleChip, hexColor, inAndroidApp, shortDate } from '../common';
+import { Avatar, ConfirmDialog, CourseDot, Dialog, EXPORT_IN_BROWSER, Field, RoleChip, hexColor, inAndroidApp, shortDate, shortDateTime } from '../common';
 import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, Section, StatusBadge, TypeIcon } from '../../design';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 
@@ -473,7 +473,7 @@ function Byline({ state, uid, fallback, when, edited, size }: { state: ClassStat
         <span className="bold comment-name">{name}</span>
         {titled && role && <RoleChip name={role.name} color={role.colorHex} />}
         <span className="ch-small ch-muted">
-          {shortDate(when)}
+          {shortDateTime(when)}
           {edited ? ' · edited' : ''}
         </span>
       </div>
