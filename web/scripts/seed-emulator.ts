@@ -109,7 +109,7 @@ async function main() {
   // Timetable: a meeting on every weekday, and two taken attendance sheets
   const meetings = [];
   for (let day = 1; day <= 6; day++) {
-    const meeting = newMeeting({ id: `meet${day}`, courseId: courseIds[day % 3], dayOfWeek: day, startMinutes: 480 + (day % 2) * 150, endMinutes: 570 + (day % 2) * 150, room: `Room ${200 + day}` });
+    const meeting = newMeeting({ id: `meet${day}`, courseId: courseIds[day % 3], dayOfWeek: day, startMinutes: 480 + (day % 2) * 150, endMinutes: 570 + (day % 2) * 150, room: `Room ${200 + day}`, instructor: ['Prof. Santos', 'Dr. Cruz', 'Prof. Dela Cruz'][day % 3] });
     await saveMeeting(m, classId, meeting);
     meetings.push(meeting);
     if (day % 2 === 0) await saveMeeting(m, classId, newMeeting({ id: `meet${day}b`, courseId: courseIds[(day + 1) % 3], dayOfWeek: day, startMinutes: 780, endMinutes: 870, room: 'Computer Lab 2' }));

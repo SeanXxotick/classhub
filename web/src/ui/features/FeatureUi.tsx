@@ -692,7 +692,7 @@ export function TodayCard({ state }: { state: ClassState }) {
                   voided={!!cancelled}
                   leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} color={courseColor(m.courseId)} />}
                   title={courseName(m.courseId)}
-                  subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}`}
+                  subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}`}
                   trailing={cancelled ? <StatusBadge status="danger">{`No classes${cancelled.reason ? `: ${cancelled.reason}` : ''}`}</StatusBadge> : undefined}
                 />
               ))}
@@ -704,7 +704,7 @@ export function TodayCard({ state }: { state: ClassState }) {
   );
 }
 
-// Tall enough for a one-hour block to show a two-line course name, the time and the room.
+// Tall enough for a one-hour block to show its four lines: course, time, room and instructor.
 const HOUR_PX = 64;
 const DAY_MS = 86_400_000;
 
@@ -747,12 +747,13 @@ function WeekGrid({ state, meetings, marks, onOpen }: { state: ClassState; meeti
               const name = course(m.courseId)?.name ?? 'Course';
               const cancelled = nextCancelled(m, meetings, marks, now);
               const other = !state.takes(m.courseId);
-              // A long course name wraps over the lines left after the time and room, so those are never pushed out.
+              // A long course name wraps over the lines left after the time, room and instructor, so those are never pushed out.
               const blockHeight = ((b.endMinutes - b.startMinutes) / 60) * HOUR_PX - 2;
-              const nameLines = Math.max(1, Math.floor((blockHeight - 6 - (1 + (m.room ? 1 : 0)) * 13.5) / 14.5));
+              const nameLines = Math.max(1, Math.floor((blockHeight - 6 - (1 + (m.room ? 1 : 0) + (m.instructor ? 1 : 0)) * 13.5) / 14.5));
               const label = [
                 `${name}, ${DAYS[d]} ${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}`,
                 m.room,
+                m.instructor,
                 other ? 'Not your course' : '',
                 cancelled ? `No classes on ${niceDate(cancelled.dateKey)}${cancelled.reason ? `: ${cancelled.reason}` : ''}` : '',
               ]
@@ -787,6 +788,7 @@ function WeekGrid({ state, meetings, marks, onOpen }: { state: ClassState; meeti
                     </span>
                   </span>
                   {m.room && <span className="ch-week-sub">{m.room}</span>}
+                  {m.instructor && <span className="ch-week-sub full">{m.instructor}</span>}
                 </button>
               );
             })}
@@ -865,7 +867,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
                       voided={!!cancelled}
                       leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} color={courseColor(m.courseId)} />}
                       title={courseName(m.courseId)}
-                      subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${notMine(m)}`}
+                      subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}${notMine(m)}`}
                       trailing={cancelled ? <StatusBadge status="danger">{`No classes${cancelled.reason ? `: ${cancelled.reason}` : ''}`}</StatusBadge> : undefined}
                       chevron={manage}
                       onClick={manage ? () => setEditing(m) : undefined}
@@ -908,6 +910,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
         <Dialog title={courseName(viewing.courseId)} onClose={() => setViewing(null)} actions={<button className="btn text" onClick={() => setViewing(null)}>Close</button>}>
           <p>{`${DAYS[viewing.dayOfWeek]}, ${clockText(viewing.startMinutes)} to ${clockText(viewing.endMinutes)}`}</p>
           {viewing.room && <p>{viewing.room}</p>}
+          {viewing.instructor && <p>{viewing.instructor}</p>}
           {viewingCancelled && <p className="ch-muted">{`No classes on ${niceDate(viewingCancelled.dateKey)}${viewingCancelled.reason ? `: ${viewingCancelled.reason}` : ''}`}</p>}
         </Dialog>
       )}
@@ -966,6 +969,9 @@ function MeetingDialog({ state, meeting, onClose }: { state: ClassState; meeting
         </Field>
         <Field label="Room (optional)">
           <input value={m.room} maxLength={60} onChange={(e) => setM({ ...m, room: e.target.value })} />
+        </Field>
+        <Field label="Professor or instructor (optional)">
+          <input value={m.instructor} maxLength={80} onChange={(e) => setM({ ...m, instructor: e.target.value })} />
         </Field>
       </div>
     </Dialog>

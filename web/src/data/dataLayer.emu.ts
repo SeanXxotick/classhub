@@ -416,11 +416,13 @@ describe('claims, announcements and the timetable', () => {
   });
 
   it('the Mayor adds a weekly meeting and marks a day as no classes; a member cannot', async () => {
-    await saveMeeting(as(MAYOR.uid), classId, newMeeting({ courseId: 'course1', dayOfWeek: 1, startMinutes: 480, endMinutes: 570, room: 'Room 204' }));
+    await saveMeeting(as(MAYOR.uid), classId, newMeeting({ courseId: 'course1', dayOfWeek: 1, startMinutes: 480, endMinutes: 570, room: 'Room 204', instructor: '  Prof. Santos ' }));
     await addNoClass(as(MAYOR.uid), MAYOR.uid, classId, '2026-11-16', '', 'Holiday');
+    await expect(saveMeeting(as(MAYOR.uid), classId, { ...newMeeting({ courseId: 'course1' }), extra: 'x' } as never)).rejects.toBeTruthy();
     await expect(saveMeeting(as(STUDENT.uid), classId, newMeeting({ courseId: 'course1' }))).rejects.toBeTruthy();
     await expect(addNoClass(as(STUDENT.uid), STUDENT.uid, classId, '2026-11-17', '', '')).rejects.toBeTruthy();
     const meetings = (await getDocs(collection(adminDb, 'classes', classId, 'meetings'))).docs.map((d) => newMeeting({ ...(d.data() as object), id: d.id }));
+    expect(meetings.map((x) => x.instructor)).toEqual(['Prof. Santos']);
     const marks = (await getDocs(collection(adminDb, 'classes', classId, 'noClass'))).docs.map((d) => ({ id: d.id, ...(d.data() as { dateKey: string; courseId: string; reason: string; createdByUid: string }) }));
     // 2026-11-16 is a Monday in Manila.
     const day = meetingsOn(meetings, marks, Date.UTC(2026, 10, 16, 2));

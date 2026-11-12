@@ -275,10 +275,12 @@ export interface Meeting {
   startMinutes: number;
   endMinutes: number;
   room: string;
+  /** The professor or instructor. Empty when not given, and missing on meetings saved before it existed. */
+  instructor: string;
   note: string;
 }
 
-export const newMeeting = (m: Partial<Meeting>): Meeting => ({ id: '', courseId: '', dayOfWeek: 1, startMinutes: 480, endMinutes: 540, room: '', note: '', ...m });
+export const newMeeting = (m: Partial<Meeting>): Meeting => ({ id: '', courseId: '', dayOfWeek: 1, startMinutes: 480, endMinutes: 540, room: '', instructor: '', note: '', ...m });
 
 export interface NoClassMark {
   id: string;
@@ -297,7 +299,7 @@ export const noClassCol = (db: Firestore, classId: string) => sub(db, classId, '
 export async function saveMeeting(db: Firestore, classId: string, meeting: Meeting): Promise<void> {
   if (!meeting.courseId) throw new UserError('NAME_MISSING', 'Choose the course of this meeting.');
   if (meeting.endMinutes <= meeting.startMinutes) throw new UserError('AMOUNT_INVALID', 'The meeting must end after it starts.');
-  const clean = { ...meeting, room: meeting.room.trim().slice(0, 60), note: meeting.note.trim().slice(0, 200) };
+  const clean = { ...meeting, room: meeting.room.trim().slice(0, 60), instructor: meeting.instructor.trim().slice(0, 80), note: meeting.note.trim().slice(0, 200) };
   await explainRefusal(db, classId, () => setDoc(doc(meetingsCol(db, classId), meeting.id || newId()), withoutId(clean)));
 }
 

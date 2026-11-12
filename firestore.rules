@@ -621,7 +621,11 @@ service cloud.firestore {
 
     function isMeeting() {
       let d = request.resource.data;
-      return hasFields(d, ['courseId', 'dayOfWeek', 'startMinutes', 'endMinutes', 'room', 'note'])
+      // 'instructor' is optional: meetings saved before it existed, and older copies of the app, do not send it.
+      return d.keys().hasAll(['courseId', 'dayOfWeek', 'startMinutes', 'endMinutes', 'room', 'note'])
+        && d.keys().hasOnly(['courseId', 'dayOfWeek', 'startMinutes', 'endMinutes', 'room', 'note', 'instructor', 'id'])
+        && d.get('id', '') == ''
+        && isText(d.get('instructor', ''), 80)
         && isFilled(d.courseId, 128)
         && d.dayOfWeek is int && d.dayOfWeek >= 0 && d.dayOfWeek <= 6
         && d.startMinutes is int && d.startMinutes >= 0 && d.startMinutes < 1440
