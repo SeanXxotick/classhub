@@ -236,3 +236,36 @@ textarea.ch-input { min-height: 96px; resize: vertical; }
 .ch-snackbar { position: fixed; left: 0; right: 0; bottom: calc(88px + env(safe-area-inset-bottom)); z-index: 200; display: flex; justify-content: center; padding: 0 var(--ch-space-4); pointer-events: none; }
 @media (min-width: 900px) { .ch-snackbar { bottom: 24px; } }
 .ch-snackbar-msg { max-width: 100%; background: #2b3140; color: #f1f5f9; padding: 12px 16px; border-radius: var(--ch-radius-md); box-shadow: var(--ch-shadow-2); display: flex; gap: 10px; align-items: center; pointer-events: auto; }
+
+/* Weekly timetable grid */
+.ch-week { overflow-x: auto; padding: var(--ch-space-2) 8px var(--ch-space-3); }
+.ch-week-grid { display: grid; min-width: min-content; }
+.ch-week-head { text-align: center; font-size: var(--ch-fs-caption); font-weight: var(--ch-fw-bold); letter-spacing: var(--ch-ls-label); text-transform: uppercase; color: var(--ch-text-muted); padding: 4px 0 8px; }
+.ch-week-head.today { color: var(--ch-primary-text); }
+.ch-week-times { position: relative; }
+.ch-week-time { position: absolute; right: 4px; transform: translateY(-50%); font-size: 11px; color: var(--ch-text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ch-week-col { position: relative; border-left: 1px solid var(--ch-border); border-bottom: 1px solid var(--ch-border); background-image: linear-gradient(to bottom, var(--ch-border) 1px, transparent 1px); }
+.ch-week-col:last-child { border-right: 1px solid var(--ch-border); }
+.ch-week-col.today { background-color: var(--ch-primary-soft); }
+.ch-week-block { position: absolute; box-sizing: border-box; container-type: inline-size; display: flex; flex-direction: column; overflow: hidden; border: 0; border-radius: 8px; padding: 3px 4px; color: #fff; font: inherit; font-size: 12px; line-height: 1.2; text-align: center; cursor: pointer; }
+.ch-week-block:focus-visible { outline: 2px solid var(--ch-text); outline-offset: 1px; }
+/* The details take one line each, so a one-hour block always fits them. */
+.ch-week-sub { flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The name wraps over as many lines as the block has to spare (set per block), then ends in an ellipsis. */
+.ch-week-name { flex: none; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-weight: var(--ch-fw-bold); }
+.ch-week-sub { opacity: 0.92; font-size: 11px; }
+.ch-week-block .short { display: none; }
+.ch-week-block.other { opacity: 0.55; }
+.ch-week-block.cancelled { opacity: 0.45; text-decoration: line-through; }
+/* A narrow block (a phone column, or half a column when two meetings clash) shows the short labels. */
+@container (max-width: 104px) {
+  .ch-week-block .full { display: none; }
+  .ch-week-block .short { display: inline; }
+  /* Short labels leave spare height, so the room may wrap instead of ending in an ellipsis. */
+  .ch-week-sub { white-space: normal; overflow-wrap: anywhere; }
+}
+/* Half a phone column (two meetings clash): only the initials fit; tapping the block shows the rest. */
+@container (max-width: 26px) {
+  .ch-week-sub { display: none; }
+  .ch-week-name { font-size: 10px; text-overflow: clip; }
+}

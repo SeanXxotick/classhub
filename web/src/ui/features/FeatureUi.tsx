@@ -43,10 +43,12 @@ import {
   type Claim,
   type ClaimMethod,
   type Meeting,
+  type NoClassMark,
 } from '../../data/features';
 import { Ledger } from '../../domain/ledger';
 import { byLastName, listName } from '../../data/models';
 import { formatMoney, parsePesos } from '../../domain/money';
+import { courseShortName, layoutWeek } from '../../domain/weekGrid';
 import { Avatar, CourseDot, Dialog, Field, RoleChip, hexColor, shortDate } from '../common';
 import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, Section, StatusBadge, TypeIcon } from '../../design';
 import { useClass, type ClassState } from '../classroom/ClassContext';
@@ -702,6 +704,99 @@ export function TodayCard({ state }: { state: ClassState }) {
   );
 }
 
+// Tall enough for a one-hour block to show a two-line course name, the time and the room.
+const HOUR_PX = 64;
+const DAY_MS = 86_400_000;
+
+/** The mark that cancels this meeting the next time it happens (today counts), if any. */
+function nextCancelled(meeting: Meeting, meetings: Meeting[], marks: NoClassMark[], now: number): NoClassMark | null {
+  const ahead = (meeting.dayOfWeek - manilaDay(now).dayOfWeek + 7) % 7;
+  return meetingsOn(meetings, marks, now + ahead * DAY_MS).find((x) => x.meeting.id === meeting.id)?.cancelled ?? null;
+}
+
+/** The whole week as a grid: a column per day that has meetings, time down the side, a block per meeting in its course colour. */
+function WeekGrid({ state, meetings, marks, onOpen }: { state: ClassState; meetings: Meeting[]; marks: NoClassMark[]; onOpen: (m: Meeting) => void }) {
+  const week = useMemo(() => layoutWeek(meetings), [meetings]);
+  const now = Date.now();
+  const today = manilaDay(now).dayOfWeek;
+  const course = (id: string) => state.courses.find((c) => c.id === id);
+  const hours: number[] = [];
+  for (let t = week.fromMinutes; t <= week.toMinutes; t += 60) hours.push(t);
+  const height = ((week.toMinutes - week.fromMinutes) / 60) * HOUR_PX;
+  const hourLabel = (minutes: number) => clockText(minutes).replace(':00', '');
+  return (
+    <div className="ch-week">
+      <div className="ch-week-grid" style={{ gridTemplateColumns: `34px repeat(${week.days.length}, minmax(50px, 1fr))` }}>
+        <span />
+        {week.days.map((d) => (
+          <span key={d} className={'ch-week-head' + (d === today ? ' today' : '')}>
+            {DAYS[d].slice(0, 3)}
+          </span>
+        ))}
+        <div className="ch-week-times" style={{ height }} aria-hidden>
+          {hours.map((t) => (
+            <span key={t} className="ch-week-time" style={{ top: ((t - week.fromMinutes) / 60) * HOUR_PX }}>
+              {hourLabel(t)}
+            </span>
+          ))}
+        </div>
+        {week.days.map((d) => (
+          <div key={d} className={'ch-week-col' + (d === today ? ' today' : '')} style={{ height, backgroundSize: `100% ${HOUR_PX}px` }} role="group" aria-label={DAYS[d]}>
+            {week.byDay[d].map((b) => {
+              const m = b.item;
+              const name = course(m.courseId)?.name ?? 'Course';
+              const cancelled = nextCancelled(m, meetings, marks, now);
+              const other = !state.takes(m.courseId);
+              // A long course name wraps over the lines left after the time and room, so those are never pushed out.
+              const blockHeight = ((b.endMinutes - b.startMinutes) / 60) * HOUR_PX - 2;
+              const nameLines = Math.max(1, Math.floor((blockHeight - 6 - (1 + (m.room ? 1 : 0)) * 13.5) / 14.5));
+              const label = [
+                `${name}, ${DAYS[d]} ${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}`,
+                m.room,
+                other ? 'Not your course' : '',
+                cancelled ? `No classes on ${niceDate(cancelled.dateKey)}${cancelled.reason ? `: ${cancelled.reason}` : ''}` : '',
+              ]
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={'ch-week-block' + (cancelled ? ' cancelled' : '') + (other ? ' other' : '')}
+                  title={label}
+                  aria-label={label}
+                  onClick={() => onOpen(m)}
+                  style={{
+                    top: ((b.startMinutes - week.fromMinutes) / 60) * HOUR_PX + 1,
+                    height: blockHeight,
+                    left: `calc(${(b.lane / b.lanes) * 100}% + 2px)`,
+                    width: `calc(${100 / b.lanes}% - 4px)`,
+                    background: course(m.courseId)?.color || 'var(--ch-primary)',
+                  }}
+                >
+                  <span className="ch-week-name" style={{ WebkitLineClamp: nameLines }}>
+                    <span className="full">{name}</span>
+                    <span className="short">{courseShortName(name)}</span>
+                  </span>
+                  <span className="ch-week-sub">
+                    <span className="full">{`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}`}</span>
+                    <span className="short">
+                      {clockText(m.startMinutes).split(' ')[0]}–
+                      <br />
+                      {clockText(m.endMinutes).split(' ')[0]}
+                    </span>
+                  </span>
+                  {m.room && <span className="ch-week-sub">{m.room}</span>}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** The weekly timetable, in the Schedule tab. Officers with the schedule permission edit it and mark "no classes". */
 export function TimetableCard({ state }: { state: ClassState }) {
   const manage = state.can('SCHEDULE_MANAGE');
@@ -716,6 +811,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
   const [marking, setMarking] = useState(false);
   const [taking, setTaking] = useState(false);
   const [fullWeek, setFullWeek] = useState(false);
+  const [viewing, setViewing] = useState<Meeting | null>(null);
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
   const now = Date.now();
@@ -723,6 +819,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
   // Folded, the card shows only today and tomorrow, so the deadlines below stay within reach.
   const soon: [string, number][] = [['Today', now], ['Tomorrow', now + 86_400_000]];
   const coming = marks.filter((k) => k.dateKey >= todayKey).sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
+  const viewingCancelled = viewing ? nextCancelled(viewing, meetings, marks, now) : null;
 
   return (
     <Section title="Timetable">
@@ -777,25 +874,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
                 </div>
               );
             })}
-          {fullWeek && DAYS.map((day, i) => {
-            const list = meetings.filter((m) => m.dayOfWeek === i).sort((a, b) => a.startMinutes - b.startMinutes);
-            if (list.length === 0) return null;
-            return (
-              <div key={day}>
-                <DayHeader>{day}</DayHeader>
-                {list.map((m) => (
-                  <ListRow
-                    key={m.id}
-                    leading={<TimeTile minutes={m.startMinutes} color={courseColor(m.courseId)} />}
-                    title={courseName(m.courseId)}
-                    subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${notMine(m)}`}
-                    chevron={manage}
-                    onClick={manage ? () => setEditing(m) : undefined}
-                  />
-                ))}
-              </div>
-            );
-          })}
+          {fullWeek && <WeekGrid state={state} meetings={meetings} marks={marks} onOpen={manage ? setEditing : setViewing} />}
           <div className="ch-row" style={{ padding: '4px 12px 0' }}>
             <Button size="small" variant="text" icon={fullWeek ? 'x' : 'list'} onClick={() => setFullWeek(!fullWeek)}>
               {fullWeek ? 'Show today and tomorrow only' : 'Full week'}
@@ -825,6 +904,13 @@ export function TimetableCard({ state }: { state: ClassState }) {
       )}
       {taking && <AttendanceDialog state={state} meetings={meetings} onClose={() => setTaking(false)} />}
       {editing && <MeetingDialog state={state} meeting={editing} onClose={() => setEditing(null)} />}
+      {viewing && (
+        <Dialog title={courseName(viewing.courseId)} onClose={() => setViewing(null)} actions={<button className="btn text" onClick={() => setViewing(null)}>Close</button>}>
+          <p>{`${DAYS[viewing.dayOfWeek]}, ${clockText(viewing.startMinutes)} to ${clockText(viewing.endMinutes)}`}</p>
+          {viewing.room && <p>{viewing.room}</p>}
+          {viewingCancelled && <p className="ch-muted">{`No classes on ${niceDate(viewingCancelled.dateKey)}${viewingCancelled.reason ? `: ${viewingCancelled.reason}` : ''}`}</p>}
+        </Dialog>
+      )}
       {marking && <NoClassDialog state={state} meetings={meetings} onClose={() => setMarking(false)} />}
     </Section>
   );
