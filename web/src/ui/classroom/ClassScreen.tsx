@@ -500,7 +500,7 @@ function MembersList({ state, canManage, onOpenMember }: { state: ClassState; ca
     <div className="card flush">
       <div className="small semibold muted" style={{ padding: '0 16px 6px' }}>
         {state.members.length} member{s(state.members.length)}
-        {canManage ? '  ·  Tap someone to set their role or courses' : '  ·  Tap someone to see their role and courses'}
+        {canManage ? '  ·  Tap someone to set their role or courses' : ''}
       </div>
       <div className="members-grid">
         {byLastName(state.members).map((member) => (

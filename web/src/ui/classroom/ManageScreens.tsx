@@ -100,6 +100,10 @@ function MemberDetailContent({ member, readOnly }: { member: Member; readOnly: b
   const coursesChanged = taken.size !== takenNow.length || takenNow.some((id) => !taken.has(id));
   const [confirmRemove, setConfirmRemove] = useState(false);
   const balance = state.balanceOf(member.id);
+  const statement = LedgerView.statement(member.id, state.records);
+  // The summary starts with the 5 latest records; "See more" adds 10 at a time. Opening another member starts over.
+  const [more, setMore] = useState<{ id: string; count: number }>({ id: member.id, count: 5 });
+  const shown = more.id === member.id ? more.count : 5;
 
   const setTaken = (id: string, on: boolean) => {
     const next = new Set(taken);
@@ -123,17 +127,22 @@ function MemberDetailContent({ member, readOnly }: { member: Member; readOnly: b
         <div className="card flush">
           <div className="section-label">Balance</div>
           <div className="bold" style={{ fontSize: 18, padding: '0 16px 4px', color: balance < 0 ? 'var(--error)' : undefined }}>{balanceText(balance)}</div>
-          {LedgerView.statement(member.id, state.records)
-            .slice(0, 5)
-            .map((record) => (
-              <EntryRow key={record.id} entry={{ kind: 'single', key: 'r:' + record.id, type: record.type, dateMillis: record.dateMillis, record }} state={state} mine />
-            ))}
+          {statement.slice(0, shown).map((record) => (
+            <EntryRow key={record.id} entry={{ kind: 'single', key: 'r:' + record.id, type: record.type, dateMillis: record.dateMillis, record }} state={state} mine />
+          ))}
+          {statement.length > shown && (
+            <div style={{ padding: '4px 12px 8px' }}>
+              <button type="button" className="btn text" onClick={() => setMore({ id: member.id, count: shown + 10 })}>
+                See more
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {readOnly && (
         <div className="card">
-          <div className="section-label" style={{ padding: '0 0 6px' }}>Courses taken</div>
+          <div className="section-label" style={{ padding: '0 0 6px' }}>Courses</div>
           {state.courses.length === 0 ? (
             <p className="muted" style={{ margin: 0 }}>This class has no courses yet.</p>
           ) : (
@@ -180,7 +189,7 @@ function MemberDetailContent({ member, readOnly }: { member: Member; readOnly: b
 
       {!readOnly && (
       <div className="card">
-        <div className="section-label" style={{ padding: '0 0 6px' }}>Courses taken</div>
+        <div className="section-label" style={{ padding: '0 0 6px' }}>Courses</div>
         {state.courses.length === 0 ? (
           <p className="muted" style={{ margin: 0 }}>This class has no courses yet. Add them under Home → Courses.</p>
         ) : (
