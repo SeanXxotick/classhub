@@ -670,7 +670,7 @@ export function TodayCard({ state }: { state: ClassState }) {
   const now = Date.now();
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
-  const mine = (m: Meeting) => !state.me?.excludedCourseIds.includes(m.courseId);
+  const mine = (m: Meeting) => state.takes(m.courseId);
   const days: [string, number][] = [
     ['Today', now],
     ['Tomorrow', now + 86_400_000],
@@ -705,7 +705,11 @@ export function TodayCard({ state }: { state: ClassState }) {
 /** The weekly timetable, in the Schedule tab. Officers with the schedule permission edit it and mark "no classes". */
 export function TimetableCard({ state }: { state: ClassState }) {
   const manage = state.can('SCHEDULE_MANAGE');
-  const meetings = useMeetings(db, state.classId, true).data ?? [];
+  const everyMeeting = useMeetings(db, state.classId, true).data ?? [];
+  // Students see only the meetings of courses they take. Officers who run the timetable or attendance see all.
+  const seesAll = manage || state.can('ATTENDANCE_MANAGE');
+  const meetings = seesAll ? everyMeeting : everyMeeting.filter((m) => state.takes(m.courseId));
+  const notMine = (m: Meeting) => (state.takes(m.courseId) ? '' : ' · Not your course');
   const marks = useNoClass(db, state.classId, true).data ?? [];
   const run = useRun();
   const [editing, setEditing] = useState<Meeting | null>(null);
@@ -764,7 +768,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
                       voided={!!cancelled}
                       leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} color={courseColor(m.courseId)} />}
                       title={courseName(m.courseId)}
-                      subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}`}
+                      subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${notMine(m)}`}
                       trailing={cancelled ? <StatusBadge status="danger">{`No classes${cancelled.reason ? `: ${cancelled.reason}` : ''}`}</StatusBadge> : undefined}
                       chevron={manage}
                       onClick={manage ? () => setEditing(m) : undefined}
@@ -784,7 +788,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
                     key={m.id}
                     leading={<TimeTile minutes={m.startMinutes} color={courseColor(m.courseId)} />}
                     title={courseName(m.courseId)}
-                    subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}`}
+                    subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${notMine(m)}`}
                     chevron={manage}
                     onClick={manage ? () => setEditing(m) : undefined}
                   />

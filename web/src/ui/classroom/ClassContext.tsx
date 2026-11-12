@@ -84,6 +84,8 @@ export interface ClassState {
   balanceOf: (memberId: string) => number;
   roleOf: (member: Member | null | undefined) => Role | null;
   can: (permission: Permission) => boolean;
+  /** False only for a course this user does not take. Items with no course belong to everyone. */
+  takes: (courseId: string | null | undefined) => boolean;
 }
 
 type Done = () => void;
@@ -203,6 +205,11 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
     const roleOf = (m: Member | null | undefined) => (m ? roleList.find((r) => r.id === m.roleId) ?? null : null);
     const myRole = roleOf(meValue);
     const error = otherError ? friendlyMessage(otherError) : null;
+    // A student sees nothing of a course they do not take. Officers who manage a tab still see all of it.
+    const skipped = new Set(meValue?.excludedCourseIds ?? []);
+    const takes = (courseId: string | null | undefined) => !courseId || !skipped.has(courseId);
+    const allContents = contents.data ?? [];
+    const allSchedule = [...(schedule.data ?? [])].sort((a, b) => a.dueMillis - b.dueMillis);
     return {
       classId,
       myUid: uid,
@@ -218,8 +225,8 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
       charges: charges.data ?? [],
       joinRequests: joinRequests.data ?? [],
       pendingOpenings: pendingOpenings.data ?? [],
-      contents: contents.data ?? [],
-      schedule: [...(schedule.data ?? [])].sort((a, b) => a.dueMillis - b.dueMillis),
+      contents: roleCan(myRole, 'CONTENTS_MANAGE') ? allContents : allContents.filter((i) => takes(i.courseId)),
+      schedule: roleCan(myRole, 'SCHEDULE_MANAGE') ? allSchedule : allSchedule.filter((i) => takes(i.courseId)),
       myDone: new Set(Object.keys(mine?.done ?? {})),
       progress: progressList,
       avatars,
@@ -231,6 +238,7 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
       balanceOf: (id) => balances.get(id) ?? 0,
       roleOf,
       can: (p) => roleCan(myRole, p),
+      takes,
     };
   }, [classId, uid, room, me, roles, members, courses, records, seeAll, summary, charges, joinRequests, pendingOpenings, contents, schedule, progress, avatars, classPhoto]);
 

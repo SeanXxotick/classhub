@@ -134,7 +134,7 @@ function ContentRow({
   onNotice: (message: string) => void;
 }) {
   const format = ContentRules.formatOf(item);
-  const subtitle = [showCourse ? state.courses.find((c) => c.id === item.courseId)?.name ?? 'General' : '', format.label, ContentRules.sourceOf(item.url), item.note]
+  const subtitle = [showCourse ? state.courses.find((c) => c.id === item.courseId)?.name ?? 'General' : '', state.takes(item.courseId) ? '' : 'Not your course', format.label, ContentRules.sourceOf(item.url), item.note]
     .filter((x) => x.trim())
     .join('  ·  ');
   const valid = ContentRules.isValidUrl(item.url);
@@ -286,7 +286,7 @@ export function ContentsTab({ state, onEdit, onNotice }: { state: ClassState; on
                 <MenuOption text="All courses, one list" chosen={courseFilter === ALL && !groupByCourse} onClick={() => (pickCourse(ALL, false), close())} />
                 <hr className="divider" />
                 <MenuOption text="General" chosen={courseFilter === GENERAL} onClick={() => (pickCourse(GENERAL), close())} />
-                {state.courses.map((c) => (
+                {state.courses.filter((c) => canManage || state.takes(c.id)).map((c) => (
                   <MenuOption key={c.id} text={c.name} chosen={courseFilter === c.id} onClick={() => (pickCourse(c.id), close())} />
                 ))}
               </>

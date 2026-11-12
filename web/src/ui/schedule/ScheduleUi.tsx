@@ -124,7 +124,7 @@ export function ScheduleRow({
   const cancelled = ScheduleLogic.isCancelled(item);
   const courseDoc = state.courses.find((c) => c.id === item.courseId);
   const course = courseDoc?.name;
-  const subtitle = [course, kindLabel(item.kind), showDate ? longDay(dayOf(item.dueMillis)) : null].filter(Boolean).join('  ·  ');
+  const subtitle = [course, state.takes(item.courseId) ? null : 'Not your course', kindLabel(item.kind), showDate ? longDay(dayOf(item.dueMillis)) : null].filter(Boolean).join('  ·  ');
   return (
     <div className={'list-row' + (onClick ? ' clickable' : '')} onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined}
       onKeyDown={onClick ? (e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), onClick()) : undefined}>
@@ -466,7 +466,9 @@ function ScheduleDetailsDialog({
   const [showWho, setShowWho] = useState(false);
   const due = dayOf(item.dueMillis);
   const dueParts = parseDay(due);
-  const summary = ScheduleView.completion(item.id, state.members, progress);
+  // Only the students who take the course are expected to finish it.
+  const takers = item.courseId ? state.members.filter((m) => !m.excludedCourseIds.includes(item.courseId)) : state.members;
+  const summary = ScheduleView.completion(item.id, takers, progress);
 
   return (
     <Dialog

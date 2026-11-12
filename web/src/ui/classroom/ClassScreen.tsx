@@ -251,8 +251,10 @@ function HomeTab({
   const canRoles = state.can('ROLES_MANAGE');
   const canCourses = state.can('CLASS_SETTINGS');
   const now = Date.now();
-  const upcoming = ScheduleView.filter(state.schedule, 'UPCOMING', now, state.myDone).slice(0, 3);
-  const overdue = ScheduleView.filter(state.schedule, 'OVERDUE', now, state.myDone).length;
+  // Home is personal: an officer who sees every course still gets only their own here.
+  const mySchedule = state.schedule.filter((i) => state.takes(i.courseId));
+  const upcoming = ScheduleView.filter(mySchedule, 'UPCOMING', now, state.myDone).slice(0, 3);
+  const overdue = ScheduleView.filter(mySchedule, 'OVERDUE', now, state.myDone).length;
   const ledgerOfficer = state.can('RECORDS_MANAGE');
   const recent = LedgerView.entries(state.records).slice(0, 3);
   const defaultRoleName = state.roles.find((r) => r.id === room.defaultRoleId)?.name ?? 'Member';
