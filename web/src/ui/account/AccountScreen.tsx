@@ -6,6 +6,7 @@ import * as authRepo from '../../data/authRepo';
 import { friendlyMessage } from '../../data/errors';
 import type { AppUser } from '../../data/models';
 import { removeAvatar, setAvatar, useAvatar } from '../../data/photoRepo';
+import { installCard, type InstallCard } from '../../domain/installCard';
 import { NameRules, personName, type PersonName } from '../../domain/nameRules';
 import { Avatar, Dialog, Field, PasswordInput, Spinner, TopBar, useBack, useNotice, usePhotoPicker } from '../common';
 import { replayWelcome } from '../classroom/Onboarding';
@@ -13,6 +14,16 @@ import { setThemeMode, themeMode, useSettingsVersion, type ThemeMode } from '../
 
 /** Where the Android app is downloaded from (the same page the Android update prompt opens). */
 export const ANDROID_DOWNLOAD_URL = 'https://classhub-975eb.web.app/download';
+
+function thisDeviceCard(): InstallCard {
+  const nav = navigator as Navigator & { standalone?: boolean };
+  return installCard({
+    userAgent: nav.userAgent,
+    maxTouchPoints: nav.maxTouchPoints || 0,
+    standalone: nav.standalone === true || matchMedia('(display-mode: standalone)').matches,
+    androidApp: !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.(),
+  });
+}
 
 type DeleteStep = { kind: 'checking' } | { kind: 'mustHandOver'; classNames: string[] } | { kind: 'confirm'; error: string | null };
 
@@ -25,6 +36,7 @@ export function AccountScreen({ user }: { user: AppUser }) {
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [deleteStep, setDeleteStep] = useState<DeleteStep | null>(null);
   useSettingsVersion();
+  const [card] = useState(thisDeviceCard);
 
   async function run(success: string | null, block: () => Promise<unknown>, onDone?: () => void) {
     if (busy) return;
@@ -120,15 +132,38 @@ export function AccountScreen({ user }: { user: AppUser }) {
 
           <NotificationsCard uid={user.uid} notice={notice} />
 
-          <div className="card stack" style={{ gap: 8 }}>
-            <div className="bold">Get the Android app</div>
-            <p className="small muted" style={{ margin: 0 }}>
-              ClassHub for Android has everything here, plus reminders on your phone for due dates, new class materials and money you owe.
-            </p>
-            <a className="btn outline" href={ANDROID_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">
-              Download for Android
-            </a>
-          </div>
+          {card === 'android' && (
+            <div className="card stack" style={{ gap: 8 }}>
+              <div className="bold">Get the Android app</div>
+              <p className="small muted" style={{ margin: 0 }}>
+                ClassHub for Android has everything here, plus reminders on your phone for due dates, new class materials and money you owe.
+              </p>
+              <a className="btn outline" href={ANDROID_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">
+                Download for Android
+              </a>
+            </div>
+          )}
+
+          {card === 'iphone' && (
+            <div className="card stack" style={{ gap: 8 }}>
+              <div className="bold">Install on iPhone</div>
+              <p className="small muted" style={{ margin: 0 }}>
+                Add ClassHub to your home screen and it opens like an app, full screen with its own icon.
+              </p>
+              <ol className="small install-steps">
+                <li>
+                  Tap the <b>Share</b> button in Safari (the square with an arrow pointing up).
+                </li>
+                <li>
+                  Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.
+                </li>
+                <li>Open ClassHub from your home screen and sign in.</li>
+              </ol>
+              <p className="tiny muted" style={{ margin: 0 }}>
+                For reminders, turn on notifications here after opening ClassHub from the home screen. This needs iOS 16.4 or newer.
+              </p>
+            </div>
+          )}
 
           <button className="btn outline block" onClick={() => (replayWelcome(), notice('The welcome will show the next time you open a class.'))}>
             Show the welcome again
