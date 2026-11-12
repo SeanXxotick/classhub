@@ -14,8 +14,10 @@ android {
         applicationId "com.seanxxotick.classhub"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 7
-        versionName "2.0.0"
+        versionCode 8
+        versionName "2.0.1"
+        // The APK is named after the version, e.g. ClassHub-2.0.1-release.apk.
+        base.archivesName = "ClassHub-${versionName}"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

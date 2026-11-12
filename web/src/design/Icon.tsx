@@ -1,4 +1,4 @@
-import type { SVGAttributes } from 'react';
+import { useId, type SVGAttributes } from 'react';
 
 /** The icon set of the approved mockup: 24x24 outline paths drawn with a 1.9 stroke. */
 const PATHS = {
@@ -88,16 +88,39 @@ export function Icon({ name, size = 24, ...rest }: IconProps) {
   );
 }
 
-/** The ClassHub app icon (the four-tile logo). */
+/** The ClassHub app icon (the four-tile logo, the same drawing as the Android launcher icon and web/public/icon.svg). */
 export function Logo({ size = 34 }: { size?: number }) {
+  // Each logo needs its own ids: a gradient defined inside a hidden copy (the sidebar on phones) would not paint the others.
+  const id = 'logo' + useId().replace(/[^a-zA-Z0-9]/g, '');
+  const tile = (x: number, y: number) => <rect x={x} y={y} width="20" height="20" rx="5.5" />;
   return (
-    <svg viewBox="0 0 108 108" width={size} height={size} aria-hidden="true" focusable="false" style={{ borderRadius: size * 0.28, flex: 'none' }}>
-      <rect width="108" height="108" fill="#0f766e" />
-      <path
-        fill="#fff"
-        d="M37,32h9a5,5 0 0,1 5,5v9a5,5 0 0,1 -5,5h-9a5,5 0 0,1 -5,-5v-9a5,5 0 0,1 5,-5z M62,32h9a5,5 0 0,1 5,5v9a5,5 0 0,1 -5,5h-9a5,5 0 0,1 -5,-5v-9a5,5 0 0,1 5,-5z M37,57h9a5,5 0 0,1 5,5v9a5,5 0 0,1 -5,5h-9a5,5 0 0,1 -5,-5v-9a5,5 0 0,1 5,-5z"
-      />
-      <circle cx="66.5" cy="66.5" r="9.5" fill="#99f6e4" />
+    <svg viewBox="18 18 72 72" width={size} height={size} aria-hidden="true" focusable="false" style={{ flex: 'none' }}>
+      <defs>
+        <clipPath id={`${id}c`}>
+          <rect x="18" y="18" width="72" height="72" rx="17.3" />
+        </clipPath>
+        <linearGradient id={`${id}g`} gradientUnits="userSpaceOnUse" x1="18" y1="18" x2="90" y2="90">
+          <stop offset="0" stopColor="#15a897" />
+          <stop offset="1" stopColor="#0e796f" />
+        </linearGradient>
+        <filter id={`${id}s`} x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="3" stdDeviation="3.5" floodColor="#002824" floodOpacity="0.4" />
+        </filter>
+        <filter id={`${id}b`} x="-100%" y="-100%" width="300%" height="300%">
+          <feGaussianBlur stdDeviation="4" />
+        </filter>
+      </defs>
+      <g clipPath={`url(#${id}c)`}>
+        <rect x="18" y="18" width="72" height="72" fill={`url(#${id}g)`} />
+        <ellipse cx="43.2" cy="-17.8" rx="75.6" ry="63.2" fill="#fff" fillOpacity="0.13" />
+        <g fill="#fff" filter={`url(#${id}s)`}>
+          {tile(31.5, 31.5)}
+          {tile(56.5, 31.5)}
+          {tile(31.5, 56.5)}
+        </g>
+        <circle cx="68" cy="68" r="13" fill="#fde68a" fillOpacity="0.43" filter={`url(#${id}b)`} />
+        <circle cx="68" cy="68" r="10" fill="#fcd34d" filter={`url(#${id}s)`} />
+      </g>
     </svg>
   );
 }
