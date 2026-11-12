@@ -1950,3 +1950,19 @@ a.list-row:hover {
   color: var(--ch-primary-text);
   background: var(--ch-primary-soft);
 }
+
+/* Android app only: a newer APK is published. */
+.update-banner {
+  padding: 12px max(16px, env(safe-area-inset-left, 0px)) 0 max(16px, env(safe-area-inset-right, 0px));
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
+}
+.update-banner .ch-notice > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.update-banner-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}

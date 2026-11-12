@@ -9,6 +9,14 @@ import type { CapacitorConfig } from '@capacitor/cli';
  */
 const testUrl = process.env.CAP_SERVER_URL;
 
+// The APK tells the web app its version through the user agent ("ClassHubAndroid/8"), for the update banner.
+// It is read from android/app/build.gradle, so bump versionCode there and run "npx cap sync android" before building.
+// The Capacitor CLI runs this file as CommonJS from web/, so require and a cwd-relative path are used.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const gradle: string = require('fs').readFileSync('android/app/build.gradle', 'utf8');
+const versionCode = /versionCode\s+(\d+)/.exec(gradle)?.[1];
+if (!versionCode) throw new Error('versionCode not found in android/app/build.gradle');
+
 const config: CapacitorConfig = {
   appId: 'com.seanxxotick.classhub',
   appName: 'ClassHub',
@@ -18,7 +26,7 @@ const config: CapacitorConfig = {
     cleartext: !!testUrl && testUrl.startsWith('http://'),
     androidScheme: 'https',
   },
-  android: { backgroundColor: '#0F766E' },
+  android: { backgroundColor: '#0F766E', appendUserAgent: `ClassHubAndroid/${versionCode}` },
 };
 
 export default config;

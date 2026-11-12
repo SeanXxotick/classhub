@@ -9,6 +9,7 @@ import { AddClassDialog, ClassesScreen, CreateClassScreen, JoinClassScreen, Shar
 import { ClassRoute } from './classroom/ClassScreen';
 import { Avatar, Loading, hexColor, useBack } from './common';
 import { Logo } from './Logo';
+import { UpdateBanner } from './UpdateBanner';
 
 /** Signed out: sign in or create an account. A temporary password must be changed first. Then the app. */
 export function App() {
@@ -28,6 +29,7 @@ function SignedIn({ user }: { user: AppUser }) {
     <div className="app">
       <Sidebar user={user} />
       <main className="main">
+        <UpdateBanner />
         <Routes>
           <Route path="/" element={<ClassesScreen user={user} />} />
           <Route path="/account" element={<AccountScreen user={user} />} />
