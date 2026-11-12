@@ -66,7 +66,7 @@ export const openingBalanceRef = (db: Firestore, classId: string, uid: string) =
 
 /**
  * Every sub-collection a class can have that holds documents today, in the order the class delete removes
- * them. claims, announcements, seen, meetings, noClass and outbox are not open yet (no rules), so they hold nothing.
+ * them. outbox is not listed: only the sender may delete its notices, and it clears them within minutes.
  */
 export const CLASS_SUBCOLLECTIONS = [
   'records', 'charges', 'summary', 'openingBalances', 'joinRequests', 'claims', 'comments', 'votes', 'announcements', 'seen', 'meetings', 'noClass', 'attendance', 'attendanceTotals', 'schedule', 'contents', 'courses', 'progress', 'members', 'roles',

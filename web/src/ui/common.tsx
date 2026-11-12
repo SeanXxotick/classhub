@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ICONS } from './iconData';
 import { photoSrc } from '../data/photoRepo';
 import { ImageMath } from '../domain/imageMath';
-import { initialsOf } from '../domain/nameRules';
+import { initialsOf, personInitials } from '../domain/nameRules';
 import { dayKey, dayOf, monthShort, noonMillis, parseDay, weekday, weekdayShort, today } from '../domain/dates';
 
 // ------------------------------------------------------------------ Colors
@@ -91,7 +91,7 @@ export function Avatar({ photo, name, color, size = 42, circle = true }: { photo
   }
   return (
     <span className="avatar" aria-hidden style={{ width: size, height: size, borderRadius: radius, background: color.startsWith('var(') ? color : hexColor(color), fontSize: size * 0.36 }}>
-      {initialsOf(name)}
+      {circle ? personInitials(name) : initialsOf(name)}
     </span>
   );
 }
@@ -300,6 +300,10 @@ export function DateField({ millis, onChange, label = 'Date', dayOnly = false }:
 }
 
 export { dayKey };
+
+/** True inside the Android app. Its web view cannot save a file or print, so those buttons explain instead. */
+export const inAndroidApp = (): boolean => !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+export const EXPORT_IN_BROWSER = 'Exporting works in a browser. Open classhub-web.web.app in Chrome or on a computer.';
 
 // ------------------------------------------------------------------ Dialogs
 

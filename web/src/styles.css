@@ -84,6 +84,8 @@ body,
 
 body {
   -webkit-font-smoothing: antialiased;
+  /* A long word with no spaces (a pasted link, a held-down key) wraps instead of running out of its card. */
+  overflow-wrap: break-word;
 }
 
 a {
@@ -332,7 +334,7 @@ textarea {
 
 .split {
   display: grid;
-  grid-template-columns: minmax(280px, 360px) 1fr;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -591,6 +593,16 @@ a.list-row:hover {
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+/* A long role name gives way to the member's name beside it. */
+.list-row > .pill {
+  flex: none;
+  max-width: 42%;
 }
 
 /* ------------------------------------------------------------------ Form fields */

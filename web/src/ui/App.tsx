@@ -3,7 +3,7 @@ import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import * as authRepo from '../data/authRepo';
 import type { AppUser } from '../data/models';
 import { useAvatar, useClassAccents, useClassPhotos } from '../data/photoRepo';
-import { AccountScreen, ANDROID_DOWNLOAD_URL } from './account/AccountScreen';
+import { AccountScreen, ANDROID_DOWNLOAD_URL, thisDeviceCard } from './account/AccountScreen';
 import { AuthScreen, ChangePasswordScreen } from './auth/AuthScreens';
 import { AddClassDialog, ClassesScreen, CreateClassScreen, JoinClassScreen, ShareScreen, useMyClasses } from './classes/ClassesScreens';
 import { ClassRoute } from './classroom/ClassScreen';
@@ -89,10 +89,12 @@ function Sidebar({ user }: { user: AppUser }) {
         <span className="grow">Add a class</span>
       </button>
       <div className="side-spacer" />
-      <a className="side-item" href={ANDROID_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">
-        <span className="grow">Get the Android app</span>
-        <span aria-hidden>↗</span>
-      </a>
+      {thisDeviceCard() === 'android' && (
+        <a className="side-item" href={ANDROID_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">
+          <span className="grow">Get the Android app</span>
+          <span aria-hidden>↗</span>
+        </a>
+      )}
       <NavLink to="/account" className={itemClass}>
         <Avatar photo={avatar} name={user.displayName} color="#0F766E" size={30} />
         <span className="grow">

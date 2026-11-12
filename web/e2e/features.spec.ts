@@ -21,7 +21,7 @@ test('claims, statement, announcements and the timetable', async ({ browser }) =
   await claim.getByLabel('Amount').fill('150');
   await claim.getByLabel('Reference number (optional)').fill('REF 001');
   await claim.getByRole('button', { name: 'Send claim' }).click();
-  await expectNotice(page, 'Claim sent. It is waiting for the Treasurer.');
+  await expectNotice(page, 'Claim sent. It is waiting for the treasurer.');
   await expect(page.getByText('Payment claims (1 waiting)')).toBeVisible();
   await page.getByRole('button', { name: 'Confirm' }).click();
   await expectNotice(page, 'Payment of ₱150.00 from Nina Castro confirmed.');
@@ -68,7 +68,7 @@ test('claims, statement, announcements and the timetable', async ({ browser }) =
   await sheet.getByLabel('Attendance of Nina Castro').selectOption('ABSENT');
   await sheet.getByRole('button', { name: 'Save' }).click();
   await expectNotice(page, 'Attendance saved: 0 present, 0 late, 1 absent.');
-  await expect(page.getByText('Absent 1 time, late 0 times, out of 1 meeting')).toBeVisible();
+  await expect(page.getByText('Out of 1 meeting')).toBeVisible();
   await expect(page.getByText('1 absent').first()).toBeVisible();
 
   await page.getByRole('button', { name: 'No classes' }).click();

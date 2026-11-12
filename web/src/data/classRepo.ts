@@ -269,6 +269,18 @@ export function setCourseColor(classId: string, courseId: string, color: string)
   return updateDoc(doc(coursesOf(classId), courseId), { color });
 }
 
-export function deleteCourse(classId: string, courseId: string): Promise<void> {
-  return deleteDoc(doc(coursesOf(classId), courseId));
+/**
+ * Deletes a course. Its timetable meetings go with it when the person may edit the timetable
+ * (the rules ask for that permission); otherwise they stay in the data and the screens hide them.
+ */
+export async function deleteCourse(classId: string, courseId: string, withMeetings = false): Promise<void> {
+  if (withMeetings) {
+    const meetings = await getDocs(query(collection(db, 'classes', classId, 'meetings'), where('courseId', '==', courseId)));
+    for (let i = 0; i < meetings.docs.length; i += 400) {
+      const batch = writeBatch(db);
+      for (const d of meetings.docs.slice(i, i + 400)) batch.delete(d.ref);
+      await batch.commit();
+    }
+  }
+  await deleteDoc(doc(coursesOf(classId), courseId));
 }

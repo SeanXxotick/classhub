@@ -3,6 +3,8 @@
  * Both apps share the same database, so a field name changed here breaks the other app.
  */
 
+import { NameRules } from '../domain/nameRules';
+
 /** Ids of the roles every new class starts with. */
 export const ROLE_MAYOR = 'mayor';
 export const ROLE_TREASURER = 'treasurer';
@@ -80,6 +82,7 @@ export interface ClassRoom {
   scheduleEnabled: boolean;
   contentsEnabled: boolean;
   announcementsEnabled: boolean;
+  /** No longer a switch: the timetable follows scheduleEnabled. The field stays because the rules require it. */
   timetableEnabled: boolean;
   /** Who may see other students' balances. The Mayor and people who manage records always can. */
   balanceVisibility: BalanceVisibility;
@@ -134,8 +137,23 @@ export interface Member {
   sortName?: string;
 }
 
-/** A member's name in a list sorted by last name. Falls back to the display name. */
-export const listName = (m: { name: string; sortName?: string }): string => m.sortName || m.name;
+/**
+ * A member's name in a list sorted by last name. A member whose app has not saved the last-name form yet
+ * (they joined before it existed and have not opened ClassHub since) gets it worked out from the display
+ * name: "Ana G. De Leon" becomes "De Leon, Ana G.". A one-word name stays as it is.
+ */
+export const listName = (m: { name: string; sortName?: string }): string => m.sortName || guessedSortName(m.name) || m.name;
+
+const guessed = new Map<string, string>();
+function guessedSortName(name: string): string {
+  let made = guessed.get(name);
+  if (made === undefined) {
+    const parts = NameRules.split(name);
+    made = sortNameOf(parts.first, parts.middleInitial, parts.last);
+    guessed.set(name, made);
+  }
+  return made;
+}
 
 /** Members in last-name order (those without a last-name form sort by their display name). */
 export const byLastName = <T extends { name: string; sortName?: string }>(members: T[]): T[] =>

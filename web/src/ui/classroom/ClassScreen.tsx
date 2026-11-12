@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import type { JoinRequest, Member, ScheduleItem } from '../../data/models';
+import type { JoinRequest, Member, Permission, ScheduleItem } from '../../data/models';
 import { AttendanceCard, ClaimsCard, NewsTab, StatementCard, TimetableCard, TodayCard } from '../features/FeatureUi';
 import { JoinLinks } from '../../domain/joinLinks';
 import { LedgerView } from '../../domain/ledgerView';
@@ -134,8 +134,9 @@ function ClassScreen() {
         {room && state.me && !state.loading && !state.error && <Welcome state={state} />}
         {room && state.me && !state.loading && !state.error && tab === 'SCHEDULE' && (
           <div className="stack" style={{ marginBottom: 12 }}>
-            {tab === 'SCHEDULE' && room.timetableEnabled !== false && <TimetableCard state={state} />}
-            {tab === 'SCHEDULE' && room.timetableEnabled !== false && <AttendanceCard state={state} />}
+            {/* The timetable and attendance are part of the Schedule module. */}
+            <TimetableCard state={state} />
+            <AttendanceCard state={state} />
           </div>
         )}
         {state.loading ? (
@@ -318,7 +319,7 @@ function HomeTab({
           </section>
         )}
 
-        {room.timetableEnabled !== false && (
+        {room.scheduleEnabled !== false && (
           <div className="home-order-1 home-today">
             <TodayCard state={state} />
           </div>
@@ -402,8 +403,8 @@ function HomeTab({
         <section className="home-section home-order-7">
           <SectionHead title="What you can do" />
           <div className="card">
-            {/* Every permission, named as in the role editor, so a new one shows here too. */}
-            {PERMISSIONS.map((p) => (
+            {/* Every permission, named as in the role editor, so a new one shows here too. Those of a module that is turned off are left out. */}
+            {PERMISSIONS.filter((p) => moduleOn(state, p)).map((p) => (
               <PermissionLine key={p} label={permissionLabel(p)[0]} allowed={state.can(p)} />
             ))}
           </div>
@@ -509,14 +510,28 @@ function MembersList({ state, canManage, onOpenMember }: { state: ClassState; ca
   );
 }
 
+/** The module a permission belongs to. Permissions that are not listed work with every module off. */
+const PERMISSION_MODULE: Partial<Record<Permission, 'ledgerEnabled' | 'scheduleEnabled' | 'contentsEnabled' | 'announcementsEnabled'>> = {
+  RECORDS_MANAGE: 'ledgerEnabled',
+  SCHEDULE_MANAGE: 'scheduleEnabled',
+  ATTENDANCE_MANAGE: 'scheduleEnabled',
+  CONTENTS_MANAGE: 'contentsEnabled',
+  ANNOUNCEMENTS_MANAGE: 'announcementsEnabled',
+};
+const moduleOn = (state: ClassState, p: Permission): boolean => {
+  const module = PERMISSION_MODULE[p];
+  return !module || state.room?.[module] !== false;
+};
+
 function MemberRow({ member, state, isMe, onClick }: { member: Member; state: ClassState; isMe: boolean; onClick?: () => void }) {
   const role = state.roleOf(member);
   // Only officers who set courses or charge by course see who skips a course; classmates do not.
   const showCourses = state.can('MEMBERS_MANAGE') || state.can('RECORDS_MANAGE');
   const skipped = showCourses ? state.courses.filter((c) => member.excludedCourseIds.includes(c.id)).length : 0;
   const balance = state.balanceOf(member.id);
+  const showBalance = state.room?.ledgerEnabled !== false && (state.seeAll || isMe);
   const details = [
-    state.room?.ledgerEnabled !== false && (state.seeAll || isMe) ? balanceText(balance) : null,
+    showBalance ? balanceText(balance) : null,
     skipped > 0 ? `Does not take ${skipped} course${s(skipped)}` : null,
   ].filter(Boolean);
   const content = (
@@ -525,7 +540,7 @@ function MemberRow({ member, state, isMe, onClick }: { member: Member; state: Cl
       <span className="grow ellipsis-box">
         <span className="title ellipsis">{isMe ? `${listName(member)} (you)` : listName(member)}</span>
         {details.length > 0 && (
-          <span className="sub ellipsis" style={balance < 0 ? { color: 'var(--error)' } : undefined}>
+          <span className="sub ellipsis" style={showBalance && balance < 0 ? { color: 'var(--error)' } : undefined}>
             {details.join('  ·  ')}
           </span>
         )}

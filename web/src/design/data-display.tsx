@@ -1,6 +1,6 @@
 import type { HTMLAttributes, ReactElement, ReactNode } from 'react';
 import { formatMoney } from '../domain/money';
-import { initialsOf } from '../domain/nameRules';
+import { personInitials } from '../domain/nameRules';
 import { Icon, type IconName } from './Icon';
 import { cx, toneClass, validHex, type Tone } from './util';
 
@@ -106,7 +106,7 @@ export function Avatar({ name, photo, size = 40, color, badge }: AvatarProps) {
       aria-hidden="true"
       style={{ width: size, height: size, background: validHex(color) ?? AVATAR_COLORS[hash(name) % AVATAR_COLORS.length], fontSize: Math.round(size * 0.36) }}
     >
-      {initialsOf(name)}
+      {personInitials(name)}
     </span>
   );
   if (!badge) return face;

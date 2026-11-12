@@ -15,7 +15,7 @@ import { setThemeMode, themeMode, useSettingsVersion, type ThemeMode } from '../
 /** Where the Android app is downloaded from (the same page the Android update prompt opens). */
 export const ANDROID_DOWNLOAD_URL = 'https://classhub-975eb.web.app/download';
 
-function thisDeviceCard(): InstallCard {
+export function thisDeviceCard(): InstallCard {
   const nav = navigator as Navigator & { standalone?: boolean };
   return installCard({
     userAgent: nav.userAgent,
@@ -136,7 +136,7 @@ export function AccountScreen({ user }: { user: AppUser }) {
             <div className="card stack" style={{ gap: 8 }}>
               <div className="bold">Get the Android app</div>
               <p className="small muted" style={{ margin: 0 }}>
-                ClassHub for Android has everything here, plus reminders on your phone for due dates, new class materials and money you owe.
+                ClassHub for Android is this same app on your phone, with notifications for announcements, due dates and other class updates.
               </p>
               <a className="btn outline" href={ANDROID_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">
                 Download for Android

@@ -402,7 +402,7 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
 
       deleteCourse(course, onDone) {
         if (!st().can('CLASS_SETTINGS')) return deny('You do not have permission to edit courses.');
-        runAction(`Deleted ${course.name}.`, onDone, () => classRepo.deleteCourse(classId, course.id));
+        runAction(`Deleted ${course.name}.`, onDone, () => classRepo.deleteCourse(classId, course.id, st().can('SCHEDULE_MANAGE')));
       },
 
       // ---- Joining ----

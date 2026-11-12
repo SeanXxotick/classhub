@@ -49,6 +49,8 @@ test('the welcome shows once and the Getting started list follows the class', as
   await expect(list.getByText('1 of 5 done')).toBeVisible();
   await expect(welcome).toBeHidden();
   await list.getByRole('button', { name: 'Hide' }).click();
-  await expect(list).toBeHidden();
+  // Hiding keeps the heading with a Show button, so the list can be brought back.
+  await expect(list.getByText('1 of 5 done')).toBeHidden();
+  await expect(list.getByRole('button', { name: 'Show' })).toBeVisible();
   expect(realErrors(mayor.errors, mayor.failedRequests)).toEqual([]);
 });

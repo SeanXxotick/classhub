@@ -374,7 +374,8 @@ export function SetupChecklist({ state, go }: { state: ClassState; go: { courses
   const [hidden, setHidden] = useState(() => !!read(hiddenKey(state.classId)));
   // Watched even while hidden, so the collapsed card still knows whether any step is left.
   const watching = officer;
-  const timetableOn = room.timetableEnabled !== false;
+  // The timetable is part of the Schedule module.
+  const timetableOn = room.scheduleEnabled !== false;
   const newsOn = room.announcementsEnabled !== false;
   const meetings = useMeetings(db, state.classId, watching && timetableOn).data;
   const posts = useAnnouncements(db, state.classId, watching && newsOn).data;

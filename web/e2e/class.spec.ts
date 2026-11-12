@@ -78,7 +78,7 @@ test.describe.serial('a class from start to finish', () => {
     // A name already listed is refused.
     await page.getByLabel('New course').fill('operations research');
     await page.getByRole('button', { name: 'Add', exact: true }).click();
-    await expectNotice(page, 'Use a course name of up to 40 characters that is not already listed.');
+    await expectNotice(page, 'Use a course name of up to 80 characters that is not already listed.');
   });
 
   test('a student joins with the invite link before signing in', async () => {
@@ -102,7 +102,7 @@ test.describe.serial('a class from start to finish', () => {
     await openTab(page, 'Members');
     await page.getByRole('button', { name: /Stu Dent|Dent, Stu/ }).click();
     await page.getByRole('switch', { name: /Operations Research/ }).uncheck();
-    await expect(page.getByText('Skipped when charging this course')).toBeVisible();
+    await expect(page.getByText('Does not take this course')).toBeVisible();
     await page.getByRole('button', { name: 'Save courses' }).click();
     await expectNotice(page, "Stu Dent's courses were saved.");
     await page.goBack();

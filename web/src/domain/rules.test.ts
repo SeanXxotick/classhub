@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { PERMISSIONS, ROLE_MAYOR, ROLE_MEMBER, ROLE_SECRETARY, ROLE_TREASURER, newMember, newRole, newContentItem, type ContentKind } from '../data/models';
 import { DefaultRoles, RoleRules, can } from './permissions';
 import { ClassRules, CourseRules, MemberRules } from './classRules';
-import { NameRules, initialsOf, personName } from './nameRules';
+import { NameRules, initialsOf, personInitials, personName } from './nameRules';
+import { byLastName, listName } from '../data/models';
 import { PasswordRules } from './passwordRules';
 import { InviteCode } from './inviteCode';
 import { JoinLinks } from './joinLinks';
@@ -81,7 +82,7 @@ describe('Class, member and course rules', () => {
   it('course names and takers', () => {
     const existing = [{ id: 'or', name: 'Operations Research' }];
     expect(CourseRules.isNameValid('  ', existing)).toBe(false);
-    expect(CourseRules.isNameValid('x'.repeat(41), existing)).toBe(false);
+    expect(CourseRules.isNameValid('x'.repeat(81), existing)).toBe(false);
     expect(CourseRules.isNameValid('operations research', existing)).toBe(false);
     expect(CourseRules.isNameValid('Modern Geometry', existing)).toBe(true);
     expect(CourseRules.isNameValid('Operations Research', existing, 'or')).toBe(true);
@@ -127,6 +128,12 @@ describe('NameRules', () => {
     expect(initialsOf('Advanced Calculus I')).toBe('I');
     expect(initialsOf('Physics')).toBe('PH');
     expect(initialsOf('  ')).toBe('?');
+    expect(initialsOf('Math Society (Test)')).toBe('MT');
+    // A short surname is not a section or a course number.
+    expect(personInitials('Ana Lim')).toBe('AL');
+    expect(personInitials('Juan D. Dela Cruz')).toBe('JC');
+    expect(personInitials('Cher')).toBe('CH');
+    expect(personInitials(' ')).toBe('?');
   });
 });
 
@@ -318,5 +325,20 @@ describe('ImageMath', () => {
     expect(ImageMath.sampleSize(300, 300)).toBe(1);
     expect(ImageMath.sampleSize(1024, 512)).toBe(2);
     expect(() => ImageMath.centerSquare(0, 100)).toThrow();
+  });
+});
+
+describe('names in lists', () => {
+  it('uses the saved last-name form, and works one out for members who do not have it yet', () => {
+    expect(listName({ name: 'Paolo M. Garcia', sortName: 'Garcia, Paolo M.' })).toBe('Garcia, Paolo M.');
+    expect(listName({ name: 'Akira Alexa G. De Leon' })).toBe('De Leon, Akira Alexa G.');
+    expect(listName({ name: 'Laurice Ann DC. San Jose' })).toBe('San Jose, Laurice Ann DC.');
+    expect(listName({ name: 'Charina Castaneda Labaco', sortName: '' })).toBe('Labaco, Charina Castaneda');
+    expect(listName({ name: 'Cher' })).toBe('Cher');
+  });
+
+  it('sorts old and new members together by last name', () => {
+    const sorted = byLastName([{ name: 'Remier John M. Kundiman' }, { name: 'Sean C. Dela Cruz', sortName: 'Dela Cruz, Sean C.' }, { name: 'Kristian Clint M. Autor' }]);
+    expect(sorted.map(listName)).toEqual(['Autor, Kristian Clint M.', 'Dela Cruz, Sean C.', 'Kundiman, Remier John M.']);
   });
 });

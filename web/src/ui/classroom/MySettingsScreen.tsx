@@ -26,7 +26,7 @@ export function MySettingsScreen() {
       {room && (
         <div className="stack">
           <p className="small muted" style={{ margin: 0 }}>
-            These settings are only for you, in this browser. Nobody else in {room.name} sees or changes them.
+            These settings are only for you, on this device. Nobody else in {room.name} sees or changes them.
           </p>
 
           <div className="card">
@@ -107,7 +107,7 @@ function LeaveDialog({ room, onDismiss, onLeave }: { room: ClassRoom; onDismiss:
         </>
       }
     >
-      <p style={{ margin: 0 }}>The class will disappear from My classes. To come back, you will need a new invite code.</p>
+      <p style={{ margin: 0 }}>The class will disappear from My classes. To come back, you will need the invite code.</p>
       <p style={{ margin: 0 }}>Your ledger records stay with the class, as part of its history.</p>
       {balance < 0 && (
         <p className="error-text semibold" style={{ margin: 0 }}>

@@ -46,12 +46,12 @@ import {
   type NoClassMark,
 } from '../../data/features';
 import { Ledger } from '../../domain/ledger';
-import { byLastName, listName } from '../../data/models';
+import { ROLE_MEMBER, byLastName, listName } from '../../data/models';
 import { formatMoney, parsePesos } from '../../domain/money';
 import { courseShortName, layoutWeek } from '../../domain/weekGrid';
 import { attendanceExportSheets } from '../../domain/attendanceExport';
 import { xlsxFile } from '../../domain/xlsx';
-import { Avatar, CourseDot, Dialog, Field, RoleChip, hexColor, shortDate } from '../common';
+import { Avatar, ConfirmDialog, CourseDot, Dialog, EXPORT_IN_BROWSER, Field, RoleChip, hexColor, inAndroidApp, shortDate } from '../common';
 import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, Section, StatusBadge, TypeIcon } from '../../design';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 
@@ -153,7 +153,7 @@ export function ClaimsCard({ state }: { state: ClassState }) {
           ))}
         </Card>
       ) : (
-        !manage && <Notice tone="info">Paid by GCash or bank? Tap "I paid" so the Treasurer can confirm it.</Notice>
+        !manage && <Notice tone="info">Paid by GCash or bank? Tap "I paid" so the treasurer can confirm it.</Notice>
       )}
       {adding && <ClaimDialog state={state} onClose={() => setAdding(false)} />}
       {rejecting && (
@@ -205,7 +205,7 @@ function ClaimDialog({ state, onClose }: { state: ClassState; onClose: () => voi
             disabled={amount === null}
             onClick={() =>
               amount !== null &&
-              run('Claim sent. It is waiting for the Treasurer.', () =>
+              run('Claim sent. It is waiting for the treasurer.', () =>
                 sendClaim(db, { uid: state.myUid, name: state.me?.name ?? '' }, state.classId, { amountCentavos: amount, method, reference, note }), onClose)
             }
           >
@@ -268,6 +268,7 @@ const STATEMENT_ICON = {
 /** In the Ledger tab: a student's statement with a running balance, and the CSV export for those who see every record. */
 export function StatementCard({ state }: { state: ClassState }) {
   const [open, setOpen] = useState(false);
+  const { actions } = useClass();
   const lines = useMemo(() => {
     const mine = state.records.filter((r) => r.memberId === state.myUid && !r.voidedAtMillis).sort((a, b) => a.dateMillis - b.dateMillis);
     let balance = 0;
@@ -279,6 +280,7 @@ export function StatementCard({ state }: { state: ClassState }) {
   }, [state.records, state.myUid]);
 
   function exportCsv() {
+    if (inAndroidApp()) return actions.showNotice(EXPORT_IN_BROWSER);
     const head = ['Date', 'Type', 'Student', 'Amount', 'Note', 'Paid to', 'Voided', 'Void reason'].map(cell).join(',');
     const rows = [...state.records]
       .sort((a, b) => a.dateMillis - b.dateMillis)
@@ -304,9 +306,11 @@ export function StatementCard({ state }: { state: ClassState }) {
           onClose={() => setOpen(false)}
           actions={
             <>
-              <button className="btn text" onClick={() => window.print()}>
-                Print
-              </button>
+              {!inAndroidApp() && (
+                <button className="btn text" onClick={() => window.print()}>
+                  Print
+                </button>
+              )}
               <button className="btn text" onClick={() => setOpen(false)}>
                 Close
               </button>
@@ -347,6 +351,7 @@ export function NewsTab({ state }: { state: ClassState }) {
   const [openId, setOpenId] = useState('');
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [seenOf, setSeenOf] = useState<Announcement | null>(null);
+  const [deleting, setDeleting] = useState<Announcement | null>(null);
   const mySeen = seen.find((s) => s.id === state.myUid)?.announcements ?? {};
   const unseen = (posts ?? []).filter((p) => !mySeen[p.id]).map((p) => p.id).join(',');
 
@@ -378,10 +383,10 @@ export function NewsTab({ state }: { state: ClassState }) {
               </div>
             )}
             <Byline state={state} uid={p.createdByUid} fallback="A former member" when={p.createdAtMillis} edited={!!p.editedAtMillis} size={40} />
-            <div className="bold" style={{ fontSize: 18, lineHeight: 1.3 }}>
+            <div className="bold" style={{ fontSize: 18, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
               {p.title}
             </div>
-            {p.body && <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{p.body}</div>}
+            {p.body && <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.55, overflowWrap: 'anywhere' }}>{p.body}</div>}
             <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
               <VoteBar state={state} votes={votes} memberIds={memberIds} targetId={p.id} />
               {(!p.commentsOff || p.commentCount > 0) && (
@@ -401,7 +406,7 @@ export function NewsTab({ state }: { state: ClassState }) {
                 <Button size="small" variant="outline" icon="pin" onClick={() => run(p.pinned ? 'Unpinned.' : 'Pinned.', () => saveAnnouncement(db, state.myUid, state.classId, { ...p, pinned: !p.pinned }))}>
                   {p.pinned ? 'Unpin' : 'Pin'}
                 </Button>
-                <Button size="small" variant="outline" danger icon="trash" onClick={() => window.confirm(`Delete "${p.title}"?`) && run('Announcement deleted.', () => deleteAnnouncement(db, state.classId, p.id))}>
+                <Button size="small" variant="outline" danger icon="trash" onClick={() => setDeleting(p)}>
                   Delete
                 </Button>
               </div>
@@ -437,25 +442,36 @@ export function NewsTab({ state }: { state: ClassState }) {
           })}
         </Dialog>
       )}
+      {deleting && (
+        <ConfirmDialog
+          title={`Delete "${deleting.title}"?`}
+          text="The announcement and its comments will be removed for everyone in the class."
+          confirm="Delete"
+          danger
+          onClose={() => setDeleting(null)}
+          onConfirm={() => run('Announcement deleted.', () => deleteAnnouncement(db, state.classId, deleting.id))}
+        />
+      )}
     </div>
   );
 }
 
 /**
- * Who wrote something: their photo (or initials in their role colour), name, role when they are an
- * officer, and the date.
+ * Who wrote something: their photo (or initials in their role colour), name, role when it is not the
+ * plain member role, and the date.
  */
 function Byline({ state, uid, fallback, when, edited, size }: { state: ClassState; uid: string; fallback: string; when: number; edited?: boolean; size: number }) {
   const member = state.members.find((m) => m.id === uid);
   const role = member ? state.roles.find((r) => r.id === member.roleId) : undefined;
   const name = member?.name ?? fallback;
-  const officer = !!role && (role.locked || role.permissions.length > 0);
+  // Everyone but the plain members: a role with its own name shows even when it has no permissions.
+  const titled = !!role && role.id !== (state.room?.defaultRoleId || ROLE_MEMBER);
   return (
     <div className="byline">
       <Avatar photo={state.avatars.get(uid)} name={name} color={hexColor(role?.colorHex, '#6B768A')} size={size} />
       <div className="byline-text">
         <span className="bold comment-name">{name}</span>
-        {officer && role && <RoleChip name={role.name} color={role.colorHex} />}
+        {titled && role && <RoleChip name={role.name} color={role.colorHex} />}
         <span className="ch-small ch-muted">
           {shortDate(when)}
           {edited ? ' · edited' : ''}
@@ -494,7 +510,8 @@ function Thread({ state, post, votes, memberIds }: { state: ClassState; post: An
   const [replyTo, setReplyTo] = useState<{ top: Comment; to: Comment } | null>(null);
   const [replyText, setReplyText] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const me = { uid: state.myUid, name: state.members.find((m) => m.id === state.myUid)?.name ?? '' };
+  const [removing, setRemoving] = useState<Comment | null>(null);
+  const me ={ uid: state.myUid, name: state.members.find((m) => m.id === state.myUid)?.name ?? '' };
   const nameOf = (c: Comment) => state.members.find((m) => m.id === c.uid)?.name ?? c.name;
   const score = (c: Comment) => {
     const t = tally(votes, c.id, memberIds, state.myUid);
@@ -525,7 +542,7 @@ function Thread({ state, post, votes, memberIds }: { state: ClassState; post: An
               </button>
             )}
             {(c.uid === state.myUid || manage) && (
-              <button type="button" className="btn text" onClick={() => window.confirm('Remove this comment?') && run('Comment removed.', () => removeComment(db, state.classId, c.id))}>
+              <button type="button" className="btn text" onClick={() => setRemoving(c)}>
                 Remove
               </button>
             )}
@@ -597,6 +614,16 @@ function Thread({ state, post, votes, memberIds }: { state: ClassState; post: An
           </div>
         );
       })}
+      {removing && (
+        <ConfirmDialog
+          title="Remove this comment?"
+          text="It will be removed for everyone in the class."
+          confirm="Remove"
+          danger
+          onClose={() => setRemoving(null)}
+          onConfirm={() => run('Comment removed.', () => removeComment(db, state.classId, removing.id))}
+        />
+      )}
     </div>
   );
 }
@@ -670,9 +697,15 @@ function TimeTile({ minutes, cancelled, color }: { minutes: number; cancelled?: 
   );
 }
 
+/** The timetable without the meetings of a course that has since been deleted. */
+function useLiveMeetings(state: ClassState): Meeting[] {
+  const all = useMeetings(db, state.classId, true).data;
+  return useMemo(() => (all ?? []).filter((m) => state.courses.some((c) => c.id === m.courseId)), [all, state.courses]);
+}
+
 /** Today and tomorrow, for Home. Shows nothing when the class has no timetable. */
 export function TodayCard({ state }: { state: ClassState }) {
-  const meetings = useMeetings(db, state.classId, true).data ?? [];
+  const meetings = useLiveMeetings(state);
   const marks = useNoClass(db, state.classId, true).data ?? [];
   if (meetings.length === 0) return null;
   const now = Date.now();
@@ -808,7 +841,7 @@ function WeekGrid({ state, meetings, marks, onOpen }: { state: ClassState; meeti
 /** The weekly timetable, in the Schedule tab. Officers with the schedule permission edit it and mark "no classes". */
 export function TimetableCard({ state }: { state: ClassState }) {
   const manage = state.can('SCHEDULE_MANAGE');
-  const everyMeeting = useMeetings(db, state.classId, true).data ?? [];
+  const everyMeeting = useLiveMeetings(state);
   // Students see only the meetings of courses they take. Officers who run the timetable or attendance see all.
   const seesAll = manage || state.can('ATTENDANCE_MANAGE');
   const meetings = seesAll ? everyMeeting : everyMeeting.filter((m) => state.takes(m.courseId));
@@ -839,7 +872,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
             </Button>
           )}
           {manage && (
-            <Button size="small" variant="outline" icon="plus" onClick={() => setEditing(newMeeting({ courseId: state.courses[0]?.id ?? '' }))}>
+            <Button size="small" variant="outline" icon="plus" disabled={state.courses.length === 0} onClick={() => setEditing(newMeeting({ courseId: state.courses[0]?.id ?? '' }))}>
               Add meeting
             </Button>
           )}
@@ -854,7 +887,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
         <Notice tone="info">
           {manage
             ? state.courses.length === 0
-              ? 'Add courses in Class settings first, then add their weekly meetings here.'
+              ? 'Add courses first (Home, Manage, Courses), then add their weekly meetings here.'
               : 'No meetings yet. Add the weekly class meetings of each course.'
             : 'The officers have not added the timetable yet.'}
         </Notice>
@@ -937,6 +970,18 @@ function MeetingDialog({ state, meeting, meetings, onClose }: { state: ClassStat
     const saved = meeting.id && courseId === meeting.courseId ? meeting.instructor : '';
     setM({ ...m, courseId, instructor: saved || knownInstructor(courseId) });
   };
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  if (confirmDelete)
+    return (
+      <ConfirmDialog
+        title="Delete this meeting?"
+        text="It will be removed from the timetable for everyone in the class. Attendance already taken is kept."
+        confirm="Delete"
+        danger
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={() => run('Meeting deleted.', () => deleteMeeting(db, state.classId, meeting.id), onClose)}
+      />
+    );
   return (
     <Dialog
       title={meeting.id ? 'Edit meeting' : 'Add meeting'}
@@ -944,7 +989,7 @@ function MeetingDialog({ state, meeting, meetings, onClose }: { state: ClassStat
       actions={
         <>
           {meeting.id && (
-            <button className="btn text danger" style={{ marginRight: 'auto' }} onClick={() => run('Meeting deleted.', () => deleteMeeting(db, state.classId, meeting.id), onClose)}>
+            <button className="btn text danger" style={{ marginRight: 'auto' }} onClick={() => setConfirmDelete(true)}>
               Delete
             </button>
           )}
@@ -1052,12 +1097,16 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
   const [dateKey, setDateKey] = useState(manilaDay(Date.now()).dateKey);
   const [pickedId, setPickedId] = useState('');
   const [marks, setMarks] = useState<Record<string, AttendanceMark>>({});
+  const noClass = useNoClass(db, state.classId, true).data ?? [];
+  const today = manilaDay(Date.now()).dateKey;
+  const future = dateKey > today;
   const todays = meetings.filter((m) => m.dayOfWeek === weekdayOf(dateKey)).sort((a, b) => a.startMinutes - b.startMinutes);
   const meeting = todays.find((m) => m.id === pickedId) ?? todays[0];
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const students = meeting ? byLastName(state.members.filter((m) => !m.excludedCourseIds.includes(meeting.courseId))) : [];
   const saved = meeting ? sheets?.find((x) => x.id === sheetId(dateKey, meeting.id)) : undefined;
   const key = `${dateKey}|${meeting?.id ?? ''}|${saved?.takenAtMillis ?? 0}`;
+  const cancelled = meeting ? noClass.find((x) => x.dateKey === dateKey && (!x.courseId || x.courseId === meeting.courseId)) : undefined;
 
   // Starts from what was saved for this meeting and date, if anything.
   useEffect(() => {
@@ -1081,7 +1130,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
           </button>
           <button
             className="btn solid"
-            disabled={!meeting || sheets === undefined}
+            disabled={!meeting || sheets === undefined || future}
             onClick={() =>
               meeting &&
               run(`Attendance saved: ${students.length - absent - late} present, ${late} late, ${absent} absent.`, () =>
@@ -1095,8 +1144,10 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
     >
       <div className="stack">
         <Field label="Date">
-          <input type="date" value={dateKey} onChange={(e) => setDateKey(e.target.value)} />
+          <input type="date" value={dateKey} max={today} onChange={(e) => setDateKey(e.target.value)} />
         </Field>
+        {future && <Notice tone="warning">That day has not come yet. Attendance can be taken on the day of the class or after it.</Notice>}
+        {!future && cancelled && <Notice tone="warning">{`This day is marked "No classes"${cancelled.reason ? `: ${cancelled.reason}` : ''}. Take attendance only if the class still met.`}</Notice>}
         {todays.length === 0 ? (
           <p className="small muted" style={{ margin: 0 }}>The timetable has no classes on that day.</p>
         ) : (
@@ -1132,6 +1183,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
   const mine = useMyAttendance(db, state.classId, state.myUid, true);
   const [openCourse, setOpenCourse] = useState<string | null>(null);
   const [openMine, setOpenMine] = useState<string | null>(null);
+  const { actions } = useClass();
   const all = useAttendance(db, state.classId, manage).data ?? [];
   const totals = useAttendanceTotals(db, state.classId, true);
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
@@ -1141,7 +1193,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
     const sheets = all.filter((x) => x.courseId === courseId);
     const rows = state.members
       .filter((m) => !m.excludedCourseIds.includes(courseId))
-      .map((m) => ({ id: m.id, name: m.name, absent: sheets.filter((x) => x.absent.includes(m.id)).length, late: sheets.filter((x) => x.late.includes(m.id)).length }))
+      .map((m) => ({ id: m.id, name: listName(m), absent: sheets.filter((x) => x.absent.includes(m.id)).length, late: sheets.filter((x) => x.late.includes(m.id)).length }))
       .filter((r) => r.absent || r.late)
       .sort((a, b) => b.absent - a.absent || b.late - a.late);
     return { courseId, taken: sheets.length, rows };
@@ -1153,6 +1205,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
     </>
   );
   function exportAttendance() {
+    if (inAndroidApp()) return actions.showNotice(EXPORT_IN_BROWSER);
     const courses = [...state.courses].sort((x, y) => x.name.localeCompare(y.name));
     const students = byLastName(state.members).map((m) => ({ id: m.id, name: listName(m), excludedCourseIds: m.excludedCourseIds }));
     // One sheet per course. Columns: name, days attended, then a column per day attendance was taken.

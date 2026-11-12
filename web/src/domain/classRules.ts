@@ -45,7 +45,7 @@ export const MemberRules = {
 };
 
 export const CourseRules = {
-  MAX_NAME: 40,
+  MAX_NAME: 80,
 
   /** A course name must be non-blank, short enough, and not already used (ignoring case). */
   isNameValid(name: string, existing: Course[], editingId = ''): boolean {

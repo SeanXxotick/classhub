@@ -42,13 +42,13 @@ export function permissionLabel(p: Permission): [string, string] {
     case 'RECORDS_MANAGE':
       return ['Manage ledger records', 'Payments, charging students, withdrawals and pay-outs'];
     case 'SCHEDULE_MANAGE':
-      return ['Manage schedule', 'Deadlines, quizzes and exams'];
+      return ['Manage schedule', 'Deliverables, quizzes and exams, the weekly timetable and days with no classes'];
     case 'MEMBERS_MANAGE':
-      return ['Manage members', 'Assign roles, set courses, remove members, invite code'];
+      return ['Manage members', 'Approve join requests, assign roles, set courses, remove members, invite code'];
     case 'ROLES_MANAGE':
       return ['Manage roles', 'Create, edit and delete roles'];
     case 'CLASS_SETTINGS':
-      return ['Class settings and courses', 'Name, color, modules and the course list'];
+      return ['Class settings and courses', 'Name, photo, color, icons, modules and the course list'];
     case 'CONTENTS_MANAGE':
       return ['Manage class contents', 'Add, edit and remove links to files, videos and websites'];
     case 'ANNOUNCEMENTS_MANAGE':
@@ -196,7 +196,7 @@ function MemberDetailContent({ member, readOnly }: { member: Member; readOnly: b
           <>
             {state.courses.map((course) => {
               const takes = taken.has(course.id);
-              return <Switch key={course.id} label={course.name} sub={takes ? undefined : 'Skipped when charging this course'} checked={takes} onChange={(on) => setTaken(course.id, on)} />;
+              return <Switch key={course.id} label={course.name} sub={takes ? undefined : 'Does not take this course'} checked={takes} onChange={(on) => setTaken(course.id, on)} />;
             })}
             <button className="btn solid block" style={{ marginTop: 8 }} disabled={actions.busy || !coursesChanged} onClick={() => actions.setCoursesTaken(member, taken)}>
               Save courses
@@ -499,7 +499,7 @@ export function CoursesScreen() {
             );
           })}
           <p className="small muted" style={{ margin: 0, padding: 16 }}>
-            A new course includes everyone. Mark the students who do not take it on their member page, and charges by course will skip them.
+            A new course includes everyone. Mark the students who do not take it on their member page: charges by course skip them, and they do not see its schedule, contents, meetings or attendance.
           </p>
         </div>
       </div>
@@ -517,7 +517,7 @@ function CourseDialog({ course, onClose }: { course: Course; onClose: () => void
     return (
       <ConfirmDialog
         title={`Delete ${course.name}?`}
-        text="Past charges stay in the ledger. You will not be able to charge by this course anymore."
+        text="Past charges stay in the ledger. You will not be able to charge by this course anymore, and its meetings leave the timetable."
         confirm="Delete"
         danger
         onClose={onClose}
@@ -600,7 +600,6 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
   const [schedule, setSchedule] = useState(room.scheduleEnabled);
   const [contents, setContents] = useState(room.contentsEnabled);
   const [news, setNews] = useState(room.announcementsEnabled);
-  const [timetable, setTimetable] = useState(room.timetableEnabled);
   const [scheduleIcons, setScheduleIcons] = useState(room.scheduleIcons);
   const scheduleColors = room.scheduleColors;
   const [contentIcons, setContentIcons] = useState(room.contentIcons);
@@ -617,7 +616,6 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
     schedule !== room.scheduleEnabled ||
     contents !== room.contentsEnabled ||
     news !== room.announcementsEnabled ||
-    timetable !== room.timetableEnabled ||
     !sameMap(ScheduleIcons.sanitize(scheduleIcons), ScheduleIcons.sanitize(room.scheduleIcons)) ||
     !sameMap(ScheduleIcons.sanitizeColors(scheduleColors), ScheduleIcons.sanitizeColors(room.scheduleColors)) ||
     !sameMap(ContentIcons.sanitize(contentIcons), ContentIcons.sanitize(room.contentIcons)) ||
@@ -633,7 +631,6 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
       scheduleEnabled: schedule,
       contentsEnabled: contents,
       announcementsEnabled: news,
-      timetableEnabled: timetable,
       scheduleIcons,
       scheduleColors,
       contentIcons,
@@ -681,10 +678,9 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
           Turn off what your class does not use. Turning a module off hides its tab for everyone and stops its reminders. Nothing is deleted, so turning it back on brings everything back.
         </p>
         <Switch label="Ledger" sub="Class fund, charges, payments and balances" checked={ledger} onChange={setLedger} />
-        <Switch label="Schedule" sub="Deadlines, quizzes and exams" checked={schedule} onChange={setSchedule} />
+        <Switch label="Schedule" sub="Deliverables, quizzes and exams, with the weekly timetable and attendance" checked={schedule} onChange={setSchedule} />
         <Switch label="Contents" sub="Links to files, videos and websites" checked={contents} onChange={setContents} />
         <Switch label="News" sub="Announcements from the officers" checked={news} onChange={setNews} />
-        <Switch label="Timetable" sub="Weekly class meetings and no-classes days, shown on Home and Schedule" checked={timetable} onChange={setTimetable} />
         <Switch label="Members" sub="Always on" checked disabled onChange={() => {}} />
       </div>
 
@@ -790,7 +786,7 @@ function DeleteClassCard({ room }: { room: ClassRoom }) {
     <div className="card stack" style={{ gap: 10 }}>
       <div className="bold error-text">Delete class</div>
       <p className="small muted" style={{ margin: 0 }}>
-        Deletes {room.name} for everyone, with its ledger, schedule, contents, courses and roles. This cannot be undone.
+        Deletes {room.name} for everyone, with its ledger, schedule, timetable, attendance, contents, announcements, courses and roles. This cannot be undone.
       </p>
       {!ready && (
         <div className="small" role="status">
@@ -839,8 +835,8 @@ function DeleteClassCard({ room }: { room: ClassRoom }) {
         >
           <p style={{ margin: 0 }}>
             {others > 0
-              ? `The class disappears for you and the ${others} other member${others === 1 ? '' : 's'}. Its ledger history, schedule, contents, courses and roles are deleted for good.`
-              : 'Its ledger history, schedule, contents, courses and roles are deleted for good.'}
+              ? `The class disappears for you and the ${others} other member${others === 1 ? '' : 's'}. Its ledger history, schedule, timetable, attendance, contents, announcements, courses and roles are deleted for good.`
+              : 'Its ledger history, schedule, timetable, attendance, contents, announcements, courses and roles are deleted for good.'}
           </p>
           <Field label="Type the class name to confirm">
             <input value={typed} placeholder={room.name} autoComplete="off" onChange={(e) => setTyped(e.target.value)} />

@@ -82,12 +82,28 @@ const INITIAL = /^(?:\p{L}\.(?:\p{L}\.)?|\p{L}{2}\.)$/u;
 export function initialsOf(name: string): string {
   const section = sectionOf(name);
   if (section) return section;
-  const words = name.trim().split(/\s+/).filter(Boolean);
+  const words = lettersOf(name);
   if (words.length === 0) return '?';
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   const last = words[words.length - 1];
   if (last.length <= 3) return last.toUpperCase();
   return (words[0].slice(0, 1) + last.slice(0, 1)).toUpperCase();
+}
+
+/** The words of a name without punctuation, so "(Test)" counts as "Test". */
+const lettersOf = (name: string): string[] =>
+  name
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ''))
+    .filter(Boolean);
+
+/** A person's picture without a photo: the first letters of the first and last words ("Ana Lim" -> "AL"). */
+export function personInitials(name: string): string {
+  const words = lettersOf(name);
+  if (words.length === 0) return '?';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0].slice(0, 1) + words[words.length - 1].slice(0, 1)).toUpperCase();
 }
 
 /** A year and section such as "3A", written as one part ("3A") or two ("3-A", "3 A"). Ordinals such as "2nd" do not count. */
