@@ -1027,10 +1027,12 @@ export function AttendanceCard({ state }: { state: ClassState }) {
   const all = useAttendance(db, state.classId, manage).data ?? [];
   const totals = useAttendanceTotals(db, state.classId, true);
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
-  const courseIds = [...new Set([...mine.absent, ...mine.late].map((x) => x.courseId))];
+  // Marks from a course the student no longer takes stay in the records but are not shown or counted.
+  const courseIds = [...new Set([...mine.absent, ...mine.late].map((x) => x.courseId))].filter((id) => state.takes(id));
   const perCourse = [...new Set(all.map((x) => x.courseId))].map((courseId) => {
     const sheets = all.filter((x) => x.courseId === courseId);
     const rows = state.members
+      .filter((m) => !m.excludedCourseIds.includes(courseId))
       .map((m) => ({ id: m.id, name: m.name, absent: sheets.filter((x) => x.absent.includes(m.id)).length, late: sheets.filter((x) => x.late.includes(m.id)).length }))
       .filter((r) => r.absent || r.late)
       .sort((a, b) => b.absent - a.absent || b.late - a.late);
