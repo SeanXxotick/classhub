@@ -3,9 +3,10 @@
  * Firestore keeps its own offline copy of the data; this only covers the page, scripts, styles and icons.
  * - Pages: network first, falling back to the cached shell.
  * - /assets/ (file names carry a hash): cache first.
+ * - The icons and the manifest (same name after a change): network first, so a new icon shows at once.
  * Bump VERSION to drop old caches.
  */
-const VERSION = 'classhub-shell-v2';
+const VERSION = 'classhub-shell-v3';
 const SHELL = ['/', '/manifest.webmanifest', '/icon.svg', '/icon-192.png'];
 
 self.addEventListener('install', (event) => {
@@ -40,7 +41,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.pathname.startsWith('/assets/') || SHELL.includes(url.pathname)) {
+  if (SHELL.includes(url.pathname)) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(VERSION).then((cache) => cache.put(request, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request).then((cached) => cached || Response.error())),
+    );
+    return;
+  }
+
+  if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
       caches.match(request).then(
         (cached) =>
