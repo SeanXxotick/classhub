@@ -852,13 +852,19 @@ export function TimetableCard({ state }: { state: ClassState }) {
   const [marking, setMarking] = useState(false);
   const [taking, setTaking] = useState(false);
   const [fullWeek, setFullWeek] = useState(false);
+  const [moreDays, setMoreDays] = useState(false);
   const [viewing, setViewing] = useState<Meeting | null>(null);
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
   const now = Date.now();
   const todayKey = manilaDay(now).dateKey;
   // Folded, the card shows only today and tomorrow, so the deadlines below stay within reach.
-  const soon: [string, number][] = [['Today', now], ['Tomorrow', now + 86_400_000]];
+  // "Show more" lists the next seven days, each with its date.
+  const soon: [string, number][] = Array.from({ length: moreDays ? 7 : 2 }, (_, i) => {
+    const millis = now + i * DAY_MS;
+    const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : null;
+    return [label ? `${label} · ${DAYS[manilaDay(millis).dayOfWeek]}` : niceDate(manilaDay(millis).dateKey), millis];
+  });
   const coming = marks.filter((k) => k.dateKey >= todayKey).sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
   const viewingCancelled = viewing ? nextCancelled(viewing, meetings, marks, now) : null;
 
@@ -898,7 +904,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
               const list = meetingsOn(meetings, marks, millis);
               return (
                 <div key={label}>
-                  <DayHeader>{`${label} · ${DAYS[manilaDay(millis).dayOfWeek]}`}</DayHeader>
+                  <DayHeader>{label}</DayHeader>
                   {list.length === 0 && <ListRow leading={<TypeIcon icon="moon" tone="neutral" />} title="No classes" />}
                   {list.map(({ meeting: m, cancelled }) => (
                     <ListRow
@@ -916,8 +922,13 @@ export function TimetableCard({ state }: { state: ClassState }) {
               );
             })}
           {fullWeek && <WeekGrid state={state} meetings={meetings} marks={marks} onOpen={manage ? setEditing : setViewing} />}
-          <div className="ch-row" style={{ padding: '4px 12px 0' }}>
-            <Button size="small" variant="text" icon={fullWeek ? 'x' : 'list'} onClick={() => setFullWeek(!fullWeek)}>
+          <div className="ch-row ch-wrap" style={{ padding: '4px 12px 0' }}>
+            {!fullWeek && (
+              <Button size="small" variant="text" icon={moreDays ? 'up' : 'down'} onClick={() => setMoreDays(!moreDays)}>
+                {moreDays ? 'Show less' : 'Show more'}
+              </Button>
+            )}
+            <Button size="small" variant="text" icon={fullWeek ? 'x' : 'list'} onClick={() => (setFullWeek(!fullWeek), setMoreDays(false))}>
               {fullWeek ? 'Show today and tomorrow only' : 'Full week'}
             </Button>
           </div>
