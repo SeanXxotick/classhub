@@ -40,11 +40,25 @@ describe('courseShortName', () => {
   it('uses initials for several words and skips small words', () => {
     expect(courseShortName('Operations Research')).toBe('OR');
     expect(courseShortName('Theory of Computation')).toBe('TC');
-    expect(courseShortName('Calculus 2')).toBe('C2');
+  });
+
+  it('leaves out numbers, which read like course codes', () => {
+    expect(courseShortName('Calculus 2')).toBe('Calc');
+    expect(courseShortName('Thesis l, MAT 399c')).toBe('Thes');
+    expect(courseShortName('Thesis II')).toBe('Thes');
+  });
+
+  it('leaves out a course code after the name', () => {
+    expect(courseShortName('The Entrepreneurial Mind, SSP 101D*')).toBe('EM');
+    expect(courseShortName('Graph Theory and Applications, MAT 306')).toBe('GTA');
+    expect(courseShortName('Automata Theory and Formal Languages, MCS 307')).toBe('ATFL');
+    expect(courseShortName('Mathematical Modeling, MAT 305')).toBe('MM');
+    expect(courseShortName('Real Analysis MAT308')).toBe('RA');
+    expect(courseShortName('PE 3')).toBe('PE3');
   });
 
   it('leaves out a course code in brackets', () => {
-    expect(courseShortName('Specialization 1 DBA (IT 304D)')).toBe('S1D');
+    expect(courseShortName('Specialization 1 DBA (IT 304D)')).toBe('SD');
     expect(courseShortName('System Analysis and Design (IT 303*)')).toBe('SAD');
     expect(courseShortName('The Entrepreneurial Mind (SSP 101d)')).toBe('EM');
     expect(courseShortName('(CC107)')).toBe('CC107');
