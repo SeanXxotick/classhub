@@ -1,9 +1,10 @@
-import { deleteDoc, getDoc, getDocs, setDoc, writeBatch, type Firestore, type WriteBatch } from 'firebase/firestore';
+import { getDoc, getDocs, writeBatch, type Firestore, type WriteBatch } from 'firebase/firestore';
 import type { Member, PendingOpeningBalance } from './models';
 import { Ledger } from '../domain/ledger';
 import { LedgerForms } from '../domain/ledgerForms';
 import { UserError } from './errors';
 import { buildRecord } from './ledgerStore';
+import { logToBatch, peso } from './history';
 import {
   bumpSummary,
   addSummaryDeltas,
@@ -62,14 +63,22 @@ export function addOpeningToBatch(
  * Sets (creates or replaces) the pending opening balance of a student who is not in the class yet
  * (RECORDS_MANAGE). Signed: negative when the student owed. It is applied once they are a member.
  */
-export async function setPendingOpeningBalance(db: Firestore, classId: string, studentUid: string, amountCentavos: number, note = ''): Promise<void> {
+export async function setPendingOpeningBalance(
+  db: Firestore, actorUid: string, classId: string, studentUid: string, amountCentavos: number, note = '',
+): Promise<void> {
   checkSigned(amountCentavos);
   await readOpenClass(db, classId);
-  await explainRefusal(db, classId, () => setDoc(openingBalanceRef(db, classId, studentUid), { amountCentavos, note: checkNote(note) }));
+  const batch = writeBatch(db);
+  batch.set(openingBalanceRef(db, classId, studentUid), { amountCentavos, note: checkNote(note) });
+  await logToBatch(batch, db, classId, actorUid, 'OPENING_PENDING', `Set a waiting opening balance of ${peso(amountCentavos)} for a student who has not joined yet`);
+  await explainRefusal(db, classId, () => batch.commit());
 }
 
-export async function removePendingOpeningBalance(db: Firestore, classId: string, studentUid: string): Promise<void> {
-  await explainRefusal(db, classId, () => deleteDoc(openingBalanceRef(db, classId, studentUid)));
+export async function removePendingOpeningBalance(db: Firestore, actorUid: string, classId: string, studentUid: string): Promise<void> {
+  const batch = writeBatch(db);
+  batch.delete(openingBalanceRef(db, classId, studentUid));
+  await logToBatch(batch, db, classId, actorUid, 'OPENING_PENDING', 'Removed a waiting opening balance');
+  await explainRefusal(db, classId, () => batch.commit());
 }
 
 export async function listPendingOpeningBalances(db: Firestore, classId: string): Promise<PendingOpeningBalance[]> {
@@ -92,6 +101,7 @@ export async function addOpeningBalance(
   const batch = writeBatch(db);
   const record = addOpeningToBatch(batch, db, actorUid, classId, id, { uid: input.memberId, name: input.memberName }, input.amountCentavos, note);
   bumpSummary(batch, db, classId, Ledger.summaryDelta(record));
+  await logToBatch(batch, db, classId, actorUid, 'OPENING', `Entered the opening balance of ${input.memberName}: ${peso(input.amountCentavos)}`);
   await explainRefusal(db, classId, () => batch.commit());
   return id;
 }
@@ -130,6 +140,8 @@ export async function applyPendingOpeningBalances(
   }
   if (deltas.length === 0) return result;
   bumpSummary(batch, db, classId, addSummaryDeltas(deltas));
+  const names = result.applied.map((uid) => byUid.get(uid)?.name ?? 'a member');
+  await logToBatch(batch, db, classId, actorUid, 'OPENING', `Applied the waiting opening balance of ${names.join(', ')}`);
   await explainRefusal(db, classId, () => batch.commit());
   return result;
 }

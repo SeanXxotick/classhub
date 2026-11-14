@@ -48,7 +48,7 @@ export function permissionLabel(p: Permission): [string, string] {
     case 'ROLES_MANAGE':
       return ['Manage roles', 'Create, edit and delete roles'];
     case 'CLASS_SETTINGS':
-      return ['Class settings and courses', 'Name, photo, color, icons, modules and the course list'];
+      return ['Class settings and courses', 'Name, photo, color, icons, modules, the course list, and the history log of what officers did'];
     case 'CONTENTS_MANAGE':
       return ['Manage class contents', 'Add, edit and remove links to files, videos and websites'];
     case 'ANNOUNCEMENTS_MANAGE':
@@ -56,6 +56,27 @@ export function permissionLabel(p: Permission): [string, string] {
     case 'ATTENDANCE_MANAGE':
       return ['Take attendance', 'Record who was present, late or absent at each class meeting'];
   }
+}
+
+/** One word per permission, named after the tab it opens up, for the Roles list. */
+const PERMISSION_SHORT: Record<Permission, string> = {
+  RECORDS_MANAGE: 'Ledger',
+  SCHEDULE_MANAGE: 'Schedule',
+  MEMBERS_MANAGE: 'Members',
+  ROLES_MANAGE: 'Roles',
+  CLASS_SETTINGS: 'Settings',
+  CONTENTS_MANAGE: 'Contents',
+  ANNOUNCEMENTS_MANAGE: 'News',
+  ATTENDANCE_MANAGE: 'Attendance',
+};
+
+/** "All permissions", "View only", up to four short names, or the first three and how many more. */
+function roleSummary(role: { locked: boolean; permissions: readonly string[] }): string {
+  const names = PERMISSIONS.filter((p) => role.permissions.includes(p)).map((p) => PERMISSION_SHORT[p]);
+  if (role.locked || names.length === PERMISSIONS.length) return 'All permissions';
+  if (names.length === 0) return 'View only';
+  if (names.length <= 4) return names.join(', ');
+  return `${names.slice(0, 3).join(', ')} +${names.length - 3} more`;
 }
 
 const s = (n: number) => (n === 1 ? '' : 's');
@@ -254,13 +275,7 @@ export function RolesScreen() {
         <div className="card flush">
           {state.roles.map((role) => {
             const holders = MemberRules.holders(role, state.members);
-            const summary = role.locked
-              ? 'All permissions'
-              : role.permissions.length === 0
-                ? 'View only'
-                : PERMISSIONS.filter((p) => role.permissions.includes(p))
-                    .map((p) => permissionLabel(p)[0].replace(/^Manage /, ''))
-                    .join(', ');
+            const summary = roleSummary(role);
             const content = (
               <>
                 <ColorDot hex={role.colorHex} />

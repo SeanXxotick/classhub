@@ -185,8 +185,8 @@ describe('LedgerForms', () => {
     expect(LedgerForms.checkCharge(600, 'Quiz', 0)).not.toBeNull();
     expect(LedgerForms.checkCharge(600, 'Quiz', LedgerForms.MAX_CHARGED + 1)).not.toBeNull();
     expect(LedgerForms.checkCharge(600, 'Quiz', 29)).toBeNull();
-    // 497 shares + the charge document + a pay-out + the summary = 500 writes, one batch.
-    expect(LedgerForms.MAX_CHARGED + 3).toBe(500);
+    // 496 shares + the charge document + a pay-out + the summary + the history entry = 500 writes, one batch.
+    expect(LedgerForms.MAX_CHARGED + 4).toBe(500);
   });
 });
 

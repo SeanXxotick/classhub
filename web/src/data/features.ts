@@ -1,10 +1,11 @@
 import { queueNotice } from './notify';
-import { collection, deleteDoc, deleteField, doc, getDocs, increment, query, setDoc, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
+import { collection, deleteDoc, deleteField, doc, getDoc, getDocs, increment, query, setDoc, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
 import { Ledger } from '../domain/ledger';
 import { nowMillis, newId } from './dataEnv';
 import { UserError } from './errors';
 import { fromDoc, useQueryList } from './live';
 import { buildRecord } from './ledgerStore';
+import { logToBatch, peso } from './history';
 import { bumpSummary, explainRefusal, recordRef, withoutId } from './paths';
 import type { Actor } from './classes';
 
@@ -80,6 +81,7 @@ export async function confirmClaim(db: Firestore, actorUid: string, classId: str
   batch.set(recordRef(db, classId, recordId), withoutId(record));
   batch.update(doc(claimsCol(db, classId), claim.id), { status: 'CONFIRMED', decidedByUid: actorUid, decidedAtMillis: now, recordId });
   bumpSummary(batch, db, classId, Ledger.summaryDelta(record));
+  await logToBatch(batch, db, classId, actorUid, 'CLAIM_CONFIRMED', `Confirmed the payment claim of ${claim.memberName} for ${peso(claim.amountCentavos)} (${label})`);
   await explainRefusal(db, classId, () => batch.commit());
   void queueNotice(db, actorUid, classId, {
     kind: 'CLAIM_DECIDED', audience: 'USER', audienceId: claim.memberId,
@@ -92,9 +94,14 @@ export async function confirmClaim(db: Firestore, actorUid: string, classId: str
 export async function rejectClaim(db: Firestore, actorUid: string, classId: string, claimId: string, reason: string, memberId = ''): Promise<void> {
   const why = reason.trim().slice(0, 200);
   if (!why) throw new UserError('NAME_MISSING', 'Write the reason.');
-  await explainRefusal(db, classId, () =>
-    updateDoc(doc(claimsCol(db, classId), claimId), { status: 'REJECTED', decidedByUid: actorUid, decidedAtMillis: nowMillis(), rejectReason: why }),
-  );
+  const ref = doc(claimsCol(db, classId), claimId);
+  const claim = await getDoc(ref).catch(() => null);
+  const batch = writeBatch(db);
+  batch.update(ref, { status: 'REJECTED', decidedByUid: actorUid, decidedAtMillis: nowMillis(), rejectReason: why });
+  const who = String(claim?.get('memberName') ?? '').trim() || 'a student';
+  const amount = Number(claim?.get('amountCentavos') ?? 0);
+  await logToBatch(batch, db, classId, actorUid, 'CLAIM_REJECTED', `Rejected the payment claim of ${who}${amount ? ` for ${peso(amount)}` : ''}. Reason: ${why}`);
+  await explainRefusal(db, classId, () => batch.commit());
   if (memberId) void queueNotice(db, actorUid, classId, { kind: 'CLAIM_DECIDED', audience: 'USER', audienceId: memberId, title: 'Your payment claim was rejected', body: `Reason: ${why}` });
 }
 

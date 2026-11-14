@@ -459,6 +459,28 @@ service cloud.firestore {
 
     // ---- Notification requests (outbox)
 
+    // History log entry: { kind, text, actorUid, actorName, atMillis }, written by the app in the same batch
+    // as the officer action it describes. Only someone holding a money or people permission (or the locked
+    // Mayor role) adds entries, and only under their own uid. The text is the app's sentence; the screen
+    // shows the officer's current name by actorUid, so actorName only matters for people who have left.
+    function isHistoryEntry(c) {
+      let d = request.resource.data;
+      let role = myRole(c);
+      return isMember(c)
+        && isOpen(c)
+        && (role.get('locked', false) == true
+            || role.permissions.hasAny(['RECORDS_MANAGE', 'MEMBERS_MANAGE', 'ROLES_MANAGE', 'CLASS_SETTINGS']))
+        && hasFields(d, ['kind', 'text', 'actorUid', 'actorName', 'atMillis'])
+        && d.actorUid == uid()
+        && d.kind in ['PAYMENT', 'WITHDRAWAL', 'OPENING', 'OPENING_PENDING', 'CHARGE', 'PAYOUT', 'VOID',
+                      'CLAIM_CONFIRMED', 'CLAIM_REJECTED', 'LEDGER_SETTINGS', 'JOIN_APPROVED', 'JOIN_REJECTED',
+                      'MEMBER_REMOVED', 'MEMBER_ROLE', 'MEMBER_COURSES', 'ROLE_SAVED', 'ROLE_DELETED',
+                      'MAYOR_HANDOVER', 'INVITE_CODE', 'CLASS_SETTINGS', 'CLASS_PHOTO']
+        && isFilled(d.text, 300)
+        && isFilled(d.actorName, 90)
+        && isRecentMillis(d.atMillis);
+    }
+
     // { kind, audience, audienceId, title, body, createdByUid, createdAtMillis }. Each kind may only be queued
     // by someone who could cause that event, to the audience that kind is for.
     function isNewNotice(c) {
@@ -1034,6 +1056,15 @@ service cloud.firestore {
       match /outbox/{noticeId} {
         allow read, update, delete: if false;
         allow create: if isNewNotice(classId);
+      }
+
+      // The history log of officer actions on money and people. Append-only: nobody edits or deletes an
+      // entry, except the Mayor's delete of the whole class. Read by those with class settings.
+      match /history/{entryId} {
+        allow get, list: if can(classId, 'CLASS_SETTINGS');
+        allow create: if isHistoryEntry(classId);
+        allow update: if false;
+        allow delete: if isOwnerClosing(classId);
       }
 
       match /noClass/{markId} {

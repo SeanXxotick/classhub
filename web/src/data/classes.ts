@@ -21,6 +21,7 @@ import { ClassRules } from '../domain/classRules';
 import { Ledger } from '../domain/ledger';
 import { UserError } from './errors';
 import { newId, newInviteCode, nowMillis } from './dataEnv';
+import { logToBatch } from './history';
 import {
   CLASS_SUBCOLLECTIONS,
   classPhotoRef,
@@ -139,7 +140,7 @@ export interface ClassSettingsChanges {
  * Saves class settings (CLASS_SETTINGS). A new name is copied to the invite in the same batch, because
  * someone holding the code cannot read the class.
  */
-export async function updateClassSettings(db: Firestore, classId: string, changes: ClassSettingsChanges): Promise<void> {
+export async function updateClassSettings(db: Firestore, actorUid: string, classId: string, changes: ClassSettingsChanges): Promise<void> {
   const room = await readOpenClass(db, classId);
   const patch: Record<string, string | boolean | Record<string, string>> = {};
   for (const [key, value] of Object.entries(changes)) {
@@ -157,12 +158,30 @@ export async function updateClassSettings(db: Firestore, classId: string, change
     const invite = await getDoc(inviteRef(db, room.inviteCode)).catch(() => null);
     if (invite?.exists() && invite.get('classId') === classId) batch.update(invite.ref, { className: patch.name });
   }
+  await logToBatch(batch, db, classId, actorUid, 'CLASS_SETTINGS', settingsText(room, patch));
   await explainRefusal(db, classId, () => batch.commit());
+}
+
+/** "Changed the class settings: name to "BSM CS 3A", description", for the history log. */
+function settingsText(room: ClassRoom, patch: Record<string, unknown>): string {
+  // Maps are compared with their keys sorted, so the same icons in another order do not count as a change.
+  const same = (a: unknown, b: unknown) => JSON.stringify(sorted(a)) === JSON.stringify(sorted(b));
+  const sorted = (v: unknown): unknown =>
+    v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => (x < y ? -1 : 1))) : v;
+  const changed = Object.keys(patch).filter((k) => !same(patch[k], (room as unknown as Record<string, unknown>)[k]));
+  if (changed.length === 0) return 'Saved the class settings (no changes)';
+  const parts = changed.map((k) => {
+    if (k === 'name') return `name to "${String(patch.name)}"`;
+    if (typeof patch[k] === 'boolean') return `${k.replace(/Enabled$/, '').replace(/([A-Z])/g, ' $1').toLowerCase()} ${patch[k] ? 'on' : 'off'}`;
+    return k.replace(/([A-Z])/g, ' $1').toLowerCase();
+  });
+  return `Changed the class settings: ${parts.join(', ')}`;
 }
 
 /** Who sees every balance, and where to send money (RECORDS_MANAGE). */
 export async function updateLedgerSettings(
   db: Firestore,
+  actorUid: string,
   classId: string,
   changes: { balanceVisibility?: BalanceVisibility; paymentInfo?: string },
 ): Promise<void> {
@@ -178,14 +197,20 @@ export async function updateLedgerSettings(
   }
   if (Object.keys(patch).length === 0) return;
   await readOpenClass(db, classId);
-  await explainRefusal(db, classId, () => updateDoc(classRef(db, classId), patch));
+  const parts = [];
+  if (patch.balanceVisibility !== undefined) parts.push(`who sees balances (${String(patch.balanceVisibility).toLowerCase()})`);
+  if (patch.paymentInfo !== undefined) parts.push('where to send money');
+  const batch = writeBatch(db);
+  batch.update(classRef(db, classId), patch);
+  await logToBatch(batch, db, classId, actorUid, 'LEDGER_SETTINGS', `Changed the ledger settings: ${parts.join(', ')}`);
+  await explainRefusal(db, classId, () => batch.commit());
 }
 
 /**
  * Replaces the invite code (MEMBERS_MANAGE): the old invite is deleted, the new one created and the class
  * updated, in one batch. People already in the class stay; the old code stops working for new requests.
  */
-export async function regenerateInviteCode(db: Firestore, classId: string): Promise<string> {
+export async function regenerateInviteCode(db: Firestore, actorUid: string, classId: string): Promise<string> {
   const room = await readOpenClass(db, classId);
   const code = await unusedInviteCode(db);
   const batch = writeBatch(db);
@@ -196,6 +221,7 @@ export async function regenerateInviteCode(db: Firestore, classId: string): Prom
   }
   batch.set(inviteRef(db, code), { classId, className: room.name });
   batch.update(classRef(db, classId), { inviteCode: code });
+  await logToBatch(batch, db, classId, actorUid, 'INVITE_CODE', 'Made a new invite code (the old one stopped working)');
   await explainRefusal(db, classId, () => batch.commit());
   return code;
 }

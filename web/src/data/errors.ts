@@ -71,7 +71,7 @@ export const USER_MESSAGES = {
   NOTE_TOO_LONG: 'Keep the note under 200 characters.',
   CHARGE_NOTE_MISSING: 'Describe the charge, for example "Quiz - Operations Research".',
   CHARGE_NOBODY: 'Choose at least one student to charge.',
-  CHARGE_TOO_MANY: 'You can charge up to 497 students at once.',
+  CHARGE_TOO_MANY: 'You can charge up to 496 students at once.',
   CHARGE_TWICE: 'A student can be charged only once in the same charge.',
   CHARGE_TOTAL_TOO_LARGE: 'The total of this charge is too large. The limit is ₱1,000,000.00.',
   CHARGE_NOT_FOUND: 'That charge no longer exists.',

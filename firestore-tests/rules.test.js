@@ -639,6 +639,31 @@ async function main() {
     await assertFails(getDocs(collection(db('mayor'), `classes/${CLASS}/outbox`)));
   });
 
+  await test('History log: officers add entries under their own uid in the same batch; append-only; read with class settings', async () => {
+    const H = `classes/${CLASS}/history`;
+    const entry = (who, extra = {}) => ({ kind: 'PAYMENT', text: 'Recorded a payment of ₱100.00 from Student', actorUid: who, actorName: nameOf(who), atMillis: Date.now(), ...extra });
+    const add = (who, extra) => setDoc(doc(collection(db(who), H)), entry(who, extra));
+    // The Treasurer's payment and its entry, in one batch.
+    const m = db('maria');
+    const { b } = addRecordBatch(m, payment('maria', 'student'));
+    b.set(doc(collection(m, H), 'h-pay'), entry('maria'));
+    await assertSucceeds(b.commit());
+    await assertSucceeds(add('mayor', { kind: 'MEMBER_ROLE', text: 'Gave Student the Treasurer role' }));
+    await assertFails(add('student'));
+    await assertFails(add('outsider'));
+    await assertFails(setDoc(doc(collection(db('maria'), H)), entry('mayor')));
+    await assertFails(add('maria', { kind: 'NOT_A_KIND' }));
+    await assertFails(add('maria', { text: '' }));
+    await assertFails(add('maria', { text: 'x'.repeat(301) }));
+    await assertFails(add('maria', { atMillis: Date.now() - 2 * 86400000 }));
+    await assertFails(add('maria', { extra: 1 }));
+    await assertSucceeds(getDocs(collection(db('mayor'), H)));
+    await assertFails(getDocs(collection(db('maria'), H)));
+    await assertFails(getDocs(collection(db('student'), H)));
+    await assertFails(updateDoc(doc(db('mayor'), `${H}/h-pay`), { text: 'Nothing happened' }));
+    await assertFails(deleteDoc(doc(db('mayor'), `${H}/h-pay`)));
+  });
+
   await test('Comments: members comment under their own name, one level of replies, count kept by the same batch', async () => {
     const P = `classes/${CLASS}/announcements`;
     const C = `classes/${CLASS}/comments`;

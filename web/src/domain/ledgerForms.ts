@@ -9,9 +9,9 @@ export const LedgerForms = {
 
   /**
    * Firestore writes up to 500 documents in one batch. A charge's batch also holds its charge document, the
-   * fund summary and an optional pay-out, so 497 shares fit.
+   * fund summary, an optional pay-out and the history log entry, so 496 shares fit.
    */
-  MAX_CHARGED: 497,
+  MAX_CHARGED: 496,
 
   checkAmount(amountCentavos: number | null): string | null {
     if (amountCentavos === null) return 'Enter an amount greater than zero, with up to 2 decimal places.';

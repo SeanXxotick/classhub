@@ -279,7 +279,7 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         const r = st().room;
         if (!r) return;
         runAction(null, undefined, async () => {
-          const code = await classes.regenerateInviteCode(db, classId);
+          const code = await classes.regenerateInviteCode(db, uid, classId);
           notice(`New invite code: ${code}. The old code no longer works.`);
         });
       },
@@ -306,17 +306,17 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
           contentIcons: ContentIcons.sanitize(updated.contentIcons),
           contentColors: ContentIcons.sanitizeColors(updated.contentColors),
         };
-        runAction('Class settings saved.', onDone, () => classes.updateClassSettings(db, classId, next));
+        runAction('Class settings saved.', onDone, () => classes.updateClassSettings(db, uid, classId, next));
       },
 
       setClassPhoto(photo) {
         if (!st().can('CLASS_SETTINGS')) return deny('You do not have permission to change the class photo.');
-        runAction('Class photo updated.', undefined, () => photoRepo.setClassPhoto(classId, photo));
+        runAction('Class photo updated.', undefined, () => photoRepo.setClassPhoto(uid, classId, photo));
       },
 
       removeClassPhoto() {
         if (!st().can('CLASS_SETTINGS')) return deny('You do not have permission to change the class photo.');
-        runAction('Class photo removed.', undefined, () => photoRepo.removeClassPhoto(classId));
+        runAction('Class photo removed.', undefined, () => photoRepo.setClassPhoto(uid, classId, null));
       },
 
       // ---- Members ----
@@ -334,7 +334,7 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         const c = st();
         if (!c.can('MEMBERS_MANAGE')) return deny('You do not have permission to change courses.');
         const excluded = c.courses.map((x) => x.id).filter((id) => !taken.has(id));
-        runAction(`${member.name}'s courses were saved.`, onDone, () => membership.setMemberCourses(db, classId, member.id, excluded));
+        runAction(`${member.name}'s courses were saved.`, onDone, () => membership.setMemberCourses(db, uid, classId, member.id, excluded));
       },
 
       removeMember(member, onDone) {
@@ -375,7 +375,7 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         const defaultRoleId = c.room?.defaultRoleId ?? '';
         if (!c.can('ROLES_MANAGE')) return deny('You do not have permission to delete roles.');
         if (!RoleRules.canDelete(role, defaultRoleId)) return deny(`The ${role.name} role cannot be deleted.`);
-        runAction(`Role "${role.name}" deleted.`, onDone, () => membership.deleteRole(db, classId, role.id));
+        runAction(`Role "${role.name}" deleted.`, onDone, () => membership.deleteRole(db, uid, classId, role.id));
       },
 
       // ---- Courses ----
@@ -414,14 +414,14 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
 
       rejectRequest(request) {
         if (!st().can('MEMBERS_MANAGE')) return deny('You do not have permission to reject requests.');
-        runAction(`The request of ${request.name} was rejected.`, undefined, () => membership.rejectJoinRequest(db, classId, request.uid));
+        runAction(`The request of ${request.name} was rejected.`, undefined, () => membership.rejectJoinRequest(db, uid, classId, request.uid));
       },
 
       // ---- Ledger ----
 
       saveLedgerSettings(balanceVisibility, paymentInfo, onDone) {
         if (!st().can('RECORDS_MANAGE')) return deny('You do not have permission to change the ledger settings.');
-        runAction('Ledger settings saved.', onDone, () => classes.updateLedgerSettings(db, classId, { balanceVisibility, paymentInfo: paymentInfo.trim() }));
+        runAction('Ledger settings saved.', onDone, () => classes.updateLedgerSettings(db, uid, classId, { balanceVisibility, paymentInfo: paymentInfo.trim() }));
       },
 
       addOpeningBalance(member, amountCentavos, note, onDone) {

@@ -15,6 +15,7 @@ import { LedgerForms } from '../domain/ledgerForms';
 import { can } from '../domain/permissions';
 import { UserError } from './errors';
 import { newId, nowMillis } from './dataEnv';
+import { logToBatch, peso } from './history';
 import {
   addSummaryDeltas,
   bumpSummary,
@@ -85,6 +86,8 @@ async function addMemberRecord(db: Firestore, actorUid: string, classId: string,
   const batch = writeBatch(db);
   batch.set(recordRef(db, classId, id), withoutId(record));
   bumpSummary(batch, db, classId, Ledger.summaryDelta(record));
+  await logToBatch(batch, db, classId, actorUid, type,
+    type === 'PAYMENT' ? `Recorded a payment of ${peso(record.amountCentavos)} from ${record.memberName}` : `Recorded a withdrawal of ${peso(record.amountCentavos)} by ${record.memberName}`);
   await explainRefusal(db, classId, () => batch.commit());
   return id;
 }
@@ -114,7 +117,7 @@ export interface ChargeInput {
 
 /**
  * Charges students: the charge document, one CHARGE share per student, the optional pay-out and the summary,
- * in one batch (at most 497 shares, so the batch stays at 500 writes). Returns the batch id and pay-out id.
+ * in one batch (at most 496 shares, so the batch with the history entry stays at 500 writes). Returns the batch id and pay-out id.
  * Build shares from ChargePlanner.preview: charged.map((m) => ({ memberId: m.id, memberName: m.name, amountCentavos: per })).
  */
 export async function chargeStudents(db: Firestore, actorUid: string, classId: string, input: ChargeInput): Promise<{ batchId: string; payoutRecordId: string }> {
@@ -153,6 +156,9 @@ export async function chargeStudents(db: Firestore, actorUid: string, classId: s
     written.push(p);
   }
   bumpSummary(batch, db, classId, addSummaryDeltas(written.map(Ledger.summaryDelta)));
+  const each = one ? `${peso(shares[0].amountCentavos)} each` : `${peso(total)} in all`;
+  await logToBatch(batch, db, classId, actorUid, 'CHARGE',
+    `Charged ${shares.length} student${shares.length === 1 ? '' : 's'} ${each} for "${note}"${input.payout ? `, paid out to ${paidTo || 'someone'}` : ''}`);
   await explainRefusal(db, classId, () => batch.commit());
   return { batchId, payoutRecordId };
 }
@@ -179,6 +185,7 @@ export async function payOutCharge(
   batch.set(recordRef(db, classId, id), withoutId(payout));
   batch.update(chargeRef(db, classId, batchId), { payoutRecordId: id });
   bumpSummary(batch, db, classId, Ledger.summaryDelta(payout));
+  await logToBatch(batch, db, classId, actorUid, 'PAYOUT', `Paid out ${peso(charge.totalCentavos)} for "${charge.note}"${paidTo ? ` to ${paidTo}` : ''}`);
   try {
     await explainRefusal(db, classId, () => batch.commit());
   } catch (e) {
@@ -188,6 +195,18 @@ export async function payOutCharge(
     throw e;
   }
   return id;
+}
+
+/** "a payment of ₱50.00 from Juan", for the history log. */
+function describeRecord(r: LedgerRecord): string {
+  const amount = peso(Math.abs(r.amountCentavos));
+  switch (r.type) {
+    case 'PAYMENT': return `a payment of ${amount} from ${r.memberName}`;
+    case 'WITHDRAWAL': return `a withdrawal of ${amount} by ${r.memberName}`;
+    case 'OPENING': return `the opening balance of ${r.memberName} (${peso(r.amountCentavos)})`;
+    case 'EXPENSE': return `a pay-out of ${amount}${r.paidTo ? ` to ${r.paidTo}` : ''}${r.note ? ` for "${r.note}"` : ''}`;
+    default: return `a ${r.type.toLowerCase()} record of ${amount}`;
+  }
 }
 
 const voidFields = (actorUid: string, reason: string) => ({ voidedAtMillis: nowMillis(), voidedByUid: actorUid, voidReason: reason });
@@ -208,6 +227,7 @@ export async function voidRecord(db: Firestore, actorUid: string, classId: strin
   batch.update(snap.ref, voidFields(actorUid, why));
   if (record.type === 'EXPENSE') batch.update(chargeRef(db, classId, record.settlesBatchId), { payoutRecordId: '' });
   bumpSummary(batch, db, classId, Ledger.summaryDeltaForVoid(record));
+  await logToBatch(batch, db, classId, actorUid, 'VOID', `Voided ${describeRecord(record)}. Reason: ${why}`);
   try {
     await explainRefusal(db, classId, () => batch.commit());
   } catch (e) {
@@ -248,6 +268,7 @@ export async function voidCharge(
   batch.update(chargeRef(db, classId, batchId), fields);
   for (const r of shares) batch.update(recordRef(db, classId, r.id), fields);
   bumpSummary(batch, db, classId, addSummaryDeltas(shares.map(Ledger.summaryDeltaForVoid)));
+  await logToBatch(batch, db, classId, actorUid, 'VOID', `Voided the charge "${charge.note}" (${shares.length} student${shares.length === 1 ? '' : 's'}, ${peso(charge.totalCentavos)}). Reason: ${why}`);
   await explainRefusal(db, classId, () => batch.commit());
   return { payoutVoided };
 }

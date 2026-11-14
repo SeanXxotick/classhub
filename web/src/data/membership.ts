@@ -23,6 +23,7 @@ import { RoleRules, can } from '../domain/permissions';
 import { UserError } from './errors';
 import { newId, nowMillis } from './dataEnv';
 import { addOpeningToBatch, openingRecordIdFor } from './openingBalances';
+import { PERMISSION_WORDS, logToBatch, peso } from './history';
 import type { Actor } from './classes';
 import {
   bumpSummary,
@@ -120,6 +121,7 @@ export async function approveJoinRequest(db: Firestore, approverUid: string, cla
   batch.delete(reqSnap.ref);
 
   let openingApplied = false;
+  let openingText = '';
   if (can(await readMyRole(db, classId, approverUid), 'RECORDS_MANAGE')) {
     const entry = await getDoc(openingBalanceRef(db, classId, studentUid)).catch(() => null);
     const recordId = entry?.exists() ? await openingRecordIdFor(db, classId, studentUid) : null;
@@ -128,8 +130,10 @@ export async function approveJoinRequest(db: Firestore, approverUid: string, cla
       const record = addOpeningToBatch(batch, db, approverUid, classId, recordId, { uid: studentUid, name: request.name }, pending.amountCentavos, pending.note);
       bumpSummary(batch, db, classId, Ledger.summaryDelta(record));
       openingApplied = true;
+      openingText = `, with their opening balance of ${peso(pending.amountCentavos)}`;
     }
   }
+  await logToBatch(batch, db, classId, approverUid, 'JOIN_APPROVED', `Approved ${request.name} to join the class${openingText}`);
   try {
     await explainRefusal(db, classId, () => batch.commit());
   } catch (e) {
@@ -142,8 +146,13 @@ export async function approveJoinRequest(db: Firestore, approverUid: string, cla
 }
 
 /** Rejects a request (MEMBERS_MANAGE): the request is deleted. */
-export async function rejectJoinRequest(db: Firestore, classId: string, studentUid: string): Promise<void> {
-  await explainRefusal(db, classId, () => deleteDoc(joinRequestRef(db, classId, studentUid)));
+export async function rejectJoinRequest(db: Firestore, actorUid: string, classId: string, studentUid: string): Promise<void> {
+  const ref = joinRequestRef(db, classId, studentUid);
+  const req = await getDoc(ref).catch(() => null);
+  const batch = writeBatch(db);
+  batch.delete(ref);
+  await logToBatch(batch, db, classId, actorUid, 'JOIN_REJECTED', `Rejected the request of ${String(req?.get('name') ?? '').trim() || 'a student'} to join`);
+  await explainRefusal(db, classId, () => batch.commit());
 }
 
 // ---- "My classes"
@@ -237,6 +246,7 @@ export async function handOverAndLeave(db: Firestore, uid: string, classId: stri
   batch.delete(memberRef(db, classId, uid));
   batch.update(classRef(db, classId), { ownerUid: newMayorUid });
   batch.update(memberRef(db, classId, newMayorUid), { roleId: ROLE_MAYOR });
+  await logToBatch(batch, db, classId, uid, 'MAYOR_HANDOVER', `Handed the Mayor role to ${await memberName(db, classId, newMayorUid)} and left the class`);
   await explainRefusal(db, classId, () => batch.commit());
 }
 
@@ -279,12 +289,18 @@ export async function changeMemberRole(db: Firestore, actorUid: string, classId:
   if (memberUid === room.ownerUid) throw new UserError('OWNER_ROLE');
   const role = await getDoc(roleRef(db, classId, roleId));
   if (role.exists() && role.get('locked') === true) throw new UserError('ROLE_LOCKED');
-  await explainRefusal(db, classId, () => updateDoc(memberRef(db, classId, memberUid), { roleId }));
+  const batch = writeBatch(db);
+  batch.update(memberRef(db, classId, memberUid), { roleId });
+  await logToBatch(batch, db, classId, actorUid, 'MEMBER_ROLE', `Gave ${await memberName(db, classId, memberUid)} the ${String(role.get('name') ?? 'new')} role`);
+  await explainRefusal(db, classId, () => batch.commit());
 }
 
 /** The courses a member does not take. */
-export async function setMemberCourses(db: Firestore, classId: string, memberUid: string, excludedCourseIds: string[]): Promise<void> {
-  await explainRefusal(db, classId, () => updateDoc(memberRef(db, classId, memberUid), { excludedCourseIds: [...new Set(excludedCourseIds)] }));
+export async function setMemberCourses(db: Firestore, actorUid: string, classId: string, memberUid: string, excludedCourseIds: string[]): Promise<void> {
+  const batch = writeBatch(db);
+  batch.update(memberRef(db, classId, memberUid), { excludedCourseIds: [...new Set(excludedCourseIds)] });
+  await logToBatch(batch, db, classId, actorUid, 'MEMBER_COURSES', `Changed the courses ${await memberName(db, classId, memberUid)} takes`);
+  await explainRefusal(db, classId, () => batch.commit());
 }
 
 /** Removes someone else from the class. Their records stay. The Mayor cannot be removed. */
@@ -292,7 +308,17 @@ export async function removeMember(db: Firestore, actorUid: string, classId: str
   if (memberUid === actorUid) throw new UserError('OWN_ROLE', 'Use Leave class to leave the class yourself.');
   const room = await readOpenClass(db, classId);
   if (memberUid === room.ownerUid) throw new UserError('OWNER_ROLE', 'The Mayor cannot be removed.');
-  await explainRefusal(db, classId, () => deleteDoc(memberRef(db, classId, memberUid)));
+  const name = await memberName(db, classId, memberUid);
+  const batch = writeBatch(db);
+  batch.delete(memberRef(db, classId, memberUid));
+  await logToBatch(batch, db, classId, actorUid, 'MEMBER_REMOVED', `Removed ${name} from the class`);
+  await explainRefusal(db, classId, () => batch.commit());
+}
+
+/** A member's name in the class, for the history log. */
+async function memberName(db: Firestore, classId: string, uid: string): Promise<string> {
+  const snap = await getDoc(memberRef(db, classId, uid)).catch(() => null);
+  return String(snap?.get('name') ?? '').trim() || 'a member';
 }
 
 // ---- Roles (ROLES_MANAGE)
@@ -310,7 +336,13 @@ export async function saveRole(db: Firestore, actorUid: string, classId: string,
   }
   const id = role.id || newId();
   const data = { name: role.name.trim(), colorHex: role.colorHex, permissions: RoleRules.sanitize(role.permissions), locked: false };
-  await explainRefusal(db, classId, () => setDoc(roleRef(db, classId, id), data));
+  const before = existing.find((r) => r.id === role.id);
+  const words = data.permissions.map((p) => PERMISSION_WORDS[p] ?? p).join(', ') || 'view only';
+  const renamed = before && before.name !== data.name ? ` (was "${before.name}")` : '';
+  const batch = writeBatch(db);
+  batch.set(roleRef(db, classId, id), data);
+  await logToBatch(batch, db, classId, actorUid, 'ROLE_SAVED', `${role.id ? 'Edited' : 'Created'} the role "${data.name}"${renamed}: ${words}`);
+  await explainRefusal(db, classId, () => batch.commit());
   return id;
 }
 
@@ -320,7 +352,7 @@ export async function setLockedRoleColor(db: Firestore, classId: string, roleId:
 }
 
 /** Deletes a role and moves everyone who held it to the class's default role, in one batch. */
-export async function deleteRole(db: Firestore, classId: string, roleId: string): Promise<void> {
+export async function deleteRole(db: Firestore, actorUid: string, classId: string, roleId: string): Promise<void> {
   const room = await readOpenClass(db, classId);
   const snap = await getDoc(roleRef(db, classId, roleId));
   if (!snap.exists()) return;
@@ -328,9 +360,11 @@ export async function deleteRole(db: Firestore, classId: string, roleId: string)
   if (role.locked) throw new UserError('ROLE_LOCKED');
   if (!RoleRules.canDelete(role, room.defaultRoleId)) throw new UserError('ROLE_DEFAULT');
   const holders = await getDocs(query(membersCol(db, classId), where('roleId', '==', roleId)));
-  if (holders.size > 499) throw new UserError('TOO_MANY_MEMBERS');
+  if (holders.size > 498) throw new UserError('TOO_MANY_MEMBERS');
   const batch = writeBatch(db);
   holders.docs.forEach((d) => batch.update(d.ref, { roleId: room.defaultRoleId }));
   batch.delete(snap.ref);
+  const moved = holders.size > 0 ? `; ${holders.size} member${holders.size === 1 ? '' : 's'} moved to the default role` : '';
+  await logToBatch(batch, db, classId, actorUid, 'ROLE_DELETED', `Deleted the role "${role.name}"${moved}`);
   await explainRefusal(db, classId, () => batch.commit());
 }

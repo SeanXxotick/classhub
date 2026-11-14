@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { collection, deleteDoc, doc, documentId, onSnapshot, query, setDoc, where } from 'firebase/firestore';
+import { collection, deleteDoc, doc, documentId, onSnapshot, query, setDoc, where, writeBatch } from 'firebase/firestore';
+import { logToBatch } from './history';
+import { explainRefusal } from './paths';
 import { db } from './firebase';
 
 /*
@@ -118,10 +120,11 @@ export function removeAvatar(uid: string): Promise<void> {
   return deleteDoc(doc(avatars, uid));
 }
 
-export function setClassPhoto(classId: string, photo: string): Promise<void> {
-  return setDoc(doc(classPhotos, classId), { photo, updatedAtMillis: Date.now() });
-}
-
-export function removeClassPhoto(classId: string): Promise<void> {
-  return deleteDoc(doc(classPhotos, classId));
+/** Sets or removes the class photo (CLASS_SETTINGS), with its history log entry. */
+export async function setClassPhoto(actorUid: string, classId: string, photo: string | null): Promise<void> {
+  const batch = writeBatch(db);
+  if (photo) batch.set(doc(classPhotos, classId), { photo, updatedAtMillis: Date.now() });
+  else batch.delete(doc(classPhotos, classId));
+  await logToBatch(batch, db, classId, actorUid, 'CLASS_PHOTO', photo ? 'Changed the class photo' : 'Removed the class photo');
+  await explainRefusal(db, classId, () => batch.commit());
 }

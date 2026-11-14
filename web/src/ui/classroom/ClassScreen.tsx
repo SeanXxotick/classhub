@@ -15,6 +15,7 @@ import { monthDay, ScheduleFormScreen, ScheduleRow, ScheduleTab } from '../sched
 import { ClassProvider, useClass, type ClassState } from './ClassContext';
 import { byLastName, listName, PERMISSIONS } from '../../data/models';
 import { CLASS_TABS, tabShownIn, type ClassTabId } from './classTabs';
+import { HistoryScreen } from './HistoryScreen';
 import { ClassSettingsScreen, CoursesScreen, MemberDetailScreen, permissionLabel, RoleEditorScreen, RolesScreen } from './ManageScreens';
 import { MySettingsScreen } from './MySettingsScreen';
 import { SetupChecklist, Welcome } from './Onboarding';
@@ -62,6 +63,7 @@ function ClassFrame() {
         <Route path="roles/:roleId" element={<RoleEditorScreen />} />
         <Route path="courses" element={<CoursesScreen />} />
         <Route path="settings" element={<ClassSettingsScreen />} />
+        <Route path="history" element={<HistoryScreen />} />
         <Route path="mine" element={<MySettingsScreen />} />
         <Route path="record/:type" element={<RecordRoute />} />
         <Route path="charge" element={<ChargeStudentsScreen />} />
@@ -313,6 +315,11 @@ function HomeTab({
               {canCourses && (
                 <button className="btn outline small" onClick={() => navigate(`${base}/settings`)}>
                   Class settings
+                </button>
+              )}
+              {canCourses && (
+                <button className="btn outline small" onClick={() => navigate(`${base}/history`)}>
+                  History log
                 </button>
               )}
             </div>

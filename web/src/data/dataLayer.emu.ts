@@ -11,6 +11,7 @@ import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app';
 import {
   collection,
   connectFirestoreEmulator,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -194,7 +195,7 @@ describe('classes and joining', () => {
     await cancelJoinRequest(as(QUITTER.uid), QUITTER.uid, classId);
     await requestToJoin(as(REJECTED.uid), REJECTED, code);
     expect((await listJoinRequests(as(MAYOR.uid), classId)).map((r) => r.uid).sort()).toEqual([STUDENT.uid, REJECTED.uid].sort());
-    await rejectJoinRequest(as(MAYOR.uid), classId, REJECTED.uid);
+    await rejectJoinRequest(as(MAYOR.uid), MAYOR.uid, classId, REJECTED.uid);
     expect((await getDoc(doc(adminDb, 'classes', classId, 'joinRequests', REJECTED.uid))).exists()).toBe(false);
     expect((await getDoc(doc(adminDb, 'classes', classId, 'joinRequests', QUITTER.uid))).exists()).toBe(false);
   });
@@ -220,18 +221,18 @@ describe('classes and joining', () => {
   });
 
   it('settings, ledger settings, a new invite code, a renamed member and a custom role', async () => {
-    await updateClassSettings(as(MAYOR.uid), classId, { name: 'BSIT 2B (2nd Sem)', timetableEnabled: false });
+    await updateClassSettings(as(MAYOR.uid), MAYOR.uid, classId, { name: 'BSIT 2B (2nd Sem)', timetableEnabled: false });
     expect((await getDoc(doc(adminDb, 'invites', code))).get('className')).toBe('BSIT 2B (2nd Sem)');
-    await rejects(updateLedgerSettings(as(STUDENT.uid), classId, { paymentInfo: 'Send it to me' }), 'NO_PERMISSION');
-    await updateLedgerSettings(as(TREASURER.uid), classId, { balanceVisibility: 'TREASURERS', paymentInfo: 'GCash 0900 000 0000 (Ben)' });
-    const newCode = await regenerateInviteCode(as(MAYOR.uid), classId);
+    await rejects(updateLedgerSettings(as(STUDENT.uid), STUDENT.uid, classId, { paymentInfo: 'Send it to me' }), 'NO_PERMISSION');
+    await updateLedgerSettings(as(TREASURER.uid), TREASURER.uid, classId, { balanceVisibility: 'TREASURERS', paymentInfo: 'GCash 0900 000 0000 (Ben)' });
+    const newCode = await regenerateInviteCode(as(MAYOR.uid), MAYOR.uid, classId);
     expect((await getDoc(doc(adminDb, 'invites', code))).exists()).toBe(false);
     expect((await getDoc(doc(adminDb, 'invites', newCode))).data()).toEqual({ classId, className: 'BSIT 2B (2nd Sem)' });
     code = newCode;
     expect(await renameMeEverywhere(as(STUDENT.uid), STUDENT.uid, 'Cora B. Velasco')).toBe(1);
     const roleId = await saveRole(as(MAYOR.uid), MAYOR.uid, classId, newRole({ name: 'PIO', permissions: ['SCHEDULE_MANAGE'] }), []);
     await changeMemberRole(as(MAYOR.uid), MAYOR.uid, classId, STUDENT.uid, roleId);
-    await deleteRole(as(MAYOR.uid), classId, roleId);
+    await deleteRole(as(MAYOR.uid), MAYOR.uid, classId, roleId);
     expect((await getDoc(doc(adminDb, 'classes', classId, 'members', STUDENT.uid))).get('roleId')).toBe('member');
   });
 });
@@ -306,7 +307,7 @@ describe('ledger', () => {
     expect((await getDoc(doc(adminDb, 'classes', classId, 'records', `opening-${STUDENT.uid}`))).get('amountCentavos')).toBe(-4500);
 
     // Pending for a student who has not joined yet; the Mayor (who also manages records) approves.
-    await setPendingOpeningBalance(t, classId, LATE.uid, 25000, 'Carried over');
+    await setPendingOpeningBalance(t, TREASURER.uid, classId, LATE.uid, 25000, 'Carried over');
     expect((await listPendingOpeningBalances(t, classId)).map((p) => p.id)).toEqual([LATE.uid]);
     await requestToJoin(as(LATE.uid), LATE, code);
     expect(await approveJoinRequest(as(MAYOR.uid), MAYOR.uid, classId, LATE.uid)).toEqual({ openingApplied: true });
@@ -335,7 +336,7 @@ describe('who reads which records', () => {
 
   it('a plain member gets only their own records and the pay-outs under TREASURERS and OFFICERS', async () => {
     for (const setting of ['TREASURERS', 'OFFICERS'] as const) {
-      await updateLedgerSettings(as(TREASURER.uid), classId, { balanceVisibility: setting });
+      await updateLedgerSettings(as(TREASURER.uid), TREASURER.uid, classId, { balanceVisibility: setting });
       const listened: string[] = [];
       const v = await waitFor(watch(STUDENT.uid, listened), (x) => x.scope !== 'NONE' && x.records.length > 0, `own records (${setting})`);
       expect(v.scope).toBe('OWN');
@@ -346,7 +347,7 @@ describe('who reads which records', () => {
   });
 
   it('under EVERYONE the member reads every record; switching the setting switches the queries without an error', async () => {
-    await updateLedgerSettings(as(TREASURER.uid), classId, { balanceVisibility: 'EVERYONE' });
+    await updateLedgerSettings(as(TREASURER.uid), TREASURER.uid, classId, { balanceVisibility: 'EVERYONE' });
     const listened: string[] = [];
     const seen: VisibleRecords[] = [];
     const errors: Error[] = [];
@@ -356,7 +357,7 @@ describe('who reads which records', () => {
       if (!test()) throw new Error(`timed out: ${label}`);
     };
     await until(() => seen.some((v) => v.scope === 'ALL' && v.records.some((r) => r.memberId === TREASURER.uid)), 'every record');
-    await updateLedgerSettings(as(TREASURER.uid), classId, { balanceVisibility: 'TREASURERS' });
+    await updateLedgerSettings(as(TREASURER.uid), TREASURER.uid, classId, { balanceVisibility: 'TREASURERS' });
     await until(() => seen.at(-1)?.scope === 'OWN', 'own records after the switch');
     expect(seen.at(-1)!.records.every((r) => r.memberId === STUDENT.uid || r.type === 'EXPENSE')).toBe(true);
     await changeMemberRole(as(MAYOR.uid), MAYOR.uid, classId, STUDENT.uid, 'treasurer');
@@ -453,6 +454,34 @@ describe('attendance', () => {
     await deniedRead(getDocs(query(col(STUDENT.uid), where('absent', 'array-contains', LATE.uid))));
     await deniedRead(getDoc(doc(col(STUDENT.uid), sheetId('2026-11-23', 'meetA'))));
     await expect(saveAttendance(as(STUDENT.uid), STUDENT.uid, classId, '2026-11-16', meeting, {})).rejects.toBeTruthy();
+  });
+});
+
+describe('history log', () => {
+  it('officer actions leave entries the Mayor reads; nobody else reads them, and nobody edits, deletes or fakes one', async () => {
+    const snap = await getDocs(collection(adminDb, 'classes', classId, 'history'));
+    const kinds = new Set(snap.docs.map((d) => d.get('kind') as string));
+    for (const k of ['JOIN_REJECTED', 'JOIN_APPROVED', 'MEMBER_ROLE', 'CLASS_SETTINGS', 'LEDGER_SETTINGS', 'INVITE_CODE', 'ROLE_SAVED', 'ROLE_DELETED',
+      'PAYMENT', 'WITHDRAWAL', 'VOID', 'CHARGE', 'PAYOUT', 'OPENING', 'OPENING_PENDING', 'CLAIM_CONFIRMED']) {
+      expect(kinds.has(k), k).toBe(true);
+    }
+    const payment = snap.docs.find((d) => d.get('kind') === 'PAYMENT')!.data();
+    expect(payment).toMatchObject({ actorUid: TREASURER.uid, actorName: TREASURER.name });
+    expect(payment.text).toMatch(/^Recorded a payment of ₱/);
+
+    // The Mayor has class settings; the Treasurer and a plain member do not.
+    expect((await getDocs(collection(as(MAYOR.uid), 'classes', classId, 'history'))).size).toBe(snap.size);
+    await deniedRead(getDocs(collection(as(TREASURER.uid), 'classes', classId, 'history')));
+    await deniedRead(getDocs(collection(as(STUDENT.uid), 'classes', classId, 'history')));
+
+    const ref = doc(as(MAYOR.uid), 'classes', classId, 'history', snap.docs[0].id);
+    await deniedRead(updateDoc(ref, { text: 'Nothing happened' }));
+    await deniedRead(deleteDoc(ref));
+
+    const fake = { kind: 'PAYMENT', text: 'Recorded a payment of ₱1.00', actorName: 'Someone', atMillis: Date.now() };
+    await deniedRead(setDoc(doc(collection(as(STUDENT.uid), 'classes', classId, 'history')), { ...fake, actorUid: STUDENT.uid }));
+    await deniedRead(setDoc(doc(collection(as(TREASURER.uid), 'classes', classId, 'history')), { ...fake, actorUid: MAYOR.uid }));
+    await deniedRead(setDoc(doc(collection(as(TREASURER.uid), 'classes', classId, 'history')), { ...fake, actorUid: TREASURER.uid, kind: 'SOMETHING' }));
   });
 });
 
