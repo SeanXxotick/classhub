@@ -297,6 +297,8 @@ export interface ScheduleItem {
   status: ScheduleStatus;
   note: string;
   createdByUid: string;
+  /** When it was added (0 for items added before 2.0.2), for the unseen count on the Schedule tab. */
+  createdAtMillis: number;
 }
 
 /** Firestore: classes/{classId}/progress/{uid}. The schedule items one student marked done, with when. */
@@ -322,7 +324,7 @@ export const newRole = (r: Partial<Role>): Role => ({
 });
 
 export const newScheduleItem = (s: Partial<ScheduleItem>): ScheduleItem => ({
-  id: '', courseId: '', title: '', kind: 'DEADLINE', dueMillis: 0, status: 'PENDING', note: '', createdByUid: '', ...s,
+  id: '', courseId: '', title: '', kind: 'DEADLINE', dueMillis: 0, status: 'PENDING', note: '', createdByUid: '', createdAtMillis: 0, ...s,
 });
 
 export const newContentItem = (c: Partial<ContentItem>): ContentItem => ({

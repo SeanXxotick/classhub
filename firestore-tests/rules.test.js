@@ -628,6 +628,9 @@ async function main() {
     await assertSucceeds(notice('mayor', { kind: 'SCHEDULE_NEW', audience: 'COURSE', audienceId: 'or' }));
     await assertSucceeds(notice('student', { kind: 'CLAIM_SENT', audience: 'PERMISSION', audienceId: 'RECORDS_MANAGE' }));
     await assertSucceeds(notice('mayor', { kind: 'CLAIM_DECIDED', audience: 'USER', audienceId: 'student' }));
+    await assertSucceeds(notice('mayor', { kind: 'PAYMENT_DUE', audience: 'USER', audienceId: 'student' }));
+    await assertFails(notice('student', { kind: 'PAYMENT_DUE', audience: 'USER', audienceId: 'mayor' }));
+    await assertFails(notice('mayor', { kind: 'PAYMENT_DUE', audience: 'CLASS' }));
     await assertFails(notice('student', { kind: 'ANNOUNCEMENT' }));
     await assertFails(notice('student', { kind: 'NO_CLASS' }));
     await assertFails(notice('student', { kind: 'CLAIM_DECIDED', audience: 'USER', audienceId: 'mayor' }));
@@ -649,6 +652,7 @@ async function main() {
     b.set(doc(collection(m, H), 'h-pay'), entry('maria'));
     await assertSucceeds(b.commit());
     await assertSucceeds(add('mayor', { kind: 'MEMBER_ROLE', text: 'Gave Student the Treasurer role' }));
+    await assertSucceeds(add('mayor', { kind: 'REMINDERS', text: 'Sent payment reminders to 1 student: Student (₱50.00)' }));
     await assertFails(add('student'));
     await assertFails(add('outsider'));
     await assertFails(setDoc(doc(collection(db('maria'), H)), entry('mayor')));

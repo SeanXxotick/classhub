@@ -10,7 +10,7 @@ import { NoAccess, SubPage } from './SubPage';
 const PAGE = 50;
 
 type Filter = 'ALL' | 'MONEY' | 'PEOPLE';
-const MONEY: HistoryKind[] = ['PAYMENT', 'WITHDRAWAL', 'OPENING', 'OPENING_PENDING', 'CHARGE', 'PAYOUT', 'VOID', 'CLAIM_CONFIRMED', 'CLAIM_REJECTED', 'LEDGER_SETTINGS'];
+const MONEY: HistoryKind[] = ['PAYMENT', 'WITHDRAWAL', 'OPENING', 'OPENING_PENDING', 'CHARGE', 'PAYOUT', 'VOID', 'CLAIM_CONFIRMED', 'CLAIM_REJECTED', 'LEDGER_SETTINGS', 'REMINDERS'];
 
 const LOOK: Record<HistoryKind, [IconName, Tone]> = {
   PAYMENT: ['income', 'income'],
@@ -34,6 +34,7 @@ const LOOK: Record<HistoryKind, [IconName, Tone]> = {
   INVITE_CODE: ['key', 'neutral'],
   CLASS_SETTINGS: ['sliders', 'neutral'],
   CLASS_PHOTO: ['camera', 'neutral'],
+  REMINDERS: ['bell', 'warning'],
 };
 
 const dayLabel = (millis: number) => new Date(millis).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });

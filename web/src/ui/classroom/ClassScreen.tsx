@@ -1,7 +1,11 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { JoinRequest, Member, Permission, ScheduleItem } from '../../data/models';
-import { AttendanceCard, ClaimsCard, NewsTab, StatementCard, TimetableCard, TodayCard } from '../features/FeatureUi';
+import { db } from '../../data/firebase';
+import { useAnnouncements, useCommentsSince, useMyComments } from '../../data/features';
+import { markTabsSeen, useTabsSeen } from '../../data/tabsSeen';
+import { countLabel, SEEN_TABS, unseenCounts, type SeenTab } from '../../domain/tabCounts';
+import { AttendanceCard, ClaimsCard, NewsTab, RemindersCard, StatementCard, TimetableCard, TodayCard } from '../features/FeatureUi';
 import { JoinLinks } from '../../domain/joinLinks';
 import { LedgerView } from '../../domain/ledgerView';
 import { ScheduleView } from '../../domain/scheduleView';
@@ -98,6 +102,47 @@ function ClassScreen() {
 
   const onToggleDone = (item: ScheduleItem, done: boolean) => actions.setDone(item, done);
 
+  // The red counts: what is new on each tab since this user last opened it (domain/tabCounts).
+  const hasMe = !!state.me;
+  const seen = useTabsSeen(db, state.myUid, state.classId);
+  const newsOn = hasMe && tabs.some((t) => t.id === 'NEWS');
+  const posts = useAnnouncements(db, state.classId, newsOn).data ?? [];
+  const newComments = useCommentsSince(db, state.classId, seen?.NEWS ?? 0, newsOn && !!seen).data ?? [];
+  const myComments = useMyComments(db, state.classId, state.myUid, newsOn && !!seen).data ?? [];
+  const counts = unseenCounts({
+    seen,
+    myUid: state.myUid,
+    records: state.records,
+    schedule: state.schedule,
+    contents: state.contents,
+    posts,
+    comments: newComments,
+    myCommentIds: new Set(myComments.map((c) => c.id)),
+    joinRequests: state.can('MEMBERS_MANAGE') ? state.joinRequests.length : 0,
+    takes: state.takes,
+  });
+  // The open tab never shows a count.
+  const countOf = (id: ClassTabId) => (id === tab || id === 'HOME' ? 0 : counts[id]);
+  const tabLabel = (id: ClassTabId, label: string) => {
+    const n = countOf(id);
+    return n === 0 ? undefined : `${label}, ${n} ${id === 'MEMBERS' ? 'waiting to join' : 'new'}`;
+  };
+  // The first visit since counts began starts every tab at zero, so old posts never count.
+  const firstVisit = seen === null;
+  useEffect(() => {
+    if (hasMe && firstVisit) markTabsSeen(db, state.myUid, state.classId, SEEN_TABS).catch(() => undefined);
+  }, [hasMe, firstVisit, state.myUid, state.classId]);
+  // Opening a tab clears its count; so does leaving it, for what came in while it was open.
+  useEffect(() => {
+    const open = tab as SeenTab;
+    if (!hasMe || !SEEN_TABS.includes(open)) return;
+    const mark = () => {
+      markTabsSeen(db, state.myUid, state.classId, [open]).catch(() => undefined);
+    };
+    mark();
+    return mark;
+  }, [tab, hasMe, state.myUid, state.classId]);
+
   let fab: { label: string; onClick: () => void } | null = null;
   if (tab === 'LEDGER' && state.can('RECORDS_MANAGE')) fab = { label: 'New record', onClick: () => setChoosingRecord(true) };
   if (tab === 'SCHEDULE' && state.can('SCHEDULE_MANAGE')) {
@@ -126,9 +171,10 @@ function ClassScreen() {
         {room && !state.loading && (
           <nav className="tabs wide-only" aria-label="Class sections">
             {tabs.map((t) => (
-              <button key={t.id} type="button" data-tour={`tab-${t.id}`} className={'tab' + (t.id === tab ? ' selected' : '')} aria-current={t.id === tab ? 'page' : undefined} onClick={() => setTab(t.id)}>
+              <button key={t.id} type="button" data-tour={`tab-${t.id}`} className={'tab' + (t.id === tab ? ' selected' : '')} aria-current={t.id === tab ? 'page' : undefined} aria-label={tabLabel(t.id, t.label)} onClick={() => setTab(t.id)}>
                 <Icon name={t.icon} size={20} />
                 {t.label}
+                {countOf(t.id) > 0 && <span className="tab-count" aria-hidden>{countLabel(countOf(t.id))}</span>}
               </button>
             ))}
           </nav>
@@ -158,6 +204,7 @@ function ClassScreen() {
               <>
                 <StatementCard state={state} />
                 <ClaimsCard state={state} />
+                <RemindersCard state={state} />
               </>
             }
             onDeleteRecord={actions.deleteRecord}
@@ -191,9 +238,10 @@ function ClassScreen() {
       {room && (
         <nav className="bottom-nav phone-only" aria-label="Class sections">
           {tabs.map((t) => (
-            <button key={t.id} type="button" data-tour={`tab-${t.id}`} className={t.id === tab ? 'selected' : ''} aria-current={t.id === tab ? 'page' : undefined} onClick={() => setTab(t.id)}>
+            <button key={t.id} type="button" data-tour={`tab-${t.id}`} className={t.id === tab ? 'selected' : ''} aria-current={t.id === tab ? 'page' : undefined} aria-label={tabLabel(t.id, t.label)} onClick={() => setTab(t.id)}>
               <span className="nav-icon">
                 <Icon name={t.icon} size={24} />
+                {countOf(t.id) > 0 && <span className="tab-count" aria-hidden>{countLabel(countOf(t.id))}</span>}
               </span>
               {t.label}
             </button>

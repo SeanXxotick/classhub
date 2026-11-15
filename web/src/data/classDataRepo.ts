@@ -41,7 +41,7 @@ export async function deleteChargeBatch(classId: string, batchId: string): Promi
 // ---- Schedule ----
 
 export async function addScheduleItem(classId: string, item: ScheduleItem): Promise<void> {
-  await addDoc(scheduleOf(classId), { ...item, id: '' });
+  await addDoc(scheduleOf(classId), { ...item, id: '', createdAtMillis: Date.now() });
 }
 
 export function updateScheduleItem(classId: string, item: ScheduleItem): Promise<void> {

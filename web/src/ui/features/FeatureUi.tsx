@@ -14,6 +14,9 @@ import {
   type Comment,
   type VoteMarks,
   cancelClaim,
+  REMINDER_NOTE_MAX,
+  reminderText,
+  sendPaymentReminders,
   clockText,
   confirmClaim,
   deleteAnnouncement,
@@ -49,6 +52,7 @@ import { Ledger } from '../../domain/ledger';
 import { ROLE_MEMBER, byLastName, listName } from '../../data/models';
 import { formatMoney, parsePesos } from '../../domain/money';
 import { courseShortName, layoutWeek } from '../../domain/weekGrid';
+import { weekImage } from './weekImage';
 import { attendanceExportSheets } from '../../domain/attendanceExport';
 import { xlsxFile } from '../../domain/xlsx';
 import { Avatar, ConfirmDialog, CourseDot, Dialog, EXPORT_IN_BROWSER, Field, RoleChip, hexColor, inAndroidApp, shortDate, shortDateTime } from '../common';
@@ -234,6 +238,117 @@ function ClaimDialog({ state, onClose }: { state: ClassState; onClose: () => voi
         <Field label="Note (optional)">
           <input value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} />
         </Field>
+      </div>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------- Payment reminders
+
+/** For officers with the ledger: who owes the class fund, and a push reminder to each with their own amount. */
+export function RemindersCard({ state }: { state: ClassState }) {
+  const [open, setOpen] = useState(false);
+  if (!state.can('RECORDS_MANAGE')) return null;
+  const owing = byLastName(state.members).filter((m) => m.id !== state.myUid && state.balanceOf(m.id) < 0);
+  const total = owing.reduce((sum, m) => sum - state.balanceOf(m.id), 0);
+  return (
+    <Section title="Payment reminders">
+      <Card>
+        {owing.length === 0 ? (
+          <p className="small muted" style={{ margin: 0 }}>
+            Nobody owes the class fund right now.
+          </p>
+        ) : (
+          <div className="stack" style={{ gap: 10 }}>
+            <p style={{ margin: 0 }}>
+              <strong>{`${owing.length} ${owing.length === 1 ? 'student owes' : 'students owe'}`}</strong>
+              {` ${formatMoney(total)} in all.`}
+            </p>
+            <div>
+              <Button size="small" icon="bell" onClick={() => setOpen(true)}>
+                Send reminders
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+      {open && <RemindDialog state={state} owing={owing} onClose={() => setOpen(false)} />}
+    </Section>
+  );
+}
+
+function RemindDialog({ state, owing, onClose }: { state: ClassState; owing: ClassState['members']; onClose: () => void }) {
+  const { actions } = useClass();
+  const [picked, setPicked] = useState(() => new Set(owing.map((m) => m.id)));
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const className = state.room?.name ?? 'Class';
+  const chosen = owing.filter((m) => picked.has(m.id));
+  const example = chosen[0] ?? owing[0];
+  const preview = reminderText(className, -state.balanceOf(example.id), note);
+  const allPicked = chosen.length === owing.length;
+  const toggle = (id: string, on: boolean) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  const send = async () => {
+    setBusy(true);
+    try {
+      const targets = chosen.map((m) => ({ uid: m.id, name: m.name, owedCentavos: -state.balanceOf(m.id) }));
+      await sendPaymentReminders(db, state.myUid, state.classId, className, targets, note);
+      actions.showNotice(`Reminders sent to ${chosen.length} ${chosen.length === 1 ? 'student' : 'students'}.`);
+      onClose();
+    } catch (e) {
+      actions.showNotice(friendlyMessage(e));
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      title="Send payment reminders"
+      onClose={busy ? () => undefined : onClose}
+      actions={
+        <>
+          <button className="btn text" disabled={busy} onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn solid" disabled={busy || chosen.length === 0} onClick={send}>
+            {busy ? 'Sending…' : `Send to ${chosen.length}`}
+          </button>
+        </>
+      }
+    >
+      <p className="small muted" style={{ marginTop: 0 }}>
+        Each student gets a notification with what they owe. Students who turned notifications off will not get one.
+      </p>
+      <label className="list-row" style={{ cursor: 'pointer', paddingLeft: 0 }}>
+        <input type="checkbox" className="check" checked={allPicked} onChange={(e) => setPicked(new Set(e.target.checked ? owing.map((m) => m.id) : []))} />
+        <span className="grow semibold">{`Everyone who owes (${owing.length})`}</span>
+      </label>
+      <div style={{ maxHeight: 260, overflowY: 'auto', margin: '0 -4px' }}>
+        {owing.map((m) => (
+          <label key={m.id} className="list-row" style={{ cursor: 'pointer' }}>
+            <input type="checkbox" className="check" checked={picked.has(m.id)} onChange={(e) => toggle(m.id, e.target.checked)} />
+            <Avatar photo={state.avatars.get(m.id)} name={m.name} color="var(--accent, #0F766E)" size={30} />
+            <span className="grow">{m.name}</span>
+            <span className="small" style={{ color: 'var(--error)', fontWeight: 600 }}>
+              {formatMoney(-state.balanceOf(m.id))}
+            </span>
+          </label>
+        ))}
+      </div>
+      <Field label="Note (optional)" help="Added after the amount, for example where and when to pay.">
+        <input value={note} maxLength={REMINDER_NOTE_MAX} placeholder="Pay the Treasurer by Friday." onChange={(e) => setNote(e.target.value)} />
+      </Field>
+      <div className="small muted" style={{ margin: '12px 0 4px' }}>
+        {`What ${example.name.split(' ')[0]} will see`}
+      </div>
+      <div style={{ border: '1px solid var(--outline)', borderRadius: 12, padding: '10px 12px', background: 'var(--surface)' }}>
+        <div className="semibold">{preview.title}</div>
+        <div className="small">{preview.body}</div>
       </div>
     </Dialog>
   );
@@ -867,6 +982,27 @@ export function TimetableCard({ state }: { state: ClassState }) {
   });
   const coming = marks.filter((k) => k.dateKey >= todayKey).sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
   const viewingCancelled = viewing ? nextCancelled(viewing, meetings, marks, now) : null;
+  const { actions } = useClass();
+  const [saving, setSaving] = useState(false);
+  // Anyone can save the full week as a picture, with the meetings they see.
+  const saveImage = async () => {
+    if (inAndroidApp()) return actions.showNotice(EXPORT_IN_BROWSER);
+    setSaving(true);
+    try {
+      const className = state.room?.name ?? 'Class';
+      const blob = await weekImage({
+        title: className,
+        subtitle: meetings.length === everyMeeting.length ? 'Weekly timetable' : 'Weekly timetable · My courses',
+        meetings,
+        course: (id) => state.courses.find((c) => c.id === id),
+      });
+      downloadBlob(`${className} timetable.png`, blob);
+    } catch (e) {
+      actions.showNotice(friendlyMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Section title="Timetable">
@@ -931,6 +1067,11 @@ export function TimetableCard({ state }: { state: ClassState }) {
             <Button size="small" variant="text" icon={fullWeek ? 'x' : 'list'} onClick={() => (setFullWeek(!fullWeek), setMoreDays(false))}>
               {fullWeek ? 'Show today and tomorrow only' : 'Full week'}
             </Button>
+            {fullWeek && (
+              <Button size="small" variant="text" icon="download" disabled={saving} onClick={saveImage}>
+                Save as image
+              </Button>
+            )}
           </div>
         </Card>
       )}

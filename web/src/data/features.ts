@@ -244,6 +244,22 @@ export function useComments(db: Firestore, classId: string, postId: string) {
   return { ...live, data: live.data ? [...live.data].sort((a, b) => a.createdAtMillis - b.createdAtMillis) : live.data };
 }
 
+/** Comments written after `since`, for the unseen count on the News tab. */
+export const useCommentsSince = (db: Firestore, classId: string, since: number, enabled: boolean) =>
+  useQueryList<Comment>(
+    `v2/commentsSince/${classId}/${since}/${enabled}`,
+    enabled ? query(commentsCol(db, classId), where('createdAtMillis', '>', since)) : null,
+    (d) => fromDoc(newComment({}), d),
+  );
+
+/** This user's own comments, to find the replies to them. */
+export const useMyComments = (db: Firestore, classId: string, uid: string, enabled: boolean) =>
+  useQueryList<Comment>(
+    `v2/myComments/${classId}/${uid}/${enabled}`,
+    enabled ? query(commentsCol(db, classId), where('uid', '==', uid)) : null,
+    (d) => fromDoc(newComment({}), d),
+  );
+
 /** One member's votes: the id of an announcement or comment mapped to 1 (up) or -1 (down). */
 export interface VoteMarks {
   id: string;
@@ -418,4 +434,44 @@ export function useMyAttendance(db: Firestore, classId: string, uid: string, ena
     (d) => fromDoc(newSheet({}), d),
   );
   return { absent: absent.data ?? [], late: late.data ?? [] };
+}
+
+// ---------------------------------------------------------------- Payment reminders
+
+/** A student who owes the class fund, with what they owe. */
+export interface ReminderTarget {
+  uid: string;
+  name: string;
+  owedCentavos: number;
+}
+
+export const REMINDER_NOTE_MAX = 150;
+
+/** One reminder as the student sees it: "You owe ₱150.00 to the class fund." and the officer's note. */
+export function reminderText(className: string, owedCentavos: number, note: string): { title: string; body: string } {
+  const extra = note.trim().replace(/\s+/g, ' ').slice(0, REMINDER_NOTE_MAX);
+  return {
+    title: `Payment reminder: ${className}`.slice(0, 120),
+    body: `You owe ${peso(owedCentavos)} to the class fund.${extra ? ` ${extra}` : ''}`.slice(0, 300),
+  };
+}
+
+/**
+ * Queues a push notification for each student, with their own amount (RECORDS_MANAGE), and logs it in the
+ * history, all in one batch. Students who turned these reminders off, or notifications altogether, get none.
+ */
+export async function sendPaymentReminders(db: Firestore, actorUid: string, classId: string, className: string, targets: ReminderTarget[], note: string): Promise<void> {
+  if (targets.length === 0) return;
+  const batch = writeBatch(db);
+  const now = nowMillis();
+  for (const t of targets.slice(0, 490)) {
+    const { title, body } = reminderText(className, t.owedCentavos, note);
+    batch.set(doc(collection(db, 'classes', classId, 'outbox'), newId()), {
+      kind: 'PAYMENT_DUE', audience: 'USER', audienceId: t.uid, title, body, createdByUid: actorUid, createdAtMillis: now,
+    });
+  }
+  const n = Math.min(targets.length, 490);
+  const who = targets.slice(0, 490).map((t) => `${t.name} (${peso(t.owedCentavos)})`).join(', ');
+  await logToBatch(batch, db, classId, actorUid, 'REMINDERS', `Sent payment reminders to ${n} student${n === 1 ? '' : 's'}: ${who}`);
+  await explainRefusal(db, classId, () => batch.commit());
 }

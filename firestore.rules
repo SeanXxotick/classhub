@@ -475,7 +475,7 @@ service cloud.firestore {
         && d.kind in ['PAYMENT', 'WITHDRAWAL', 'OPENING', 'OPENING_PENDING', 'CHARGE', 'PAYOUT', 'VOID',
                       'CLAIM_CONFIRMED', 'CLAIM_REJECTED', 'LEDGER_SETTINGS', 'JOIN_APPROVED', 'JOIN_REJECTED',
                       'MEMBER_REMOVED', 'MEMBER_ROLE', 'MEMBER_COURSES', 'ROLE_SAVED', 'ROLE_DELETED',
-                      'MAYOR_HANDOVER', 'INVITE_CODE', 'CLASS_SETTINGS', 'CLASS_PHOTO']
+                      'MAYOR_HANDOVER', 'INVITE_CODE', 'CLASS_SETTINGS', 'CLASS_PHOTO', 'REMINDERS']
         && isFilled(d.text, 300)
         && isFilled(d.actorName, 90)
         && isRecentMillis(d.atMillis);
@@ -500,6 +500,7 @@ service cloud.firestore {
           || (d.kind == 'JOIN_REQUEST' && d.audience == 'PERMISSION' && d.audienceId == 'MEMBERS_MANAGE' && exists(requestPath(c, uid())))
           || (d.kind == 'JOIN_APPROVED' && d.audience == 'USER' && can(c, 'MEMBERS_MANAGE'))
           || (d.kind == 'COMMENT' && d.audience == 'USER' && isMember(c))
+          || (d.kind == 'PAYMENT_DUE' && d.audience == 'USER' && can(c, 'RECORDS_MANAGE'))
         );
     }
 

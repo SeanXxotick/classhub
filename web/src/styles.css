@@ -865,9 +865,43 @@ a.list-row:hover {
 }
 
 .nav-icon {
+  position: relative;
   display: inline-flex;
   padding: 3px 18px;
   border-radius: 999px;
+}
+
+/* The red count of what is new on a tab (domain/tabCounts): after the name on wide screens, on the icon's corner on phones. */
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+:root[data-theme='dark'] .tab-count {
+  background: #ef4444;
+}
+
+.nav-icon .tab-count {
+  position: absolute;
+  top: -6px;
+  left: calc(50% + 5px);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  box-shadow: 0 0 0 2px var(--surface);
 }
 
 /* ------------------------------------------------------------------ Dialogs and snackbar */
