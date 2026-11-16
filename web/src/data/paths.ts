@@ -6,6 +6,7 @@ import {
   type CollectionReference,
   type DocumentData,
   type DocumentReference,
+  getDocFromCache,
   type DocumentSnapshot,
   type Firestore,
   type WriteBatch,
@@ -135,9 +136,24 @@ export async function explainRefusal<T>(db: Firestore, classId: string, write: (
   }
 }
 
-/** Reads the class (from the cache when offline) and refuses when it is gone or being deleted. */
+/**
+ * Reads a document from this phone's copy when it has one, else from the server. For documents the class
+ * screen keeps live (the class, members, roles, records, charges, claims), so an action does not wait on a
+ * slow connection the way getDoc does while online. The rules still check every write on the server.
+ */
+export async function readFast(ref: DocumentReference): Promise<DocumentSnapshot> {
+  try {
+    const cached = await getDocFromCache(ref);
+    if (cached.exists()) return cached;
+  } catch {
+    // Not in the cache: ask the server.
+  }
+  return getDoc(ref);
+}
+
+/** Reads the class (from the cache first) and refuses when it is gone or being deleted. */
 export async function readOpenClass(db: Firestore, classId: string): Promise<ClassRoom> {
-  const snap = await getDoc(classRef(db, classId)).catch((e) => {
+  const snap = await readFast(classRef(db, classId)).catch((e) => {
     if (isDenied(e)) throw new UserError('NOT_A_MEMBER');
     throw e;
   });
@@ -147,11 +163,11 @@ export async function readOpenClass(db: Firestore, classId: string): Promise<Cla
   return room;
 }
 
-/** The signed-in user's role in the class, or null when they are not in it. Uses the cache when offline. */
+/** The signed-in user's role in the class, or null when they are not in it. Uses the cache first. */
 export async function readMyRole(db: Firestore, classId: string, uid: string): Promise<Role | null> {
-  const member = await getDoc(memberRef(db, classId, uid));
+  const member = await readFast(memberRef(db, classId, uid));
   if (!member.exists()) return null;
-  const role = await getDoc(roleRef(db, classId, String(member.get('roleId') ?? ''))).catch((e) => {
+  const role = await readFast(roleRef(db, classId, String(member.get('roleId') ?? ''))).catch((e) => {
     if (isDenied(e)) return null;
     throw e;
   });

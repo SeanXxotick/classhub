@@ -621,6 +621,21 @@ async function main() {
     await assertSucceeds(updateDoc(doc(db('student'), `classes/${CLASS}/members/student`), { name: 'Student Two' }));
   });
 
+  await test('Attendance: officers save sheets with or without excused; a student reads only sheets that name them', async () => {
+    const A = `classes/${CLASS}/attendance`;
+    const sheet = (extra = {}) => ({ dateKey: '2026-11-16', meetingId: 'meet1', courseId: 'or', absent: [], late: [], excused: ['student'], takenByUid: 'mayor', takenAtMillis: Date.now(), ...extra });
+    await assertSucceeds(setDoc(doc(db('mayor'), `${A}/2026-11-16_meet1`), sheet()));
+    await assertSucceeds(setDoc(doc(db('mayor'), `${A}/2026-11-09_meet1`), omit(sheet({ dateKey: '2026-11-09', excused: [], absent: ['maria'] }), 'excused')));
+    await assertFails(setDoc(doc(db('mayor'), `${A}/2026-11-02_meet1`), sheet({ dateKey: '2026-11-02', excused: 'student' })));
+    await assertFails(setDoc(doc(db('mayor'), `${A}/2026-11-02_meet1`), sheet({ dateKey: '2026-11-02', reason: 'sick' })));
+    await assertFails(setDoc(doc(db('student'), `${A}/2026-11-02_meet1`), sheet({ dateKey: '2026-11-02', takenByUid: 'student' })));
+    // The student's "My attendance" query for excused days, and a classmate who is not on the sheet.
+    await assertSucceeds(getDocs(query(collection(db('student'), A), where('excused', 'array-contains', 'student'))));
+    await assertSucceeds(getDoc(doc(db('student'), `${A}/2026-11-16_meet1`)));
+    await assertFails(getDoc(doc(db('maria'), `${A}/2026-11-16_meet1`)));
+    await assertSucceeds(getDoc(doc(db('maria'), `${A}/2026-11-09_meet1`)));
+  });
+
   await test('Notification requests: each kind only from someone who can cause it; nobody reads the queue', async () => {
     const notice = (who, fields) => setDoc(doc(db(who), `classes/${CLASS}/outbox/n-${who}-${fields.kind}-${Math.random().toString(36).slice(2)}`),
       { audience: 'CLASS', audienceId: '', title: 'Hello', body: '', createdByUid: who, createdAtMillis: Date.now(), ...fields });

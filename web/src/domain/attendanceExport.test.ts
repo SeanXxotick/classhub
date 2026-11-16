@@ -46,6 +46,19 @@ describe('attendanceExportSheets', () => {
     expect(out[0].rows[1]).toEqual(['Lim, Ana', 0, 0]);
   });
 
+  it('marks excused days E, which do not count as attended, and reads sheets saved before Excused existed', () => {
+    const out = attendanceExportSheets(courses, students, [
+      { ...sheet('or', '2026-07-01', [], []), excused: ['ana'] },
+      sheet('or', '2026-07-08', [], ['ana']),
+      { ...sheet('or', '2026-07-15', ['paolo'], []), excused: ['paolo'] },
+    ]);
+    expect(out[0].rows).toEqual([
+      ['Name', 'Summary', '07/01/26', '07/08/26', '07/15/26'],
+      ['Lim, Ana', 2, 'E', 'L', 1],
+      ['Garcia, Paolo', 2, 1, 1, 0],
+    ]);
+  });
+
   it('is empty when no attendance was taken', () => {
     expect(attendanceExportSheets(courses, students, [])).toEqual([]);
   });

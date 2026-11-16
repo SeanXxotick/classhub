@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Dialog, Field, PasswordInput, Spinner, Icon } from '../common';
+import { ConnectionStrip, Dialog, Field, PasswordInput, Spinner, Icon } from '../common';
 import { friendlyMessage } from '../../data/errors';
 import * as authRepo from '../../data/authRepo';
 import { NameRules, personName } from '../../domain/nameRules';
@@ -51,6 +51,7 @@ export function AuthScreen() {
 
   return (
     <div className="auth">
+      <ConnectionStrip floating />
       <section className="auth-art">
         <div className="auth-art-inner">
           <div className="row" style={{ gap: 12 }}>

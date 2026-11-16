@@ -55,7 +55,7 @@ import { courseShortName, layoutWeek } from '../../domain/weekGrid';
 import { weekImage } from './weekImage';
 import { attendanceExportSheets } from '../../domain/attendanceExport';
 import { xlsxFile } from '../../domain/xlsx';
-import { Avatar, ConfirmDialog, CourseDot, Dialog, EXPORT_IN_BROWSER, Field, RoleChip, hexColor, inAndroidApp, shortDate, shortDateTime } from '../common';
+import { Avatar, ConfirmDialog, CourseDot, Dialog, Field, RoleChip, hexColor, inAndroidApp, saveFile, shortDate, shortDateTime } from '../common';
 import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, Section, StatusBadge, TypeIcon } from '../../design';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 
@@ -356,18 +356,8 @@ function RemindDialog({ state, owing, onClose }: { state: ClassState; owing: Cla
 
 // ---------------------------------------------------------------- Statement and export
 
-function download(name: string, text: string) {
-  downloadBlob(name, new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' }));
-}
-
-function downloadBlob(name: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+/** A CSV with a byte order mark, so Excel reads the peso sign and accents right. */
+const csvBlob = (text: string) => new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' });
 
 const cell = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
 const pesos = (centavos: number) => (centavos / 100).toFixed(2);
@@ -395,13 +385,13 @@ export function StatementCard({ state }: { state: ClassState }) {
   }, [state.records, state.myUid]);
 
   function exportCsv() {
-    if (inAndroidApp()) return actions.showNotice(EXPORT_IN_BROWSER);
     const head = ['Date', 'Type', 'Student', 'Amount', 'Note', 'Paid to', 'Voided', 'Void reason'].map(cell).join(',');
     const rows = [...state.records]
       .sort((a, b) => a.dateMillis - b.dateMillis)
       .map((r) => [manilaDay(r.dateMillis).dateKey, r.type, r.memberName, pesos(r.amountCentavos), r.note, r.paidTo, r.voidedAtMillis ? 'yes' : '', r.voidReason].map(cell).join(','));
     const balances = state.members.map((m) => [m.name, pesos(state.balanceOf(m.id))].map(cell).join(','));
-    download(`${state.room?.name ?? 'class'} ledger.csv`, [head, ...rows, '', [cell('Student'), cell('Balance')].join(','), ...balances].join('\r\n'));
+    const csv = csvBlob([head, ...rows, '', [cell('Student'), cell('Balance')].join(','), ...balances].join('\r\n'));
+    saveFile(`${state.room?.name ?? 'class'} ledger.csv`, csv, actions.showNotice).catch((e) => actions.showNotice(friendlyMessage(e)));
   }
 
   const balance = lines.length > 0 ? lines[lines.length - 1].balance : 0;
@@ -986,7 +976,6 @@ export function TimetableCard({ state }: { state: ClassState }) {
   const [saving, setSaving] = useState(false);
   // Anyone can save the full week as a picture, with the meetings they see.
   const saveImage = async () => {
-    if (inAndroidApp()) return actions.showNotice(EXPORT_IN_BROWSER);
     setSaving(true);
     try {
       const className = state.room?.name ?? 'Class';
@@ -996,7 +985,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
         meetings,
         course: (id) => state.courses.find((c) => c.id === id),
       });
-      downloadBlob(`${className} timetable.png`, blob);
+      await saveFile(`${className} timetable.png`, blob, actions.showNotice);
     } catch (e) {
       actions.showNotice(friendlyMessage(e));
     } finally {
@@ -1265,12 +1254,14 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
     const next: Record<string, AttendanceMark> = {};
     for (const uid of saved?.absent ?? []) next[uid] = 'ABSENT';
     for (const uid of saved?.late ?? []) next[uid] = 'LATE';
+    for (const uid of saved?.excused ?? []) next[uid] = 'EXCUSED';
     setMarks(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   const absent = students.filter((m) => marks[m.id] === 'ABSENT').length;
   const late = students.filter((m) => marks[m.id] === 'LATE').length;
+  const excused = students.filter((m) => marks[m.id] === 'EXCUSED').length;
   return (
     <Dialog
       title="Take attendance"
@@ -1285,7 +1276,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
             disabled={!meeting || sheets === undefined || future}
             onClick={() =>
               meeting &&
-              run(`Attendance saved: ${students.length - absent - late} present, ${late} late, ${absent} absent.`, () =>
+              run(`Attendance saved: ${students.length - absent - late - excused} present, ${late} late, ${absent} absent, ${excused} excused.`, () =>
                 saveAttendance(db, state.myUid, state.classId, dateKey, meeting, Object.fromEntries(students.map((m) => [m.id, marks[m.id] ?? 'PRESENT'])), !saved), onClose)
             }
           >
@@ -1313,7 +1304,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
             </select>
           </Field>
         )}
-        {meeting && <div className="small muted">{saved ? 'Already taken. Saving replaces it.' : 'Everyone starts as present. Change only those who were late or absent.'}</div>}
+        {meeting && <div className="small muted">{saved ? 'Already taken. Saving replaces it.' : 'Everyone starts as present. Change only those who were late, absent or excused.'}</div>}
         {students.map((m) => (
           <label key={m.id} className="row">
             <span className="grow">{listName(m)}</span>
@@ -1321,6 +1312,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
               <option value="PRESENT">Present</option>
               <option value="LATE">Late</option>
               <option value="ABSENT">Absent</option>
+              <option value="EXCUSED">Excused</option>
             </select>
           </label>
         ))}
@@ -1329,7 +1321,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
   );
 }
 
-/** In the Schedule tab: a student's own absences and lates per course; officers also get everyone's counts. */
+/** In the Schedule tab: a student's own absences, lates and excused days per course; officers also get everyone's counts. */
 export function AttendanceCard({ state }: { state: ClassState }) {
   const manage = state.can('ATTENDANCE_MANAGE');
   const mine = useMyAttendance(db, state.classId, state.myUid, true);
@@ -1340,31 +1332,38 @@ export function AttendanceCard({ state }: { state: ClassState }) {
   const totals = useAttendanceTotals(db, state.classId, true);
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   // Marks from a course the student no longer takes stay in the records but are not shown or counted.
-  const courseIds = [...new Set([...mine.absent, ...mine.late].map((x) => x.courseId))].filter((id) => state.takes(id));
+  const courseIds = [...new Set([...mine.absent, ...mine.late, ...mine.excused].map((x) => x.courseId))].filter((id) => state.takes(id));
   const perCourse = [...new Set(all.map((x) => x.courseId))].map((courseId) => {
     const sheets = all.filter((x) => x.courseId === courseId);
     const rows = state.members
       .filter((m) => !m.excludedCourseIds.includes(courseId))
-      .map((m) => ({ id: m.id, name: listName(m), absent: sheets.filter((x) => x.absent.includes(m.id)).length, late: sheets.filter((x) => x.late.includes(m.id)).length }))
-      .filter((r) => r.absent || r.late)
-      .sort((a, b) => b.absent - a.absent || b.late - a.late);
+      .map((m) => ({
+        id: m.id,
+        name: listName(m),
+        absent: sheets.filter((x) => x.absent.includes(m.id)).length,
+        late: sheets.filter((x) => x.late.includes(m.id)).length,
+        excused: sheets.filter((x) => x.excused.includes(m.id)).length,
+      }))
+      .filter((r) => r.absent || r.late || r.excused)
+      .sort((a, b) => b.absent - a.absent || b.late - a.late || b.excused - a.excused);
     return { courseId, taken: sheets.length, rows };
   });
-  const counts = (absent: number, late: number) => (
+  const counts = (absent: number, late: number, excused: number) => (
     <>
       {absent > 0 && <Badge tone="danger">{`${absent} absent`}</Badge>}
       {late > 0 && <Badge tone="warning">{`${late} late`}</Badge>}
+      {excused > 0 && <Badge tone="info">{`${excused} excused`}</Badge>}
     </>
   );
   function exportAttendance() {
-    if (inAndroidApp()) return actions.showNotice(EXPORT_IN_BROWSER);
     const courses = [...state.courses].sort((x, y) => x.name.localeCompare(y.name));
     const students = byLastName(state.members).map((m) => ({ id: m.id, name: listName(m), excludedCourseIds: m.excludedCourseIds }));
     // One sheet per course. Columns: name, days attended, then a column per day attendance was taken.
     const sheets = attendanceExportSheets(courses, students, all).map((s) => ({ ...s, widths: [30, 10, ...s.rows[0].slice(2).map(() => 10)] }));
     if (sheets.length === 0) return;
     const bytes = xlsxFile(sheets);
-    downloadBlob(`${state.room?.name ?? 'class'} attendance.xlsx`, new Blob([bytes.buffer as ArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    saveFile(`${state.room?.name ?? 'class'} attendance.xlsx`, blob, actions.showNotice).catch((e) => actions.showNotice(friendlyMessage(e)));
   }
   // Nothing to show until attendance has been taken at least once.
   if (Object.keys(totals).length === 0 && courseIds.length === 0 && perCourse.length === 0) return null;
@@ -1372,12 +1371,13 @@ export function AttendanceCard({ state }: { state: ClassState }) {
     <>
       <Section title="My attendance">
         {courseIds.length === 0 ? (
-          <Notice tone="success">No absences or lates recorded for you.</Notice>
+          <Notice tone="success">No absences, lates or excused days recorded for you.</Notice>
         ) : (
           <Card flush>
             {courseIds.map((id) => {
               const a = mine.absent.filter((x) => x.courseId === id);
               const l = mine.late.filter((x) => x.courseId === id);
+              const e = mine.excused.filter((x) => x.courseId === id);
               return (
                 <ListRow
                   key={id}
@@ -1387,7 +1387,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
                         <CourseDot color={state.courses.find((c) => c.id === id)?.color} />
                         {courseName(id)}
                       </span>
-                      <span className="ch-row" style={{ gap: 6 }}>{counts(a.length, l.length)}</span>
+                      <span className="ch-row" style={{ gap: 6 }}>{counts(a.length, l.length, e.length)}</span>
                     </span>
                   }
                   subtitle={totals[id] ? `Out of ${totals[id]} meeting${totals[id] === 1 ? '' : 's'}` : undefined}
@@ -1409,7 +1409,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
             }
           >
             <div className="stack">
-              {([['Absent', mine.absent], ['Late', mine.late]] as const).map(([label, list]) => {
+              {([['Absent', mine.absent], ['Late', mine.late], ['Excused', mine.excused]] as const).map(([label, list]) => {
                 const days = list.filter((x) => x.courseId === openMine).map((x) => x.dateKey).sort();
                 if (days.length === 0) return null;
                 return (
@@ -1444,7 +1444,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
                 <ListRow
                   key={c.courseId}
                   title={<><CourseDot color={state.courses.find((x) => x.id === c.courseId)?.color} />{courseName(c.courseId)}</>}
-                  subtitle={`Taken ${times(c.taken)} · ${c.rows.length === 0 ? 'nobody absent or late' : `${c.rows.length} student${c.rows.length === 1 ? '' : 's'} with absences or lates`}`}
+                  subtitle={`Taken ${times(c.taken)} · ${c.rows.length === 0 ? 'nobody absent, late or excused' : `${c.rows.length} student${c.rows.length === 1 ? '' : 's'} with absences, lates or excused days`}`}
                   chevron={c.rows.length > 0}
                   onClick={c.rows.length > 0 ? () => setOpenCourse(c.courseId) : undefined}
                 />
@@ -1469,7 +1469,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
                 </p>
                 <Card flush>
                   {c.rows.map((r) => (
-                    <ListRow key={r.id} title={r.name} trailing={counts(r.absent, r.late)} />
+                    <ListRow key={r.id} title={r.name} trailing={counts(r.absent, r.late, r.excused)} />
                   ))}
                 </Card>
               </Dialog>

@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  // When this copy of the website was built, shown in About ClassHub (helps tell an old saved copy apart).
+  define: { __BUILD_MILLIS__: JSON.stringify(Date.now()) },
   server: { port: 5173, strictPort: true },
   build: {
     rollupOptions: {

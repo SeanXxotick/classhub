@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useId, useRef, useSt
 import { useNavigate } from 'react-router-dom';
 import { ICONS } from './iconData';
 import { photoSrc } from '../data/photoRepo';
+import { useConnection } from '../data/connection';
+import { baseMime, blobBase64, nativeApp } from '../data/native';
 import { ImageMath } from '../domain/imageMath';
 import { initialsOf, personInitials } from '../domain/nameRules';
 import { dayKey, dayOf, monthShort, noonMillis, parseDay, weekday, weekdayShort, today } from '../domain/dates';
@@ -184,7 +186,34 @@ export function TopBar({ title, back, backLabel = 'Back', actions }: { title: Re
         <h1 className="title">{title}</h1>
         {actions}
       </div>
+      <ConnectionStrip />
     </header>
+  );
+}
+
+const CLOUD_OFF = 'm2 2 20 20M5.782 5.782A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.307-.193M21.532 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7.008 7.008 0 0 0 10 5.07';
+const CHECK_MARK = 'M20 6 9 17l-5-5';
+
+/**
+ * Says so while the app is offline (under the top bar, or at the top of the sign-in screen), and briefly when
+ * the connection comes back. Nothing while online.
+ */
+export function ConnectionStrip({ floating = false }: { floating?: boolean }) {
+  const connection = useConnection();
+  if (connection === 'online') return null;
+  const offline = connection === 'offline';
+  return (
+    <div className={'connection-strip ' + (offline ? 'off' : 'back') + (floating ? ' floating' : '')} role="status" aria-live="polite">
+      <div className="connection-strip-inner">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={offline ? 2 : 2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d={offline ? CLOUD_OFF : CHECK_MARK} />
+        </svg>
+        <span>
+          <b>{offline ? 'You are offline.' : 'Back online.'}</b>{' '}
+          {offline ? (floating ? 'Signing in needs the internet.' : 'Your changes will be sent when you are back online.') : connection === 'sending' ? 'Sending your changes…' : 'Everything is up to date.'}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -307,9 +336,29 @@ export function DateField({ millis, onChange, label = 'Date', dayOnly = false }:
 
 export { dayKey };
 
-/** True inside the Android app. Its web view cannot save a file or print, so those buttons explain instead. */
+/** True inside the Android app. Its web view cannot print, and saves files only through the app (2.0.2). */
 export const inAndroidApp = (): boolean => !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
-export const EXPORT_IN_BROWSER = 'Exporting works in a browser. Open classhub-web.web.app in Chrome or on a computer.';
+export const UPDATE_TO_SAVE = 'To save files in the app, update ClassHub. You can also open classhub-web.web.app in Chrome.';
+
+/**
+ * Saves an exported file: a download on the website, Downloads in the Android app (2.0.2 and later). Older
+ * APKs cannot save files, so they explain instead.
+ */
+export async function saveFile(name: string, blob: Blob, notify: (message: string) => void): Promise<void> {
+  const native = nativeApp();
+  if (native) {
+    const { where } = await native.saveFile({ name, mimeType: baseMime(blob.type), data: await blobBase64(blob) });
+    if (where === 'downloads') notify(`Saved to Downloads: ${name}`);
+    return;
+  }
+  if (inAndroidApp()) return notify(UPDATE_TO_SAVE);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 // ------------------------------------------------------------------ Dialogs
 

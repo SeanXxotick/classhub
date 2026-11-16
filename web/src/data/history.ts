@@ -1,8 +1,8 @@
-import { collection, doc, getDoc, limit, orderBy, query, type DocumentSnapshot, type Firestore, type WriteBatch } from 'firebase/firestore';
+import { collection, doc, limit, orderBy, query, type DocumentSnapshot, type Firestore, type WriteBatch } from 'firebase/firestore';
 import { formatMoney } from '../domain/money';
 import { newId, nowMillis } from './dataEnv';
 import { useQueryList } from './live';
-import { memberRef } from './paths';
+import { memberRef, readFast } from './paths';
 
 /*
  * The history log: classes/{classId}/history/{id}, one entry per officer action on money and people
@@ -49,7 +49,7 @@ export const peso = (centavos: number) => formatMoney(centavos);
  * name (from the cache when it is there).
  */
 export async function logToBatch(batch: WriteBatch, db: Firestore, classId: string, actorUid: string, kind: HistoryKind, text: string): Promise<void> {
-  const me = await getDoc(memberRef(db, classId, actorUid)).catch(() => null);
+  const me = await readFast(memberRef(db, classId, actorUid)).catch(() => null);
   const actorName = String(me?.get('name') ?? '').trim().slice(0, 90) || 'An officer';
   const clean = text.trim().replace(/\s+/g, ' ');
   batch.set(doc(historyCol(db, classId), newId()), {

@@ -1,5 +1,4 @@
 import {
-  getDoc,
   getDocFromServer,
   getDocs,
   getDocsFromServer,
@@ -23,6 +22,7 @@ import {
   explainRefusal,
   readMyRole,
   readOpenClass,
+  readFast,
   recordRef,
   recordsCol,
   summaryRef,
@@ -172,7 +172,7 @@ export async function payOutCharge(
 ): Promise<string> {
   const paidTo = input.paidTo.trim();
   if (paidTo.length > 100) throw new UserError('PAID_TO_TOO_LONG');
-  const snap = await getDoc(chargeRef(db, classId, batchId));
+  const snap = await readFast(chargeRef(db, classId, batchId));
   if (!snap.exists()) throw new UserError('CHARGE_NOT_FOUND');
   const charge = toCharge(snap);
   if (charge.voidedAtMillis) throw new UserError('CHARGE_VOIDED');
@@ -218,7 +218,7 @@ const voidFields = (actorUid: string, reason: string) => ({ voidedAtMillis: nowM
  */
 export async function voidRecord(db: Firestore, actorUid: string, classId: string, recordId: string, reason: string): Promise<void> {
   const why = checkReason(reason);
-  const snap = await getDoc(recordRef(db, classId, recordId));
+  const snap = await readFast(recordRef(db, classId, recordId));
   if (!snap.exists()) throw new UserError('RECORD_NOT_FOUND');
   const record = toRecord(snap);
   if (record.voidedAtMillis) throw new UserError('ALREADY_VOIDED');
@@ -250,7 +250,7 @@ export async function voidCharge(
   db: Firestore, actorUid: string, classId: string, batchId: string, reason: string, options: { voidPayoutFirst?: boolean } = {},
 ): Promise<{ payoutVoided: boolean }> {
   const why = checkReason(reason);
-  const snap = await getDoc(chargeRef(db, classId, batchId));
+  const snap = await readFast(chargeRef(db, classId, batchId));
   if (!snap.exists()) throw new UserError('CHARGE_NOT_FOUND');
   const charge = toCharge(snap);
   if (charge.voidedAtMillis) throw new UserError('ALREADY_VOIDED');

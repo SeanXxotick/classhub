@@ -6,7 +6,7 @@ import { useAnnouncements, useCommentsSince, useMyComments } from '../../data/fe
 import { markTabsSeen, useTabsSeen } from '../../data/tabsSeen';
 import { countLabel, SEEN_TABS, unseenCounts, type SeenTab } from '../../domain/tabCounts';
 import { AttendanceCard, ClaimsCard, NewsTab, RemindersCard, StatementCard, TimetableCard, TodayCard } from '../features/FeatureUi';
-import { JoinLinks } from '../../domain/joinLinks';
+import { InviteDialog } from './InviteDialog';
 import { LedgerView } from '../../domain/ledgerView';
 import { ScheduleView } from '../../domain/scheduleView';
 import type { DayKey } from '../../domain/dates';
@@ -297,6 +297,7 @@ function HomeTab({
   const { actions } = useClass();
   const navigate = useNavigate();
   const [confirmNewCode, setConfirmNewCode] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const room = state.room!;
   const base = `/class/${state.classId}`;
   const canRoles = state.can('ROLES_MANAGE');
@@ -310,23 +311,7 @@ function HomeTab({
   const recent = LedgerView.entries(state.records).slice(0, 3);
   const defaultRoleName = state.roles.find((r) => r.id === room.defaultRoleId)?.name ?? 'Member';
 
-  async function shareCode() {
-    const text = JoinLinks.shareText(room.name, room.inviteCode);
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: 'Share invite code', text });
-        return;
-      }
-    } catch (e) {
-      if ((e as { name?: string }).name === 'AbortError') return;
-    }
-    try {
-      await navigator.clipboard.writeText(text);
-      actions.showNotice('The invite message was copied. Paste it in your class group chat.');
-    } catch {
-      actions.showNotice(`Share this link: ${JoinLinks.linkFor(room.inviteCode)}`);
-    }
-  }
+  const shareCode = () => setInviteOpen(true);
 
   // Two columns on wide screens. On a phone the sections line up in the order a student needs them
   // (the home-order classes): the class, the officer's Manage card, today's meetings, what is due, then the money.
@@ -445,7 +430,7 @@ function HomeTab({
               <div className="invite-code">{room.inviteCode}</div>
               <div className="row" style={{ justifyContent: 'center' }}>
                 <button className="btn solid" onClick={shareCode}>
-                  Share code
+                  Share invite
                 </button>
                 <button className="btn outline" disabled={actions.busy} onClick={() => setConfirmNewCode(true)}>
                   New code
@@ -465,6 +450,10 @@ function HomeTab({
           </div>
         </section>
       </div>
+
+      {inviteOpen && (
+        <InviteDialog className={room.name} code={room.inviteCode} roleName={defaultRoleName} notify={actions.showNotice} onClose={() => setInviteOpen(false)} />
+      )}
 
       {confirmNewCode && (
         <ConfirmDialog

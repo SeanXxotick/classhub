@@ -1,12 +1,12 @@
 import { queueNotice } from './notify';
-import { collection, deleteDoc, deleteField, doc, getDoc, getDocs, increment, query, setDoc, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
+import { collection, deleteDoc, deleteField, doc, getDocs, increment, query, setDoc, updateDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
 import { Ledger } from '../domain/ledger';
 import { nowMillis, newId } from './dataEnv';
 import { UserError } from './errors';
 import { fromDoc, useQueryList } from './live';
 import { buildRecord } from './ledgerStore';
 import { logToBatch, peso } from './history';
-import { bumpSummary, explainRefusal, recordRef, withoutId } from './paths';
+import { bumpSummary, explainRefusal, readFast, recordRef, withoutId } from './paths';
 import type { Actor } from './classes';
 
 /*
@@ -95,7 +95,7 @@ export async function rejectClaim(db: Firestore, actorUid: string, classId: stri
   const why = reason.trim().slice(0, 200);
   if (!why) throw new UserError('NAME_MISSING', 'Write the reason.');
   const ref = doc(claimsCol(db, classId), claimId);
-  const claim = await getDoc(ref).catch(() => null);
+  const claim = await readFast(ref).catch(() => null);
   const batch = writeBatch(db);
   batch.update(ref, { status: 'REJECTED', decidedByUid: actorUid, decidedAtMillis: nowMillis(), rejectReason: why });
   const who = String(claim?.get('memberName') ?? '').trim() || 'a student';
@@ -381,14 +381,16 @@ export interface AttendanceSheet {
   courseId: string;
   absent: string[];
   late: string[];
+  /** Absent with a reason the officer accepted. Missing on sheets saved before Excused existed. */
+  excused: string[];
   takenByUid: string;
   takenAtMillis: number;
 }
 
-export type AttendanceMark = 'PRESENT' | 'LATE' | 'ABSENT';
+export type AttendanceMark = 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED';
 
 const newSheet = (a: Partial<AttendanceSheet>): AttendanceSheet => ({
-  id: '', dateKey: '', meetingId: '', courseId: '', absent: [], late: [], takenByUid: '', takenAtMillis: 0, ...a,
+  id: '', dateKey: '', meetingId: '', courseId: '', absent: [], late: [], excused: [], takenByUid: '', takenAtMillis: 0, ...a,
 });
 
 export const attendanceCol = (db: Firestore, classId: string) => sub(db, classId, 'attendance');
@@ -402,7 +404,7 @@ export async function saveAttendance(
   db: Firestore, actorUid: string, classId: string, dateKey: string, meeting: Meeting, marks: Record<string, AttendanceMark>, isNew = true,
 ): Promise<void> {
   const of = (mark: AttendanceMark) => Object.keys(marks).filter((uid) => marks[uid] === mark).sort();
-  const sheet = { dateKey, meetingId: meeting.id, courseId: meeting.courseId, absent: of('ABSENT'), late: of('LATE'), takenByUid: actorUid, takenAtMillis: nowMillis() };
+  const sheet = { dateKey, meetingId: meeting.id, courseId: meeting.courseId, absent: of('ABSENT'), late: of('LATE'), excused: of('EXCUSED'), takenByUid: actorUid, takenAtMillis: nowMillis() };
   const batch = writeBatch(db);
   batch.set(doc(attendanceCol(db, classId), sheetId(dateKey, meeting.id)), sheet);
   if (isNew) batch.set(doc(sub(db, classId, 'attendanceTotals'), meeting.courseId), { taken: increment(1) }, { merge: true });
@@ -421,7 +423,7 @@ export function useAttendanceTotals(db: Firestore, classId: string, enabled: boo
 export const useAttendance = (db: Firestore, classId: string, enabled: boolean) =>
   useQueryList<AttendanceSheet>(`v2/attendance/${classId}/${enabled}`, enabled ? attendanceCol(db, classId) : null, (d) => fromDoc(newSheet({}), d));
 
-/** A student's own absences and lates: the only sheets the rules let them read. */
+/** A student's own absences, lates and excused days: the only sheets the rules let them read. */
 export function useMyAttendance(db: Firestore, classId: string, uid: string, enabled: boolean) {
   const absent = useQueryList<AttendanceSheet>(
     `v2/myAbsent/${classId}/${uid}/${enabled}`,
@@ -433,7 +435,12 @@ export function useMyAttendance(db: Firestore, classId: string, uid: string, ena
     enabled ? query(attendanceCol(db, classId), where('late', 'array-contains', uid)) : null,
     (d) => fromDoc(newSheet({}), d),
   );
-  return { absent: absent.data ?? [], late: late.data ?? [] };
+  const excused = useQueryList<AttendanceSheet>(
+    `v2/myExcused/${classId}/${uid}/${enabled}`,
+    enabled ? query(attendanceCol(db, classId), where('excused', 'array-contains', uid)) : null,
+    (d) => fromDoc(newSheet({}), d),
+  );
+  return { absent: absent.data ?? [], late: late.data ?? [], excused: excused.data ?? [] };
 }
 
 // ---------------------------------------------------------------- Payment reminders

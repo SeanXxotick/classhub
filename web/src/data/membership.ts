@@ -37,6 +37,7 @@ import {
   memberRef,
   membersCol,
   openingBalanceRef,
+  readFast,
   readMyRole,
   readOpenClass,
   roleRef,
@@ -287,7 +288,7 @@ export async function changeMemberRole(db: Firestore, actorUid: string, classId:
   if (memberUid === actorUid) throw new UserError('OWN_ROLE');
   const room = await readOpenClass(db, classId);
   if (memberUid === room.ownerUid) throw new UserError('OWNER_ROLE');
-  const role = await getDoc(roleRef(db, classId, roleId));
+  const role = await readFast(roleRef(db, classId, roleId));
   if (role.exists() && role.get('locked') === true) throw new UserError('ROLE_LOCKED');
   const batch = writeBatch(db);
   batch.update(memberRef(db, classId, memberUid), { roleId });
@@ -331,7 +332,7 @@ export async function saveRole(db: Firestore, actorUid: string, classId: string,
   if (role.locked) throw new UserError('ROLE_LOCKED');
   if (!RoleRules.isNameValid(role.name, existing, role.id)) throw new UserError('ROLE_NAME');
   if (role.id) {
-    const me = await getDoc(memberRef(db, classId, actorUid));
+    const me = await readFast(memberRef(db, classId, actorUid));
     if (me.get('roleId') === role.id) throw new UserError('EDIT_OWN_ROLE');
   }
   const id = role.id || newId();
@@ -354,7 +355,7 @@ export async function setLockedRoleColor(db: Firestore, classId: string, roleId:
 /** Deletes a role and moves everyone who held it to the class's default role, in one batch. */
 export async function deleteRole(db: Firestore, actorUid: string, classId: string, roleId: string): Promise<void> {
   const room = await readOpenClass(db, classId);
-  const snap = await getDoc(roleRef(db, classId, roleId));
+  const snap = await readFast(roleRef(db, classId, roleId));
   if (!snap.exists()) return;
   const role = toRole(snap);
   if (role.locked) throw new UserError('ROLE_LOCKED');

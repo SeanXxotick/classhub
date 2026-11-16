@@ -54,7 +54,7 @@ export function permissionLabel(p: Permission): [string, string] {
     case 'ANNOUNCEMENTS_MANAGE':
       return ['Manage announcements', 'Post, pin, edit and delete announcements'];
     case 'ATTENDANCE_MANAGE':
-      return ['Take attendance', 'Record who was present, late or absent at each class meeting'];
+      return ['Take attendance', 'Record who was present, late, absent or excused at each class meeting'];
   }
 }
 

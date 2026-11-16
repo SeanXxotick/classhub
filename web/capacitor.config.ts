@@ -25,6 +25,8 @@ const config: CapacitorConfig = {
     url: testUrl || 'https://classhub-web.web.app',
     cleartext: !!testUrl && testUrl.startsWith('http://'),
     androidScheme: 'https',
+    // No errorPath: it also showed offline.html when the offline cache had a saved copy (2.0.2). MainActivity
+    // shows that page itself, only while the app has never loaded on the phone (from 2.0.3).
   },
   android: { backgroundColor: '#0F766E', appendUserAgent: `ClassHubAndroid/${versionCode}` },
 };

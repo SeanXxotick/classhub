@@ -1,6 +1,7 @@
 /**
  * The class attendance export: a sheet per course, a line per student and a column per day attendance was
- * taken. A cell is 1 for present, 0 for absent and L for late; Summary counts the days attended.
+ * taken. A cell is 1 for present, 0 for absent, L for late and E for excused; Summary counts the days attended
+ * (present or late).
  */
 
 export interface ExportCourse {
@@ -21,9 +22,12 @@ export interface ExportSheet {
   dateKey: string;
   absent: string[];
   late: string[];
+  /** Missing on sheets saved before Excused existed. */
+  excused?: string[];
 }
 
 export const LATE_MARK = 'L';
+export const EXCUSED_MARK = 'E';
 
 /** "2026-07-01" as "07/01/26". */
 const shortDate = (dateKey: string) => `${dateKey.slice(5, 7)}/${dateKey.slice(8, 10)}/${dateKey.slice(2, 4)}`;
@@ -38,9 +42,11 @@ export function attendanceExportSheets(courses: ExportCourse[], students: Export
     const takers = students.filter((s) => !s.excludedCourseIds.includes(course.id));
     if (taken.length === 0 || takers.length === 0) return [];
     const rows = takers.map((student) => {
-      // A student marked both ways on one day counts as absent.
-      const marks = taken.map((s) => (s.absent.includes(student.id) ? 0 : s.late.includes(student.id) ? LATE_MARK : 1));
-      return [student.name, marks.filter((m) => m !== 0).length, ...marks];
+      // A student marked more than one way on one day counts as absent, then excused, then late.
+      const marks = taken.map((s) =>
+        s.absent.includes(student.id) ? 0 : (s.excused ?? []).includes(student.id) ? EXCUSED_MARK : s.late.includes(student.id) ? LATE_MARK : 1,
+      );
+      return [student.name, marks.filter((m) => m === 1 || m === LATE_MARK).length, ...marks];
     });
     return [{ name: course.name, rows: [['Name', 'Summary', ...taken.map((s) => shortDate(s.dateKey))], ...rows] }];
   });

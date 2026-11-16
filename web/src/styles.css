@@ -255,6 +255,56 @@ textarea {
   border-bottom: 1px solid transparent;
 }
 
+/* The offline strip (ConnectionStrip): the full width of the top bar, under its row, so it stays in view. */
+.topbar {
+  flex-wrap: wrap;
+}
+
+.connection-strip {
+  flex: 0 0 calc(100% + 32px);
+  box-sizing: border-box;
+  margin: 8px -16px -8px;
+  padding: 9px 16px;
+  font-size: 13.5px;
+  line-height: 1.35;
+}
+
+.connection-strip.floating {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  margin: 0;
+}
+
+.connection-strip-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.connection-strip svg {
+  flex: none;
+}
+
+.connection-strip.off {
+  background: #1f2937;
+  color: #f9fafb;
+}
+
+:root[data-theme='dark'] .connection-strip.off {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.connection-strip.back {
+  background: #15803d;
+  color: #fff;
+}
+
 .topbar .title {
   flex: 1;
   min-width: 0;
@@ -1192,6 +1242,39 @@ a.list-row:hover {
   color: var(--primary);
 }
 
+/* Invite students panel: QR code (always dark on white, so phone cameras read it in dark mode too), code, link. */
+.invite-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.invite-qr {
+  width: min(220px, 64vw);
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid var(--outline);
+}
+.invite-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding-top: 10px;
+  border-top: 1px solid var(--outline);
+}
+.invite-code.small-code {
+  font-size: 22px;
+  letter-spacing: 4px;
+}
+.invite-link {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .photo-crop {
   position: relative;
   width: 280px;
@@ -2020,4 +2103,58 @@ a.list-row:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* The (i) button on My classes and its About ClassHub dialog. On a phone it floats bottom left, level with
+   Add a class (same height); on a wide screen it sits in the header. */
+.info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--outline);
+  background: var(--surface);
+  color: var(--primary);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.info-btn:hover {
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+}
+.info-corner {
+  position: fixed;
+  left: 20px;
+  bottom: 84px;
+  z-index: 25;
+  width: 56px;
+  height: 56px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.info-header {
+  width: 40px;
+  height: 40px;
+}
+.about {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.about-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--outline);
+}
+.about-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.about-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }

@@ -1,13 +1,16 @@
 /*
  * ClassHub service worker: keeps the app shell so the app opens without a connection.
  * Firestore keeps its own offline copy of the data; this only covers the page, scripts, styles and icons.
- * - Pages: network first, falling back to the cached shell.
+ * - Pages: network first, but after NAV_WAIT_MS on a slow connection the cached shell is used and the
+ *   network answer only refreshes the cache (the new version then shows on the next open). In the Android
+ *   app, Capacitor's proxy waits up to 30 seconds to connect, so without this a slow connection stalled.
  * - /assets/ (file names carry a hash): cache first.
  * - The icons and the manifest (same name after a change): network first, so a new icon shows at once.
  * Bump VERSION to drop old caches.
  */
 const VERSION = 'classhub-shell-v3';
 const SHELL = ['/', '/manifest.webmanifest', '/icon.svg', '/icon-192.png'];
+const NAV_WAIT_MS = 3000;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(VERSION).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -28,15 +31,26 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  // The Android app's built-in "needs the internet" page has this address but comes from inside the APK:
+  // never save it as the app shell.
+  if (url.pathname === '/offline.html') return;
+
   if (request.mode === 'navigate') {
+    const network = fetch(request).then((response) => {
+      if (response.ok) {
+        const copy = response.clone();
+        caches.open(VERSION).then((cache) => cache.put('/', copy));
+      }
+      return response;
+    });
+    // Keep the worker alive until the network answer is saved, even when the cached shell was used.
+    event.waitUntil(network.catch(() => undefined));
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(VERSION).then((cache) => cache.put('/', copy));
-          return response;
-        })
-        .catch(() => caches.match('/').then((cached) => cached || Response.error())),
+      caches.match('/').then((cached) => {
+        if (!cached) return network;
+        const slow = new Promise((resolve) => setTimeout(() => resolve(cached), NAV_WAIT_MS));
+        return Promise.race([network.catch(() => cached), slow]);
+      }),
     );
     return;
   }

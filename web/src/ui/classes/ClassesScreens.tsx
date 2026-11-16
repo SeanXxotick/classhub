@@ -12,6 +12,7 @@ import { ClassRules } from '../../domain/classRules';
 import { InviteCode } from '../../domain/inviteCode';
 import { compareStrings } from '../../domain/classRules';
 import { pinnedClasses, useSettingsVersion } from '../settings';
+import { InfoButton } from './AboutDialog';
 
 /** The "My classes" list, sorted by name with pinned classes first. Null while loading. */
 export function useMyClasses(uid: string): { classes: ClassMembership[] | null; requests: JoinRequest[]; error: string | null } {
@@ -45,9 +46,12 @@ export function ClassesScreen({ user }: { user: AppUser }) {
       <TopBar
         title="My classes"
         actions={
-          <Link className="btn text phone-only" to="/account">
-            Account
-          </Link>
+          <>
+            <InfoButton placement="header" />
+            <Link className="btn text phone-only" to="/account">
+              Account
+            </Link>
+          </>
         }
       />
       <div className="page">
@@ -97,6 +101,7 @@ export function ClassesScreen({ user }: { user: AppUser }) {
       <button className="btn solid fab" onClick={() => setAdding(true)}>
         +&nbsp; Add a class
       </button>
+      <InfoButton placement="corner" />
       {adding && <AddClassDialog onClose={() => setAdding(false)} onPick={(to) => (setAdding(false), navigate(to))} />}
     </>
   );

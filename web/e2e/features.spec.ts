@@ -67,7 +67,7 @@ test('claims, statement, announcements and the timetable', async ({ browser }) =
   const sheet = page.getByRole('dialog', { name: 'Take attendance' });
   await sheet.getByLabel('Attendance of Nina Castro').selectOption('ABSENT');
   await sheet.getByRole('button', { name: 'Save' }).click();
-  await expectNotice(page, 'Attendance saved: 0 present, 0 late, 1 absent.');
+  await expectNotice(page, 'Attendance saved: 0 present, 0 late, 1 absent, 0 excused.');
   await expect(page.getByText('Out of 1 meeting')).toBeVisible();
   await expect(page.getByText('1 absent').first()).toBeVisible();
 
