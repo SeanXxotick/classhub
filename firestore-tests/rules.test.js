@@ -1533,6 +1533,24 @@ async function main() {
     await assertFails(getDocs(collection(db('pending'), `classes/${CLASS}/contents`)));
   });
 
+  await test('An uploaded file on a content item has the right shape', async () => {
+    const file = { key: 'AbCdEfGhIjKlMnOpQrSt', name: 'Week 1.pdf', sizeBytes: 5000, mimeType: 'application/pdf' };
+    const item = { id: '', courseId: '', title: 'Week 1', url: '', kind: 'FILE', note: '', createdByUid: 'mayor', createdAtMillis: 1 };
+    const put = (fields) => setDoc(doc(db('mayor'), `classes/${CLASS}/contents/f1`), { ...item, ...fields });
+    await assertSucceeds(put({ file }));
+    await assertSucceeds(put({ file: null }));
+    await assertSucceeds(updateDoc(doc(db('sec'), `classes/${CLASS}/contents/f1`), { file }));
+    await assertFails(put({ file: { ...file, key: '../other-class/x' } }));
+    await assertFails(put({ file: { ...file, sizeBytes: 10485761 } }));
+    await assertFails(put({ file: { ...file, sizeBytes: 0 } }));
+    await assertFails(put({ file: { ...file, name: '' } }));
+    await assertFails(put({ file: { ...file, extra: 1 } }));
+    await assertFails(put({ file: { key: file.key } }));
+    await assertFails(put({ file: 'AbCdEfGhIjKlMnOpQrSt' }));
+    await assertFails(setDoc(doc(db('student'), `classes/${CLASS}/contents/f2`), { ...item, file }));
+    await assertSucceeds(deleteDoc(doc(db('mayor'), `classes/${CLASS}/contents/f1`)));
+  });
+
   // ---------------------------------------------------------------- Invite code and removing members
 
   await test('An invite has exactly classId and className, and only for one\'s own class', async () => {

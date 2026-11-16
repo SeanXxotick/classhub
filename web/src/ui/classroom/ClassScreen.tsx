@@ -1,3 +1,4 @@
+import { FileViewerScreen } from '../contents/FileViewer';
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { JoinRequest, Member, Permission, ScheduleItem } from '../../data/models';
@@ -72,6 +73,7 @@ function ClassFrame() {
         <Route path="record/:type" element={<RecordRoute />} />
         <Route path="charge" element={<ChargeStudentsScreen />} />
         <Route path="content/:contentId" element={<ContentFormScreen />} />
+        <Route path="file/:contentId" element={<FileViewerScreen />} />
         <Route path="schedule/:itemId" element={<ScheduleFormScreen />} />
         <Route path="*" element={<ClassScreen />} />
       </Routes>

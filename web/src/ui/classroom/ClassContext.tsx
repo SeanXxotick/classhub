@@ -10,6 +10,7 @@ import * as ledgerStore from '../../data/ledgerStore';
 import * as openings from '../../data/openingBalances';
 import { useCharges, useFundSummary, useJoinRequests, useLedgerUpkeep, usePendingOpeningBalances, useVisibleRecords } from '../../data/hooks';
 import * as dataRepo from '../../data/classDataRepo';
+import { deleteFile } from '../../data/files';
 import { queueNotice } from '../../data/notify';
 import * as photoRepo from '../../data/photoRepo';
 import {
@@ -525,9 +526,9 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
 
       saveContent(item, onDone) {
         if (!st().can('CONTENTS_MANAGE')) return deny('You do not have permission to manage class contents.');
-        const problem = ContentRules.check(item.title, item.url);
+        const problem = ContentRules.check(item.title, item.url, !!item.file);
         if (problem) return deny(problem);
-        const clean = { ...item, title: item.title.trim(), url: ContentRules.normalizeUrl(item.url), note: item.note.trim() };
+        const clean = { ...item, title: item.title.trim(), url: item.file ? '' : ContentRules.normalizeUrl(item.url), note: item.note.trim(), kind: item.file ? 'FILE' as const : item.kind };
         if (!clean.id) {
           runAction(`Added "${clean.title}".`, onDone, () => dataRepo.addContent(classId, { ...clean, createdByUid: uid, createdAtMillis: Date.now() }));
         } else runAction(`Saved "${clean.title}".`, onDone, () => dataRepo.updateContent(classId, clean));
@@ -535,7 +536,11 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
 
       deleteContent(item, onDone) {
         if (!st().can('CONTENTS_MANAGE')) return deny('You do not have permission to manage class contents.');
-        runAction(`Deleted "${item.title}".`, onDone, () => dataRepo.deleteContent(classId, item.id));
+        runAction(`Deleted "${item.title}".`, onDone, async () => {
+          await dataRepo.deleteContent(classId, item.id);
+          // The file goes too; if this fails (offline), the files Worker's daily clean-up removes it.
+          if (item.file) void deleteFile(classId, item.file.key).catch(() => undefined);
+        });
       },
 
       forgetClass() {

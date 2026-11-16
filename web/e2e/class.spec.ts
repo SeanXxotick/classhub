@@ -229,7 +229,7 @@ test.describe.serial('a class from start to finish', () => {
     await page.locator('.fab').click();
     await page.getByLabel('Title').fill('Syllabus');
     await page.getByLabel('Link').fill('drive.google.com/file/d/abc123/view');
-    await expect(page.getByRole('radio', { name: 'File' })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('radio', { name: 'File', exact: true })).toHaveAttribute('aria-checked', 'true');
     await page.getByRole('button', { name: 'Add content' }).click();
     await expectNotice(page, 'Added "Syllabus".');
 

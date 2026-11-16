@@ -1,0 +1,38 @@
+name = "classhub-files"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+# Its own address, https://classhub-files.<account>.workers.dev, which the web app calls.
+workers_dev = true
+
+[vars]
+PROJECT_ID = "classhub-975eb"
+ALLOWED_ORIGINS = "https://classhub-web.web.app,https://classhub-975eb.web.app"
+CLASS_LIMIT_BYTES = "1073741824"
+FILE_LIMIT_BYTES = "10485760"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "classhub-files"
+
+# Daily clean-up of files whose content item or class is gone (needs the SERVICE_ACCOUNT secret).
+[triggers]
+crons = ["30 19 * * *"]
+
+# Local testing only (`npx wrangler dev --env dev`): a local bucket, the Firebase emulators and their unsigned
+# sign-ins, and a small class limit so the 1 GB check can be tested.
+[env.dev]
+name = "classhub-files-dev"
+workers_dev = true
+
+[env.dev.vars]
+PROJECT_ID = "demo-classhub"
+ALLOWED_ORIGINS = "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:4173"
+CLASS_LIMIT_BYTES = "26214400"
+FILE_LIMIT_BYTES = "10485760"
+EMULATOR_FIRESTORE = "http://127.0.0.1:8080"
+# The clean-up test removes unused files at once.
+UNUSED_GRACE_MS = "0"
+
+[[env.dev.r2_buckets]]
+binding = "FILES"
+bucket_name = "classhub-files-dev"

@@ -110,6 +110,18 @@ service cloud.firestore {
       return isText(v, max) && v.trim().size() > 0;
     }
 
+    // An uploaded file on a content item (Nov 16): kept in the files Worker's bucket under this key.
+    function isContentFile(f) {
+      return f == null
+        || (f is map
+          && f.keys().hasOnly(['key', 'name', 'sizeBytes', 'mimeType'])
+          && f.keys().hasAll(['key', 'name', 'sizeBytes', 'mimeType'])
+          && f.key is string && f.key.matches('^[A-Za-z0-9]{20}$')
+          && isFilled(f.name, 150)
+          && f.sizeBytes is int && f.sizeBytes > 0 && f.sizeBytes <= 10485760
+          && isFilled(f.mimeType, 100));
+    }
+
     // An id that is used to build a document path (charge batch ids, record ids, invite codes).
     function isId(v) {
       return v is string && v.matches('[A-Za-z0-9_-]{1,128}');
@@ -1089,7 +1101,8 @@ service cloud.firestore {
 
       match /contents/{contentId} {
         allow read: if isMember(classId);
-        allow write: if can(classId, 'CONTENTS_MANAGE');
+        allow create, update: if can(classId, 'CONTENTS_MANAGE') && isContentFile(request.resource.data.get('file', null));
+        allow delete: if can(classId, 'CONTENTS_MANAGE');
       }
 
       // Each student's own done marks. Only they write it; every class member may read everyone's.

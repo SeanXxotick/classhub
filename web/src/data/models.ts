@@ -24,7 +24,7 @@ export const PERMISSIONS = [
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
-/** What a class content link points to. Only links are stored; files stay in Google Drive or elsewhere. */
+/** What a class content item is. A link points to Drive or a website; an uploaded file has `file` (kind FILE). */
 export const CONTENT_KINDS = ['FILE', 'VIDEO', 'WEBSITE'] as const;
 export type ContentKind = (typeof CONTENT_KINDS)[number];
 
@@ -282,6 +282,16 @@ export interface ContentItem {
   /** This item's own icon and color. Empty: it follows its type (and the class's choice for the type). */
   icon: string;
   color: string;
+  /** An uploaded file (Nov 16) instead of a link; then `url` is empty. Null for a link. */
+  file: ContentFile | null;
+}
+
+/** A file kept by the files Worker (files/src/worker.js) under classes/{classId}/{key}. */
+export interface ContentFile {
+  key: string;
+  name: string;
+  sizeBytes: number;
+  mimeType: string;
 }
 
 /**
@@ -328,7 +338,7 @@ export const newScheduleItem = (s: Partial<ScheduleItem>): ScheduleItem => ({
 });
 
 export const newContentItem = (c: Partial<ContentItem>): ContentItem => ({
-  id: '', courseId: '', title: '', url: '', kind: 'WEBSITE', note: '', createdByUid: '', createdAtMillis: 0, icon: '', color: '', ...c,
+  id: '', courseId: '', title: '', url: '', kind: 'WEBSITE', note: '', createdByUid: '', createdAtMillis: 0, icon: '', color: '', file: null, ...c,
 });
 
 export const newClassRoom = (c: Partial<ClassRoom>): ClassRoom => ({

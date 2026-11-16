@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
-import { CONTENT_KINDS, newContentItem, type ClassRoom, type ContentItem, type ContentKind, type Course } from '../../data/models';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { checkFile, classUsage, FILE_ACCEPT, filesEnabled, sizeText, uploadFile, type Usage } from '../../data/files';
+import { CONTENT_KINDS, newContentItem, type ClassRoom, type ContentFile, type ContentItem, type ContentKind, type Course } from '../../data/models';
 import { CONTENT_SORTS, ContentRules, type ContentFormat, type ContentSort } from '../../domain/contentRules';
 import { ContentIcons, IconLibrary } from '../../domain/iconStyles';
 import { IconStylePicker } from '../classroom/ManageScreens';
@@ -105,9 +106,11 @@ function RowMenu({ item, onEdit, onNotice }: { item: ContentItem; onEdit: (() =>
       </button>
       {open && (
         <div className="menu end" role="menu">
-          <button type="button" role="menuitem" className="menu-item" onClick={copy}>
-            Copy link
-          </button>
+          {!item.file && (
+            <button type="button" role="menuitem" className="menu-item" onClick={copy}>
+              Copy link
+            </button>
+          )}
           {onEdit && (
             <button type="button" role="menuitem" className="menu-item" onClick={() => (setOpen(false), onEdit())}>
               Edit
@@ -134,10 +137,33 @@ function ContentRow({
   onNotice: (message: string) => void;
 }) {
   const format = ContentRules.formatOf(item);
-  const subtitle = [showCourse ? state.courses.find((c) => c.id === item.courseId)?.name ?? 'General' : '', state.takes(item.courseId) ? '' : 'Not your course', format.label, ContentRules.sourceOf(item.url), item.note]
+  const source = item.file ? `Uploaded, ${sizeText(item.file.sizeBytes)}` : ContentRules.sourceOf(item.url);
+  const subtitle = [showCourse ? state.courses.find((c) => c.id === item.courseId)?.name ?? 'General' : '', state.takes(item.courseId) ? '' : 'Not your course', format.label, source, item.note]
     .filter((x) => x.trim())
     .join('  ·  ');
   const valid = ContentRules.isValidUrl(item.url);
+  const inner = (
+    <>
+      <ContentBadge item={item} format={format} room={state.room} />
+      <span className="grow ellipsis-box">
+        <span className="title clamp-2">{item.title}</span>
+        <span className="sub ellipsis">
+          {showCourse && <CourseDot color={state.courses.find((c) => c.id === item.courseId)?.color} />}
+          {subtitle}
+        </span>
+      </span>
+    </>
+  );
+  if (item.file) {
+    return (
+      <div className="list-row content-row">
+        <Link className="row grow link-reset" to={`/class/${state.classId}/file/${item.id}`}>
+          {inner}
+        </Link>
+        <RowMenu item={item} onEdit={onEdit && (() => onEdit(item.id))} onNotice={onNotice} />
+      </div>
+    );
+  }
   return (
     <div className="list-row content-row">
       <a
@@ -152,14 +178,7 @@ function ContentRow({
           }
         }}
       >
-        <ContentBadge item={item} format={format} room={state.room} />
-        <span className="grow ellipsis-box">
-          <span className="title clamp-2">{item.title}</span>
-          <span className="sub ellipsis">
-            {showCourse && <CourseDot color={state.courses.find((c) => c.id === item.courseId)?.color} />}
-            {subtitle}
-          </span>
-        </span>
+        {inner}
       </a>
       <RowMenu item={item} onEdit={onEdit && (() => onEdit(item.id))} onNotice={onNotice} />
     </div>
@@ -367,13 +386,47 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
   const [pickingIcon, setPickingIcon] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const typeIcon = ContentIcons.iconFor(kind, state.room?.contentIcons ?? {});
+  // A link, or an uploaded file (when the files Worker is set up, or the item already has one).
+  const [source, setSource] = useState<'LINK' | 'FILE'>(existing?.file ? 'FILE' : 'LINK');
+  const [file, setFile] = useState<ContentFile | null>(existing?.file ?? null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [sending, setSending] = useState('');
+  const [usage, setUsage] = useState<Usage | null>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const canUpload = filesEnabled || !!existing?.file;
+  useEffect(() => {
+    if (source === 'FILE' && filesEnabled && !usage) classUsage(state.classId).then(setUsage, () => undefined);
+  }, [source, state.classId, usage]);
+  async function pick(chosen: File | undefined) {
+    if (!chosen) return;
+    const problem = checkFile(chosen);
+    setError(problem);
+    if (problem) return;
+    setProgress(0);
+    setSending(chosen.name);
+    try {
+      const done = await uploadFile(state.classId, chosen, setProgress);
+      setFile({ key: done.key, name: done.name, sizeBytes: done.sizeBytes, mimeType: done.mimeType });
+      setUsage({ usedBytes: done.usedBytes, limitBytes: done.limitBytes });
+      // A new upload is named after its file; an uploaded item being edited keeps its (maybe renamed) title.
+      if (!existing?.file) setTitle(done.name.replace(/\.[A-Za-z0-9]+$/, '').trim().slice(0, ContentRules.MAX_TITLE) || done.name.slice(0, ContentRules.MAX_TITLE));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setProgress(null);
+      if (picker.current) picker.current.value = '';
+    }
+  }
+  // An uploaded file is always of the File kind; a link has the kind picked below.
+  const shownKind: ContentKind = source === 'FILE' ? 'FILE' : kind;
+  const typeIcon = ContentIcons.iconFor(shownKind, state.room?.contentIcons ?? {});
   const typeColor = NEUTRAL_ICON;
   const courseName = state.courses.find((c) => c.id === courseId)?.name ?? 'General (no course)';
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    const problem = ContentRules.check(title, url);
+    const asFile = source === 'FILE';
+    const problem = asFile && !file ? 'Choose a file to upload.' : ContentRules.check(title, url, asFile);
     setError(problem);
     if (problem) return;
     actions.saveContent(
@@ -381,8 +434,9 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
         id: existing?.id ?? '',
         courseId,
         title,
-        url,
-        kind,
+        url: asFile ? '' : url,
+        file: asFile ? file : null,
+        kind: asFile ? 'FILE' : kind,
         note,
         icon,
         color,
@@ -411,12 +465,52 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
         />
       )}
     <form className="card stack" onSubmit={submit} noValidate>
+      {canUpload && (
+        <div className="chips" role="radiogroup" aria-label="Content is">
+          {(['LINK', 'FILE'] as const).map((s) => (
+            <button key={s} type="button" role="radio" aria-checked={s === source} className={'chip' + (s === source ? ' selected' : '')} onClick={() => (setSource(s), setError(null))}>
+              {s === 'LINK' ? 'Link' : 'Upload a file'}
+            </button>
+          ))}
+        </div>
+      )}
       <p className="small muted" style={{ margin: 0 }}>
-        Share a link to class material. Files stay in Google Drive (or wherever they are); make sure the link's sharing allows your classmates to open it.
+        {source === 'FILE'
+          ? 'Upload a PDF, picture, Word, PowerPoint or Excel file of up to 10 MB. Only your classmates can open it.'
+          : "Share a link to class material. Files stay in Google Drive (or wherever they are); make sure the link's sharing allows your classmates to open it."}
       </p>
-      <Field label="Title">
-        <input value={title} placeholder="e.g. Unit 1 Module 3 - AdCal" onChange={(e) => (setTitle(e.target.value.slice(0, ContentRules.MAX_TITLE)), setError(null))} />
-      </Field>
+      {source === 'FILE' && (
+        <div className="card stack upload-box">
+          <input ref={picker} type="file" accept={FILE_ACCEPT} hidden onChange={(e) => void pick(e.target.files?.[0])} />
+          {progress !== null ? (
+            <span className="upload-name small">{`Uploading ${sending}…`}</span>
+          ) : file ? (
+            <span className="upload-name">
+              <span className="semibold">{file.name}</span>
+              <span className="small muted">{` · ${sizeText(file.sizeBytes)}`}</span>
+            </span>
+          ) : (
+            <span className="small muted">No file chosen yet.</span>
+          )}
+          {progress !== null ? (
+            <div className="upload-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}>
+              <span style={{ width: `${Math.round(progress * 100)}%` }} />
+            </div>
+          ) : (
+            <button type="button" className="btn outline block" disabled={!filesEnabled} onClick={() => picker.current?.click()}>
+              {file ? 'Replace file' : 'Choose a file'}
+            </button>
+          )}
+          {usage && <span className="small muted">{`This class has used ${sizeText(usage.usedBytes)} of ${sizeText(usage.limitBytes)} for files.`}</span>}
+        </div>
+      )}
+      {/* Uploading asks for no title (the file's name is used); it can be renamed later with Edit. */}
+      {(source === 'LINK' || existing?.file) && (
+        <Field label={source === 'FILE' ? 'Name' : 'Title'}>
+          <input value={title} placeholder="e.g. Unit 1 Module 3 - AdCal" onChange={(e) => (setTitle(e.target.value.slice(0, ContentRules.MAX_TITLE)), setError(null))} />
+        </Field>
+      )}
+      {source === 'LINK' && (
       <Field label="Link">
         <input
           type="url"
@@ -431,18 +525,23 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
           }}
         />
       </Field>
-      <span className="small semibold muted">Type</span>
-      <div className="chips" role="radiogroup" aria-label="Type">
-        {CONTENT_KINDS.map((k) => (
-          <button key={k} type="button" role="radio" aria-checked={k === kind} className={'chip' + (k === kind ? ' selected' : '')} onClick={() => (setKind(k), setKindChosen(true))}>
-            {kindLabel(k)}
-          </button>
-        ))}
-      </div>
+      )}
+      {source === 'LINK' && (
+        <>
+          <span className="small semibold muted">Type</span>
+          <div className="chips" role="radiogroup" aria-label="Type">
+            {CONTENT_KINDS.map((k) => (
+              <button key={k} type="button" role="radio" aria-checked={k === kind} className={'chip' + (k === kind ? ' selected' : '')} onClick={() => (setKind(k), setKindChosen(true))}>
+                {kindLabel(k)}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       <span className="small semibold muted">Icon</span>
       <div className="row" style={{ gap: 12 }}>
         <StyledIcon icon={icon || typeIcon} color={color || typeColor} box={40} tint />
-        <span className="grow small muted">{icon || color ? 'Its own icon' : `Same as other ${pluralLabel(kind).toLowerCase()}`}</span>
+        <span className="grow small muted">{icon || color ? 'Its own icon' : `Same as other ${pluralLabel(shownKind).toLowerCase()}`}</span>
         {(icon || color) && (
           <button type="button" className="btn text" onClick={() => (setIcon(''), setColor(''))}>
             Reset
@@ -457,20 +556,22 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
         <textarea value={note} placeholder="e.g. Covers Theorems 4 and 5" onChange={(e) => setNote(e.target.value.slice(0, 120))} />
       </Field>
       {error && <p className="error-text" role="alert" style={{ margin: 0 }}>{error}</p>}
-      <button className="btn solid big block" type="submit" disabled={actions.busy}>
+      <button className="btn solid big block" type="submit" disabled={actions.busy || progress !== null}>
         {actions.busy ? <Spinner small /> : existing ? 'Save changes' : 'Add content'}
       </button>
-      <button
-        className="btn outline block"
-        type="button"
-        onClick={() => {
-          const normalized = ContentRules.normalizeUrl(url);
-          if (ContentRules.isValidUrl(normalized)) openLink(normalized, setError);
-          else setError('That does not look like a web link yet.');
-        }}
-      >
-        Test the link
-      </button>
+      {source === 'LINK' && (
+        <button
+          className="btn outline block"
+          type="button"
+          onClick={() => {
+            const normalized = ContentRules.normalizeUrl(url);
+            if (ContentRules.isValidUrl(normalized)) openLink(normalized, setError);
+            else setError('That does not look like a web link yet.');
+          }}
+        >
+          Test the link
+        </button>
+      )}
       {existing && (
         <button className="btn outline danger block" type="button" disabled={actions.busy} onClick={() => setConfirmDelete(true)}>
           Delete
@@ -503,7 +604,7 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
       {confirmDelete && existing && (
         <ConfirmDialog
           title={`Delete "${existing.title}"?`}
-          text="Only the link is removed from ClassHub. The file itself stays in Google Drive."
+          text={existing.file ? 'The uploaded file is deleted too.' : 'Only the link is removed from ClassHub.'}
           confirm="Delete"
           danger
           onClose={() => setConfirmDelete(false)}

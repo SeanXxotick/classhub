@@ -107,7 +107,11 @@ export const ContentRules = {
    * What the item is: from the link when it says (Google Slides, a OneDrive folder...), otherwise from the
    * first file name ending in the title or the link, otherwise the item's kind.
    */
-  formatOf(item: Pick<ContentItem, 'title' | 'url' | 'kind'>): ContentFormat {
+  formatOf(item: Pick<ContentItem, 'title' | 'url' | 'kind'> & { file?: ContentItem['file'] }): ContentFormat {
+    // An uploaded file says what it is by its own name.
+    const ext = item.file?.name.toLowerCase().match(/\.([a-z0-9]{2,5})$/)?.[1];
+    if (ext && EXTENSION_FORMATS[ext]) return EXTENSION_FORMATS[ext];
+    if (item.file) return KIND_FORMATS.FILE;
     const host = (hostOf(item.url) ?? '').toLowerCase();
     const path = item.url.split(/[?#]/)[0].toLowerCase();
     if (host === 'docs.google.com') {
@@ -138,10 +142,11 @@ export const ContentRules = {
     return host;
   },
 
-  /** Returns an error message, or null when the item can be saved. */
-  check(title: string, url: string): string | null {
+  /** Returns an error message, or null when the item can be saved. An uploaded file needs no link. */
+  check(title: string, url: string, hasFile = false): string | null {
     if (!title.trim()) return 'Give the content a title, for example "Unit 1 Module 3".';
     if (title.trim().length > ContentRules.MAX_TITLE) return `Keep the title under ${ContentRules.MAX_TITLE} characters.`;
+    if (hasFile) return null;
     if (!url.trim()) return 'Paste the link, for example a Google Drive share link.';
     if (!ContentRules.isValidUrl(ContentRules.normalizeUrl(url))) {
       return 'That does not look like a web link. Copy the share link from Google Drive or the website.';
