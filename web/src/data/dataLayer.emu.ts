@@ -413,7 +413,7 @@ describe('claims, announcements and the timetable', () => {
     await expect(saveAnnouncement(as(STUDENT.uid), STUDENT.uid, classId, newAnnouncement({ title: 'Hello' }))).rejects.toBeTruthy();
     await markSeen(as(STUDENT.uid), classId, STUDENT.uid, [post.id]);
     expect((await getDoc(doc(adminDb, 'classes', classId, 'seen', STUDENT.uid))).get('announcements')[post.id]).toBeGreaterThan(0);
-    await deleteAnnouncement(as(MAYOR.uid), classId, post.id);
+    await deleteAnnouncement(as(MAYOR.uid), MAYOR.uid, classId, post.id);
   });
 
   it('the Mayor adds a weekly meeting and marks a day as no classes; a member cannot', async () => {

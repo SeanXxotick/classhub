@@ -48,6 +48,7 @@ import {
   type Meeting,
   type NoClassMark,
 } from '../../data/features';
+import { meetingPhase, type MeetingPhase } from '../../domain/meetingPhase';
 import { Ledger } from '../../domain/ledger';
 import { ROLE_MEMBER, byLastName, listName } from '../../data/models';
 import { formatMoney, parsePesos } from '../../domain/money';
@@ -565,7 +566,7 @@ export function NewsTab({ state }: { state: ClassState }) {
           confirm="Delete"
           danger
           onClose={() => setDeleting(null)}
-          onConfirm={() => run('Announcement deleted.', () => deleteAnnouncement(db, state.classId, deleting.id))}
+          onConfirm={() => run('Announcement deleted.', () => deleteAnnouncement(db, state.myUid, state.classId, deleting.id))}
         />
       )}
     </div>
@@ -796,21 +797,44 @@ const fromClock = (text: string) => {
 };
 
 /** The start time as a small tile in front of a meeting row ("8:00" over "AM"), in place of a repeated icon. */
-function TimeTile({ minutes, cancelled, color }: { minutes: number; cancelled?: boolean; color?: string }) {
+function TimeTile({ minutes, cancelled, ended, color }: { minutes: number; cancelled?: boolean; ended?: boolean; color?: string }) {
   const [clock, half] = clockText(minutes).split(' ');
+  // Cancelled: red and crossed out. Over for today: grey, so it stands apart from a cancelled class.
+  const toned = cancelled || ended;
   return (
     <span
       aria-hidden
-      className={cancelled ? 'ch-tone-danger' : 'ch-tone-primary'}
+      className={cancelled ? 'ch-tone-danger' : ended ? 'ch-tone-neutral' : 'ch-tone-primary'}
       style={{
         flex: 'none', width: 52, height: 44, borderRadius: 12, display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        background: cancelled ? 'var(--tb)' : color || 'var(--ch-primary)', color: cancelled ? 'var(--tc)' : color ? '#fff' : 'var(--ch-on-primary)', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums', textDecoration: cancelled ? 'line-through' : undefined,
+        background: toned ? 'var(--tb)' : color || 'var(--ch-primary)', color: toned ? 'var(--tc)' : color ? '#fff' : 'var(--ch-on-primary)', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums', textDecoration: cancelled ? 'line-through' : undefined,
       }}
     >
       <span style={{ fontWeight: 800, fontSize: 15 }}>{clock}</span>
       <span style={{ fontWeight: 700, fontSize: 10, letterSpacing: '0.06em' }}>{half}</span>
     </span>
   );
+}
+
+/** The time now, refreshed every 30 seconds, so a class turns "Now" and then "Ended" on its own. */
+function useClockTick(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  return now;
+}
+
+/** How a meeting row shows where the class stands today (a cancelled one shows its "No classes" note instead). */
+function phaseLook(phase: MeetingPhase, cancelled: boolean) {
+  const ended = !cancelled && phase === 'ENDED';
+  return {
+    ended,
+    struck: cancelled || ended,
+    suffix: ended ? ' · Ended' : '',
+    trailing: !cancelled && phase === 'NOW' ? <Badge tone="success">Now</Badge> : undefined,
+  };
 }
 
 /** The timetable without the meetings of a course that has since been deleted. */
@@ -823,8 +847,8 @@ function useLiveMeetings(state: ClassState): Meeting[] {
 export function TodayCard({ state }: { state: ClassState }) {
   const meetings = useLiveMeetings(state);
   const marks = useNoClass(db, state.classId, true).data ?? [];
+  const now = useClockTick();
   if (meetings.length === 0) return null;
-  const now = Date.now();
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
   const mine = (m: Meeting) => state.takes(m.courseId);
@@ -841,16 +865,20 @@ export function TodayCard({ state }: { state: ClassState }) {
             <div key={label}>
               <DayHeader>{label}</DayHeader>
               {list.length === 0 && <ListRow leading={<TypeIcon icon="moon" tone="neutral" />} title="No classes" />}
-              {list.map(({ meeting: m, cancelled }) => (
-                <ListRow
-                  key={m.id}
-                  voided={!!cancelled}
-                  leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} color={courseColor(m.courseId)} />}
-                  title={courseName(m.courseId)}
-                  subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}`}
-                  children={cancelled ? <CancelledNote reason={cancelled.reason} /> : undefined}
-                />
-              ))}
+              {list.map(({ meeting: m, cancelled }) => {
+                const look = phaseLook(meetingPhase(m.startMinutes, m.endMinutes, at, now), !!cancelled);
+                return (
+                  <ListRow
+                    key={m.id}
+                    voided={look.struck}
+                    leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} ended={look.ended} color={courseColor(m.courseId)} />}
+                    title={courseName(m.courseId)}
+                    subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}${look.suffix}`}
+                    trailing={look.trailing}
+                    children={cancelled ? <CancelledNote reason={cancelled.reason} /> : undefined}
+                  />
+                );
+              })}
             </div>
           );
         })}
@@ -972,7 +1000,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
   const [viewing, setViewing] = useState<Meeting | null>(null);
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
-  const now = Date.now();
+  const now = useClockTick();
   const todayKey = manilaDay(now).dateKey;
   // Folded, the card shows only today and tomorrow, so the deadlines below stay within reach.
   // "Show more" lists the next seven days, each with its date.
@@ -1042,18 +1070,22 @@ export function TimetableCard({ state }: { state: ClassState }) {
                 <div key={label}>
                   <DayHeader>{label}</DayHeader>
                   {list.length === 0 && <ListRow leading={<TypeIcon icon="moon" tone="neutral" />} title="No classes" />}
-                  {list.map(({ meeting: m, cancelled }) => (
-                    <ListRow
-                      key={m.id}
-                      voided={!!cancelled}
-                      leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} color={courseColor(m.courseId)} />}
-                      title={courseName(m.courseId)}
-                      subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}${notMine(m)}`}
-                      children={cancelled ? <CancelledNote reason={cancelled.reason} /> : undefined}
-                      chevron={manage}
-                      onClick={manage ? () => setEditing(m) : undefined}
-                    />
-                  ))}
+                  {list.map(({ meeting: m, cancelled }) => {
+                    const look = phaseLook(meetingPhase(m.startMinutes, m.endMinutes, millis, now), !!cancelled);
+                    return (
+                      <ListRow
+                        key={m.id}
+                        voided={look.struck}
+                        leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} ended={look.ended} color={courseColor(m.courseId)} />}
+                        title={courseName(m.courseId)}
+                        subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}${notMine(m)}${look.suffix}`}
+                        trailing={look.trailing}
+                        children={cancelled ? <CancelledNote reason={cancelled.reason} /> : undefined}
+                        chevron={manage}
+                        onClick={manage ? () => setEditing(m) : undefined}
+                      />
+                    );
+                  })}
                 </div>
               );
             })}

@@ -6,7 +6,7 @@ import { memberRef, readFast } from './paths';
 
 /*
  * The history log: classes/{classId}/history/{id}, one entry per officer action on money and people
- * (ledger, claims, members, roles, invite code, class settings). Each entry is written in the same batch
+ * (ledger, claims, members, roles, invite code, class settings), and on announcements (edits and deletes). Each entry is written in the same batch
  * as the action, so an action and its entry are saved together or not at all. The rules make the log
  * append-only (nobody edits or deletes an entry; they go with the class) and only let people with
  * CLASS_SETTINGS read it.
@@ -15,7 +15,7 @@ import { memberRef, readFast } from './paths';
 export const HISTORY_KINDS = [
   'PAYMENT', 'WITHDRAWAL', 'OPENING', 'OPENING_PENDING', 'CHARGE', 'PAYOUT', 'VOID', 'CLAIM_CONFIRMED', 'CLAIM_REJECTED', 'LEDGER_SETTINGS',
   'JOIN_APPROVED', 'JOIN_REJECTED', 'MEMBER_REMOVED', 'MEMBER_ROLE', 'MEMBER_COURSES', 'ROLE_SAVED', 'ROLE_DELETED', 'MAYOR_HANDOVER', 'INVITE_CODE',
-  'CLASS_SETTINGS', 'CLASS_PHOTO', 'REMINDERS',
+  'CLASS_SETTINGS', 'CLASS_PHOTO', 'REMINDERS', 'ANNOUNCEMENT_EDITED', 'ANNOUNCEMENT_DELETED',
 ] as const;
 export type HistoryKind = (typeof HISTORY_KINDS)[number];
 

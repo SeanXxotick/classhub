@@ -668,6 +668,13 @@ async function main() {
     await assertSucceeds(b.commit());
     await assertSucceeds(add('mayor', { kind: 'MEMBER_ROLE', text: 'Gave Student the Treasurer role' }));
     await assertSucceeds(add('mayor', { kind: 'REMINDERS', text: 'Sent payment reminders to 1 student: Student (₱50.00)' }));
+    // Announcement edits and deletes: anyone who manages announcements, and only those kinds for them.
+    await assertSucceeds(add('mayor', { kind: 'ANNOUNCEMENT_DELETED', text: 'Deleted the announcement "Civilian attire"' }));
+    await assertSucceeds(add('sec', { kind: 'ANNOUNCEMENT_DELETED', text: 'Deleted the announcement "Civilian attire"' }));
+    await assertSucceeds(add('sec', { kind: 'ANNOUNCEMENT_EDITED', text: 'Edited the announcement "Civilian attire"' }));
+    await assertFails(add('sec', { kind: 'PAYMENT' }));
+    await assertFails(add('maria', { kind: 'ANNOUNCEMENT_DELETED', text: 'Deleted the announcement "Civilian attire"' }));
+    await assertFails(add('student', { kind: 'ANNOUNCEMENT_DELETED', text: 'Deleted the announcement "Civilian attire"' }));
     await assertFails(add('student'));
     await assertFails(add('outsider'));
     await assertFails(setDoc(doc(collection(db('maria'), H)), entry('mayor')));

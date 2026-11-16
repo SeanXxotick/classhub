@@ -466,16 +466,21 @@ service cloud.firestore {
     function isHistoryEntry(c) {
       let d = request.resource.data;
       let role = myRole(c);
+      let officer = role.get('locked', false) == true;
       return isMember(c)
         && isOpen(c)
-        && (role.get('locked', false) == true
-            || role.permissions.hasAny(['RECORDS_MANAGE', 'MEMBERS_MANAGE', 'ROLES_MANAGE', 'CLASS_SETTINGS']))
         && hasFields(d, ['kind', 'text', 'actorUid', 'actorName', 'atMillis'])
         && d.actorUid == uid()
-        && d.kind in ['PAYMENT', 'WITHDRAWAL', 'OPENING', 'OPENING_PENDING', 'CHARGE', 'PAYOUT', 'VOID',
+        && (
+          (d.kind in ['PAYMENT', 'WITHDRAWAL', 'OPENING', 'OPENING_PENDING', 'CHARGE', 'PAYOUT', 'VOID',
                       'CLAIM_CONFIRMED', 'CLAIM_REJECTED', 'LEDGER_SETTINGS', 'JOIN_APPROVED', 'JOIN_REJECTED',
                       'MEMBER_REMOVED', 'MEMBER_ROLE', 'MEMBER_COURSES', 'ROLE_SAVED', 'ROLE_DELETED',
                       'MAYOR_HANDOVER', 'INVITE_CODE', 'CLASS_SETTINGS', 'CLASS_PHOTO', 'REMINDERS']
+            && (officer || role.permissions.hasAny(['RECORDS_MANAGE', 'MEMBERS_MANAGE', 'ROLES_MANAGE', 'CLASS_SETTINGS'])))
+          // Nov 16: edits and deletes of announcements, by whoever may manage them.
+          || (d.kind in ['ANNOUNCEMENT_EDITED', 'ANNOUNCEMENT_DELETED']
+            && (officer || role.permissions.hasAny(['ANNOUNCEMENTS_MANAGE'])))
+        )
         && isFilled(d.text, 300)
         && isFilled(d.actorName, 90)
         && isRecentMillis(d.atMillis);

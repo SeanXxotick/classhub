@@ -9,7 +9,7 @@ import { NoAccess, SubPage } from './SubPage';
 
 const PAGE = 50;
 
-type Filter = 'ALL' | 'MONEY' | 'PEOPLE';
+type Filter = 'ALL' | 'MONEY' | 'PEOPLE' | 'NEWS';
 const MONEY: HistoryKind[] = ['PAYMENT', 'WITHDRAWAL', 'OPENING', 'OPENING_PENDING', 'CHARGE', 'PAYOUT', 'VOID', 'CLAIM_CONFIRMED', 'CLAIM_REJECTED', 'LEDGER_SETTINGS', 'REMINDERS'];
 
 const LOOK: Record<HistoryKind, [IconName, Tone]> = {
@@ -35,7 +35,11 @@ const LOOK: Record<HistoryKind, [IconName, Tone]> = {
   CLASS_SETTINGS: ['sliders', 'neutral'],
   CLASS_PHOTO: ['camera', 'neutral'],
   REMINDERS: ['bell', 'warning'],
+  ANNOUNCEMENT_EDITED: ['edit', 'neutral'],
+  ANNOUNCEMENT_DELETED: ['trash', 'danger'],
 };
+const NEWS: HistoryKind[] = ['ANNOUNCEMENT_EDITED', 'ANNOUNCEMENT_DELETED'];
+const groupOf = (kind: HistoryKind): Filter => (MONEY.includes(kind) ? 'MONEY' : NEWS.includes(kind) ? 'NEWS' : 'PEOPLE');
 
 const dayLabel = (millis: number) => new Date(millis).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 const timeLabel = (millis: number) => new Date(millis).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -51,7 +55,7 @@ export function HistoryScreen() {
   const [filter, setFilter] = useState<Filter>('ALL');
   const { data, error } = useHistory(db, state.classId, count, allowed);
   const nameOf = (e: HistoryEntry) => state.members.find((m) => m.id === e.actorUid)?.name ?? (e.actorName ? `${e.actorName} (left the class)` : 'A former officer');
-  const shown = (data ?? []).filter((e) => filter === 'ALL' || (filter === 'MONEY') === MONEY.includes(e.kind));
+  const shown = (data ?? []).filter((e) => filter === 'ALL' || groupOf(e.kind) === filter);
 
   // Group by day, keeping the newest-first order.
   const days: { label: string; entries: HistoryEntry[] }[] = [];
@@ -68,13 +72,13 @@ export function HistoryScreen() {
       ) : (
         <div className="stack">
           <p className="small muted" style={{ margin: 0 }}>
-            Every change officers make to the ledger, members, roles and class settings. Nobody can edit or delete these entries.
+            Every change officers make to the ledger, members, roles, class settings and announcements. Nobody can edit or delete these entries.
           </p>
           <FilterChips
             label="Show"
             value={filter}
             onChange={setFilter}
-            options={[{ value: 'ALL', label: 'All' }, { value: 'MONEY', label: 'Money' }, { value: 'PEOPLE', label: 'People and settings' }]}
+            options={[{ value: 'ALL', label: 'All' }, { value: 'MONEY', label: 'Money' }, { value: 'PEOPLE', label: 'People and settings' }, { value: 'NEWS', label: 'News' }]}
           />
           {error && <Notice tone="danger">{friendlyMessage(error)}</Notice>}
           {!data && !error && <Spinner />}

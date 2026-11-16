@@ -6,7 +6,7 @@ import { UserError } from './errors';
 import { fromDoc, useQueryList } from './live';
 import { buildRecord } from './ledgerStore';
 import { logToBatch, peso } from './history';
-import { bumpSummary, explainRefusal, readFast, recordRef, withoutId } from './paths';
+import { bumpSummary, explainRefusal, memberRef, readFast, recordRef, withoutId } from './paths';
 import type { Actor } from './classes';
 
 /*
@@ -150,23 +150,49 @@ export async function saveAnnouncement(db: Firestore, actorUid: string, classId:
     void queueNotice(db, actorUid, classId, { kind: 'ANNOUNCEMENT', audience: 'CLASS', title: `Announcement: ${title}`, body });
     return id;
   }
-  await explainRefusal(db, classId, () =>
-    updateDoc(doc(announcementsCol(db, classId), post.id), { title, body, pinned: post.pinned, commentsOff: post.commentsOff, editedAtMillis: nowMillis() }));
+  // A change to the title or text goes in the History log (pinning and the comments switch do not).
+  const before = await readFast(doc(announcementsCol(db, classId), post.id)).catch(() => null);
+  const oldTitle = String(before?.get('title') ?? '');
+  const changed = !before || oldTitle !== title || String(before.get('body') ?? '') !== body;
+  await explainRefusal(db, classId, async () => {
+    const batch = writeBatch(db);
+    batch.update(doc(announcementsCol(db, classId), post.id), { title, body, pinned: post.pinned, commentsOff: post.commentsOff, editedAtMillis: nowMillis() });
+    if (changed) {
+      const renamed = oldTitle && oldTitle !== title ? ` (now "${title}")` : '';
+      await logToBatch(batch, db, classId, actorUid, 'ANNOUNCEMENT_EDITED', `Edited the announcement "${oldTitle || title}"${renamed}`);
+    }
+    await batch.commit();
+  });
   return post.id;
 }
 
 export const setPinned = (db: Firestore, classId: string, postId: string, pinned: boolean) =>
   updateDoc(doc(announcementsCol(db, classId), postId), { pinned });
 
-/** Deletes an announcement together with its comments (ANNOUNCEMENTS_MANAGE). */
-export async function deleteAnnouncement(db: Firestore, classId: string, postId: string): Promise<void> {
+/** Deletes an announcement together with its comments (ANNOUNCEMENTS_MANAGE), with a History log entry. */
+export async function deleteAnnouncement(db: Firestore, actorUid: string, classId: string, postId: string): Promise<void> {
+  const postRef = doc(announcementsCol(db, classId), postId);
+  const post = await readFast(postRef).catch(() => null);
   const comments = await getDocs(query(commentsCol(db, classId), where('postId', '==', postId)));
   for (let i = 0; i < comments.docs.length; i += 400) {
     const batch = writeBatch(db);
     for (const d of comments.docs.slice(i, i + 400)) batch.delete(d.ref);
     await batch.commit();
   }
-  await deleteDoc(doc(announcementsCol(db, classId), postId));
+  // The entry names the post, who wrote it and when, so a deleted post can still be traced.
+  const title = String(post?.get('title') ?? '') || 'an announcement';
+  const authorUid = String(post?.get('createdByUid') ?? '');
+  const authorName = authorUid && authorUid !== actorUid
+    ? String((await readFast(memberRef(db, classId, authorUid)).catch(() => null))?.get('name') ?? '')
+    : '';
+  const postedMillis = Number(post?.get('createdAtMillis') ?? 0);
+  const posted = postedMillis ? new Date(postedMillis).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' }) : '';
+  const by = authorUid === actorUid ? 'their own post' : authorName ? `posted by ${authorName}` : 'posted';
+  const details = posted ? `${by} on ${posted}` : authorUid === actorUid || authorName ? by : '';
+  const batch = writeBatch(db);
+  batch.delete(postRef);
+  await logToBatch(batch, db, classId, actorUid, 'ANNOUNCEMENT_DELETED', `Deleted the announcement "${title}"${details ? ` (${details})` : ''}`);
+  await batch.commit();
 }
 
 /** Pinned first, then newest. */
