@@ -114,7 +114,7 @@ test.describe.serial('a class from start to finish', () => {
 
     await newRecord(page, /^Payment/);
     await page.getByRole('textbox', { name: 'Amount', exact: true }).fill('100');
-    await pickMember(page, /^Who paid/, 'Stu Dent');
+    await pickMember(page, /^Who paid/, 'Dent, Stu');
     await page.getByLabel('Note (optional)').fill('October dues');
     await page.getByRole('button', { name: 'Save payment' }).click();
     await expectNotice(page, 'Payment of ₱100.00 from Stu Dent saved.');
@@ -139,7 +139,7 @@ test.describe.serial('a class from start to finish', () => {
 
     // A withdrawal is not limited by the balance (a larger one is tested in the domain tests).
     await newRecord(page, /^Withdrawal/);
-    await pickMember(page, /^Who is withdrawing/, 'Stu Dent');
+    await pickMember(page, /^Who is withdrawing/, 'Dent, Stu');
     await expect(page.getByText('Current balance ₱80.00')).toBeVisible();
     await page.getByRole('textbox', { name: 'Amount', exact: true }).fill('30');
     await page.getByRole('button', { name: 'Save withdrawal' }).click();

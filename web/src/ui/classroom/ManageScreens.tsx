@@ -280,7 +280,7 @@ export function RolesScreen() {
               <>
                 <ColorDot hex={role.colorHex} />
                 <span className="grow">
-                  <span className="title" style={{ display: 'block' }}>{role.name}</span>
+                  <span className="title">{role.name}</span>
                   <span className="sub">
                     {summary} · {holders} member{s(holders)}
                   </span>
@@ -504,7 +504,7 @@ export function CoursesScreen() {
                   {initialsOf(course.name)}
                 </span>
                 <span className="grow">
-                  <span className="title" style={{ display: 'block' }}>{course.name}</span>
+                  <span className="title">{course.name}</span>
                   <span className="sub">
                     {takers} of {state.members.length} take this
                   </span>

@@ -2158,3 +2158,47 @@ a.list-row:hover {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* "No classes: reason" under a cancelled meeting; it wraps when the reason is long. */
+.cancel-note {
+  display: block;
+  margin-top: 4px;
+}
+.cancel-note .ch-badge {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  border-radius: 10px;
+}
+
+/* ------------------------------------------------------------------ Long text (wrap pass, Nov 16)
+   Text people type (names, titles, notes, links) never runs off the screen or squeezes into a narrow
+   column: it breaks where it must, list rows stop at 3 lines (the full text shows when the item is
+   opened), and what sits on the right of a row (balances, dates, chips) gives up room before the text. */
+.list-row .grow,
+.list-row .title,
+.list-row .sub,
+.ch-list-row .ch-grow {
+  overflow-wrap: anywhere;
+}
+.list-row .title,
+.ch-list-row .ch-list-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.list-row > .small.muted,
+.list-row > .muted.small {
+  flex: 0 1 auto;
+  max-width: 40%;
+  text-align: right;
+}
+.ch-end-col {
+  flex: 0 1 auto;
+  max-width: 45%;
+}
+.ch-end-col .ch-badge {
+  white-space: normal;
+  max-width: 100%;
+}

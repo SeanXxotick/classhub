@@ -262,7 +262,7 @@ textarea.ch-input { min-height: 96px; resize: vertical; }
   .ch-week-block .full { display: none; }
   .ch-week-block .short { display: inline; }
   /* Short labels leave spare height, so the room may wrap instead of ending in an ellipsis. */
-  .ch-week-sub { white-space: normal; overflow-wrap: anywhere; }
+  .ch-week-sub { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 }
 /* Half a phone column (two meetings clash): only the initials fit; tapping the block shows the rest. */
 @container (max-width: 26px) {

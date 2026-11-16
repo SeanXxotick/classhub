@@ -18,7 +18,7 @@ async function newRecord(page: Page, kind: RegExp, amount: string, field: RegExp
   await page.getByRole('dialog', { name: 'New record' }).getByRole('button', { name: kind }).click();
   await page.getByRole('textbox', { name: 'Amount', exact: true }).fill(amount);
   await page.getByRole('button', { name: field }).click();
-  await page.getByRole('dialog', { name: 'Choose a member' }).getByRole('button', { name: /Eli Cruz/ }).click();
+  await page.getByRole('dialog', { name: 'Choose a member' }).getByRole('button', { name: /Cruz, Eli/ }).click();
   await page.getByRole('button', { name: save }).click();
 }
 

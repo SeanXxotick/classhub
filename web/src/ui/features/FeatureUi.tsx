@@ -333,9 +333,11 @@ function RemindDialog({ state, owing, onClose }: { state: ClassState; owing: Cla
           <label key={m.id} className="list-row" style={{ cursor: 'pointer' }}>
             <input type="checkbox" className="check" checked={picked.has(m.id)} onChange={(e) => toggle(m.id, e.target.checked)} />
             <Avatar photo={state.avatars.get(m.id)} name={m.name} color="var(--accent, #0F766E)" size={30} />
-            <span className="grow">{m.name}</span>
-            <span className="small" style={{ color: 'var(--error)', fontWeight: 600 }}>
-              {formatMoney(-state.balanceOf(m.id))}
+            <span className="grow">
+              <span style={{ display: 'block' }}>{m.name}</span>
+              <span className="small" style={{ color: 'var(--error)', fontWeight: 600 }}>
+                {`Owes ${formatMoney(-state.balanceOf(m.id))}`}
+              </span>
             </span>
           </label>
         ))}
@@ -351,6 +353,15 @@ function RemindDialog({ state, owing, onClose }: { state: ClassState; owing: Cla
         <div className="small">{preview.body}</div>
       </div>
     </Dialog>
+  );
+}
+
+/** Under a cancelled meeting's time and room, so a long reason wraps instead of squeezing the course name. */
+function CancelledNote({ reason }: { reason: string }) {
+  return (
+    <span className="cancel-note">
+      <StatusBadge status="danger">{`No classes${reason ? `: ${reason}` : ''}`}</StatusBadge>
+    </span>
   );
 }
 
@@ -389,7 +400,7 @@ export function StatementCard({ state }: { state: ClassState }) {
     const rows = [...state.records]
       .sort((a, b) => a.dateMillis - b.dateMillis)
       .map((r) => [manilaDay(r.dateMillis).dateKey, r.type, r.memberName, pesos(r.amountCentavos), r.note, r.paidTo, r.voidedAtMillis ? 'yes' : '', r.voidReason].map(cell).join(','));
-    const balances = state.members.map((m) => [m.name, pesos(state.balanceOf(m.id))].map(cell).join(','));
+    const balances = byLastName(state.members).map((m) => [listName(m), pesos(state.balanceOf(m.id))].map(cell).join(','));
     const csv = csvBlob([head, ...rows, '', [cell('Student'), cell('Balance')].join(','), ...balances].join('\r\n'));
     saveFile(`${state.room?.name ?? 'class'} ledger.csv`, csv, actions.showNotice).catch((e) => actions.showNotice(friendlyMessage(e)));
   }
@@ -837,7 +848,7 @@ export function TodayCard({ state }: { state: ClassState }) {
                   leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} color={courseColor(m.courseId)} />}
                   title={courseName(m.courseId)}
                   subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}`}
-                  trailing={cancelled ? <StatusBadge status="danger">{`No classes${cancelled.reason ? `: ${cancelled.reason}` : ''}`}</StatusBadge> : undefined}
+                  children={cancelled ? <CancelledNote reason={cancelled.reason} /> : undefined}
                 />
               ))}
             </div>
@@ -1038,7 +1049,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
                       leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} color={courseColor(m.courseId)} />}
                       title={courseName(m.courseId)}
                       subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}${notMine(m)}`}
-                      trailing={cancelled ? <StatusBadge status="danger">{`No classes${cancelled.reason ? `: ${cancelled.reason}` : ''}`}</StatusBadge> : undefined}
+                      children={cancelled ? <CancelledNote reason={cancelled.reason} /> : undefined}
                       chevron={manage}
                       onClick={manage ? () => setEditing(m) : undefined}
                     />

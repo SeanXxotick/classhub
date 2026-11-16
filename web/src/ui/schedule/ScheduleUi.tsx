@@ -130,7 +130,7 @@ export function ScheduleRow({
       onKeyDown={onClick ? (e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), onClick()) : undefined}>
       <KindBadge kind={item.kind} room={state.room} tint color={courseDoc?.color} />
       <span className="grow ellipsis-box">
-        <span className={'title' + (cancelled ? ' struck' : '') + (cancelled || done ? ' muted' : '')} style={{ display: 'block' }}>
+        <span className={'title' + (cancelled ? ' struck' : '') + (cancelled || done ? ' muted' : '')}>
           {item.title}
         </span>
         <span className="sub ellipsis">

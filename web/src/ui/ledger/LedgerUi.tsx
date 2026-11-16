@@ -1,5 +1,5 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { BALANCE_VISIBILITIES, type BalanceVisibility, type LedgerRecord, type Member, type RecordType } from '../../data/models';
+import { BALANCE_VISIBILITIES, byLastName, listName, type BalanceVisibility, type LedgerRecord, type Member, type RecordType } from '../../data/models';
 import { Ledger } from '../../domain/ledger';
 import { LEDGER_FILTERS, LedgerView, type ChargeBatch, type LedgerEntry, type LedgerFilter } from '../../domain/ledgerView';
 import { formatMoney } from '../../domain/money';
@@ -630,11 +630,12 @@ export function AddRecordChooser({ onPick, onDismiss }: { onPick: (type: RecordT
   );
 }
 
-/** Searchable list of members, showing each one's balance. */
+/** Searchable list of members, last name first and sorted by it, showing each one's balance. */
 export function MemberPickerDialog({ state, onPick, onDismiss }: { state: ClassState; onPick: (member: Member) => void; onDismiss: () => void }) {
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
-  const shown = state.members.filter((m) => !q || m.name.toLowerCase().includes(q));
+  // Either way of writing the name matches ("Ana Lim" or "Lim, Ana").
+  const shown = byLastName(state.members).filter((m) => !q || m.name.toLowerCase().includes(q) || listName(m).toLowerCase().includes(q));
   return (
     <Dialog
       title="Choose a member"
@@ -653,8 +654,10 @@ export function MemberPickerDialog({ state, onPick, onDismiss }: { state: ClassS
         {shown.map((m) => (
           <button key={m.id} type="button" className="list-row" onClick={() => onPick(m)}>
             <Avatar photo={state.avatars.get(m.id)} name={m.name} color="var(--accent, #0F766E)" size={30} />
-            <span className="grow">{m.name}</span>
-            <span className="small muted">{balanceText(state.balanceOf(m.id))}</span>
+            <span className="grow">
+              <span style={{ display: 'block' }}>{listName(m)}</span>
+              <span className="sub">{balanceText(state.balanceOf(m.id))}</span>
+            </span>
           </button>
         ))}
       </div>

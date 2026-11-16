@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { newRecord, type RecordType } from '../../data/models';
+import { byLastName, listName, newRecord, type RecordType } from '../../data/models';
 import { ChargePlanner } from '../../domain/chargePlanner';
 import { LedgerForms } from '../../domain/ledgerForms';
 import { LedgerView } from '../../domain/ledgerView';
@@ -187,7 +187,7 @@ function PayoutFormScreen({ preselectedBatchId }: { preselectedBatchId: string }
             {unpaid.map((c) => (
               <button key={c.batchId} type="button" className="list-row" onClick={() => (setBatchId(c.batchId), setPicking(false), setError(null))}>
                 <span className="grow">
-                  <span className="title" style={{ display: 'block' }}>{c.note}</span>
+                  <span className="title">{c.note}</span>
                   <span className="sub">
                     {c.count} student{s(c.count)} · {fullDate(c.dateMillis)}
                   </span>
@@ -309,17 +309,18 @@ export function ChargeStudentsScreen() {
               None
             </button>
           </div>
-          {state.members.map((m) => {
+          {byLastName(state.members).map((m) => {
             const checked = selected.has(m.id);
             return (
               <label key={m.id} className="list-row" style={{ cursor: 'pointer' }}>
                 <input type="checkbox" className="check" checked={checked} onChange={(e) => toggle(m.id, e.target.checked)} />
                 <Avatar photo={state.avatars.get(m.id)} name={m.name} color="var(--accent, #0F766E)" size={30} />
                 <span className="grow">
-                  <span style={{ display: 'block' }}>{m.name}</span>
+                  <span style={{ display: 'block' }}>{listName(m)}</span>
+                  {/* Under the name, so a long name keeps the row's width instead of squeezing beside the balance. */}
+                  <span className="sub" style={{ display: 'block' }}>{balanceText(state.balanceOf(m.id))}</span>
                   {!eligibleIds.has(m.id) && courseName && <span className="sub">Does not take {courseName}</span>}
                 </span>
-                <span className="small muted">{balanceText(state.balanceOf(m.id))}</span>
               </label>
             );
           })}
