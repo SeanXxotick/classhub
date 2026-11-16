@@ -1372,6 +1372,9 @@ export function AttendanceCard({ state }: { state: ClassState }) {
   const [openMine, setOpenMine] = useState<string | null>(null);
   const { actions } = useClass();
   const all = useAttendance(db, state.classId, manage).data ?? [];
+  // For the export: cancelled meetings get their own NC column.
+  const meetings = useMeetings(db, state.classId, manage).data ?? [];
+  const noClass = useNoClass(db, state.classId, manage).data ?? [];
   const totals = useAttendanceTotals(db, state.classId, true);
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   // Marks from a course the student no longer takes stay in the records but are not shown or counted.
@@ -1401,8 +1404,9 @@ export function AttendanceCard({ state }: { state: ClassState }) {
   function exportAttendance() {
     const courses = [...state.courses].sort((x, y) => x.name.localeCompare(y.name));
     const students = byLastName(state.members).map((m) => ({ id: m.id, name: listName(m), excludedCourseIds: m.excludedCourseIds }));
-    // One sheet per course. Columns: name, days attended, then a column per day attendance was taken.
-    const sheets = attendanceExportSheets(courses, students, all).map((s) => ({ ...s, widths: [30, 10, ...s.rows[0].slice(2).map(() => 10)] }));
+    // One sheet per course. Columns: name, days attended, then a column per day attendance was taken or the meeting was cancelled.
+    const cancellations = { noClass, meetings, todayKey: manilaDay(Date.now()).dateKey };
+    const sheets = attendanceExportSheets(courses, students, all, cancellations).map((s) => ({ ...s, widths: [30, 10, ...s.rows[0].slice(2).map(() => 10)] }));
     if (sheets.length === 0) return;
     const bytes = xlsxFile(sheets);
     const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
