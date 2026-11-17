@@ -4,6 +4,8 @@ import { Route, Routes, useNavigate, useParams, useSearchParams } from 'react-ro
 import type { JoinRequest, Member, Permission, ScheduleItem } from '../../data/models';
 import { db } from '../../data/firebase';
 import { useAnnouncements, useCommentsSince, useMyComments } from '../../data/features';
+import { useForum, useForumAnswersSince, useForumAuthors } from '../../data/forum';
+import { forumUnseen } from '../../domain/forumUnseen';
 import { markTabsSeen, useTabsSeen } from '../../data/tabsSeen';
 import { countLabel, SEEN_TABS, unseenCounts, type SeenTab } from '../../domain/tabCounts';
 import { AttendanceCard, ClaimsCard, NewsTab, RemindersCard, StatementCard, TimetableCard, TodayCard } from '../features/FeatureUi';
@@ -111,7 +113,12 @@ function ClassScreen() {
   const posts = useAnnouncements(db, state.classId, newsOn).data ?? [];
   const newComments = useCommentsSince(db, state.classId, seen?.NEWS ?? 0, newsOn && !!seen).data ?? [];
   const myComments = useMyComments(db, state.classId, state.myUid, newsOn && !!seen).data ?? [];
-  const counts = unseenCounts({
+  // The Forum counts on the News tab too: new questions, and answers or replies to this member's posts.
+  const questions = useForum(db, state.classId, state.can('ANNOUNCEMENTS_MANAGE'), newsOn).data ?? [];
+  const myForumIds = new Set((useForumAuthors(db, state.classId, state.myUid, false, newsOn).data ?? []).map((a) => a.id));
+  const forumAnswers = useForumAnswersSince(db, state.classId, seen?.NEWS ?? 0, newsOn && !!seen).data ?? [];
+  const forumNew = forumUnseen(questions, forumAnswers, state.myUid, myForumIds, seen?.NEWS ?? 0).total;
+  const tabCounts = unseenCounts({
     seen,
     myUid: state.myUid,
     records: state.records,
@@ -123,6 +130,7 @@ function ClassScreen() {
     joinRequests: state.can('MEMBERS_MANAGE') ? state.joinRequests.length : 0,
     takes: state.takes,
   });
+  const counts = { ...tabCounts, NEWS: tabCounts.NEWS + forumNew };
   // The open tab never shows a count.
   const countOf = (id: ClassTabId) => (id === tab || id === 'HOME' ? 0 : counts[id]);
   const tabLabel = (id: ClassTabId, label: string) => {
@@ -427,7 +435,7 @@ function HomeTab({
             <SectionHead title="Invite students" />
             <div className="card stack center" style={{ gap: 10 }}>
               <div className="small muted" style={{ textAlign: 'left' }}>
-                Share this code. Students enter it under "Join with a code" and join as {defaultRoleName}.
+                Students join as {defaultRoleName}.
               </div>
               <div className="invite-code">{room.inviteCode}</div>
               <div className="row" style={{ justifyContent: 'center' }}>

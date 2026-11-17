@@ -130,10 +130,12 @@ export interface Announcement {
   lastCommentId: string;
   /** An officer switched comments off for this announcement. */
   commentsOff: boolean;
+  /** The tag: a course id, or '' for General (and for announcements from before tags). */
+  courseId: string;
 }
 
 export const newAnnouncement = (a: Partial<Announcement>): Announcement => ({
-  id: '', title: '', body: '', pinned: false, createdByUid: '', createdAtMillis: 0, editedAtMillis: 0, commentCount: 0, lastCommentId: '', commentsOff: false, ...a,
+  id: '', title: '', body: '', pinned: false, createdByUid: '', createdAtMillis: 0, editedAtMillis: 0, commentCount: 0, lastCommentId: '', commentsOff: false, courseId: '', ...a,
 });
 
 export const announcementsCol = (db: Firestore, classId: string) => sub(db, classId, 'announcements');
@@ -144,10 +146,11 @@ export async function saveAnnouncement(db: Firestore, actorUid: string, classId:
   if (!title) throw new UserError('NAME_MISSING', 'Give the announcement a title.');
   const body = post.body.trim().slice(0, 4000);
   if (!post.id) {
-    const fresh = newAnnouncement({ title, body, pinned: post.pinned, commentsOff: post.commentsOff, createdByUid: actorUid, createdAtMillis: nowMillis() });
+    const fresh = newAnnouncement({ title, body, pinned: post.pinned, commentsOff: post.commentsOff, courseId: post.courseId, createdByUid: actorUid, createdAtMillis: nowMillis() });
     const id = newId();
     await explainRefusal(db, classId, () => setDoc(doc(announcementsCol(db, classId), id), withoutId(fresh)));
-    void queueNotice(db, actorUid, classId, { kind: 'ANNOUNCEMENT', audience: 'CLASS', title: `Announcement: ${title}`, body });
+    // A course tag tells only the students taking that course.
+    void queueNotice(db, actorUid, classId, { kind: 'ANNOUNCEMENT', audience: post.courseId ? 'COURSE' : 'CLASS', audienceId: post.courseId, title: `Announcement: ${title}`, body });
     return id;
   }
   // A change to the title or text goes in the History log (pinning and the comments switch do not).
@@ -156,7 +159,7 @@ export async function saveAnnouncement(db: Firestore, actorUid: string, classId:
   const changed = !before || oldTitle !== title || String(before.get('body') ?? '') !== body;
   await explainRefusal(db, classId, async () => {
     const batch = writeBatch(db);
-    batch.update(doc(announcementsCol(db, classId), post.id), { title, body, pinned: post.pinned, commentsOff: post.commentsOff, editedAtMillis: nowMillis() });
+    batch.update(doc(announcementsCol(db, classId), post.id), { title, body, pinned: post.pinned, commentsOff: post.commentsOff, courseId: post.courseId, editedAtMillis: nowMillis() });
     if (changed) {
       const renamed = oldTitle && oldTitle !== title ? ` (now "${title}")` : '';
       await logToBatch(batch, db, classId, actorUid, 'ANNOUNCEMENT_EDITED', `Edited the announcement "${oldTitle || title}"${renamed}`);
@@ -207,6 +210,10 @@ export function useAnnouncements(db: Firestore, classId: string, enabled: boolea
 export interface SeenMarks {
   id: string;
   announcements: Record<string, number>;
+  /** When this member last opened the Forum. */
+  forumAt: number;
+  /** Left out of the Forum's top helpers. */
+  hideFromBoard: boolean;
 }
 
 /** Marks announcements as opened by this student (one small document per student). */
@@ -218,7 +225,7 @@ export function markSeen(db: Firestore, classId: string, uid: string, postIds: s
 }
 
 export const useSeen = (db: Firestore, classId: string, enabled: boolean) =>
-  useQueryList<SeenMarks>(`v2/seen/${classId}/${enabled}`, enabled ? sub(db, classId, 'seen') : null, (d) => fromDoc<SeenMarks>({ id: '', announcements: {} }, d));
+  useQueryList<SeenMarks>(`v2/seen/${classId}/${enabled}`, enabled ? sub(db, classId, 'seen') : null, (d) => fromDoc<SeenMarks>({ id: '', announcements: {}, forumAt: 0, hideFromBoard: false }, d));
 
 // ---------------------------------------------------------------- Comments and votes
 
@@ -365,6 +372,38 @@ export async function addNoClass(db: Firestore, actorUid: string, classId: strin
 }
 
 export const removeNoClass = (db: Firestore, classId: string, markId: string) => deleteDoc(doc(noClassCol(db, classId), markId));
+
+/**
+ * Marks several days or classes as no classes in one save (SCHEDULE_MANAGE), for a suspension or a break.
+ * Each entry is a whole day (courseId empty) or one course on one day. Students get one notification for
+ * the whole set: for that course's students when every mark is about the same course, otherwise the class.
+ */
+export async function addNoClasses(db: Firestore, actorUid: string, classId: string, marks: { dateKey: string; courseId: string }[], reason: string): Promise<void> {
+  if (marks.length === 0) return;
+  const text = reason.trim().slice(0, 200);
+  const batch = writeBatch(db);
+  for (const m of marks) batch.set(doc(noClassCol(db, classId), newId()), { dateKey: m.dateKey, courseId: m.courseId, reason: text, createdByUid: actorUid });
+  await explainRefusal(db, classId, () => batch.commit());
+  const days = [...new Set(marks.map((m) => m.dateKey))].sort();
+  const first = new Date(`${days[0]}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const more = days.length - 1;
+  const courses = [...new Set(marks.map((m) => m.courseId))];
+  const course = courses.length === 1 ? courses[0] : '';
+  void queueNotice(db, actorUid, classId, {
+    kind: 'NO_CLASS',
+    audience: course ? 'COURSE' : 'CLASS',
+    audienceId: course,
+    title: more > 0 ? `No classes on ${first} and ${more} more day${more === 1 ? '' : 's'}` : `No classes on ${first}`,
+    body: text,
+  });
+}
+
+/** Classes are back on for these marks, removed together. */
+export async function removeNoClasses(db: Firestore, classId: string, markIds: string[]): Promise<void> {
+  const batch = writeBatch(db);
+  for (const id of markIds) batch.delete(doc(noClassCol(db, classId), id));
+  await explainRefusal(db, classId, () => batch.commit());
+}
 
 export const useMeetings = (db: Firestore, classId: string, enabled: boolean) =>
   useQueryList<Meeting>(`v2/meetings/${classId}/${enabled}`, enabled ? meetingsCol(db, classId) : null, (d) => fromDoc(newMeeting({}), d));

@@ -10,7 +10,7 @@ import { collection, deleteDoc, doc, setDoc, type Firestore } from 'firebase/fir
 import { app } from './firebase';
 import { newId, nowMillis } from './dataEnv';
 
-export const NOTICE_KINDS = ['ANNOUNCEMENT', 'SCHEDULE_NEW', 'DUE_TOMORROW', 'NO_CLASS', 'CLAIM_DECIDED', 'JOIN_APPROVED', 'COMMENT', 'PAYMENT_DUE', 'CLAIM_SENT', 'JOIN_REQUEST'] as const;
+export const NOTICE_KINDS = ['ANNOUNCEMENT', 'SCHEDULE_NEW', 'DUE_TOMORROW', 'NO_CLASS', 'CLAIM_DECIDED', 'JOIN_APPROVED', 'COMMENT', 'FORUM_QUESTION', 'FORUM_ANSWER', 'PAYMENT_DUE', 'CLAIM_SENT', 'JOIN_REQUEST'] as const;
 export type NoticeKind = (typeof NOTICE_KINDS)[number];
 
 /** What each switch in Account says. The last two only ever reach officers. */
@@ -22,6 +22,8 @@ export const NOTICE_LABELS: Record<NoticeKind, string> = {
   CLAIM_DECIDED: 'My payment claim was confirmed or rejected',
   JOIN_APPROVED: 'I was approved to join a class',
   COMMENT: 'Comments on my announcements and replies to my comments',
+  FORUM_QUESTION: 'New questions in the Forum',
+  FORUM_ANSWER: 'Answers and replies to my Forum posts',
   PAYMENT_DUE: 'Reminders to pay what I owe the class fund',
   CLAIM_SENT: 'A student sent a payment claim (officers)',
   JOIN_REQUEST: 'Someone asked to join (officers)',
@@ -29,8 +31,11 @@ export const NOTICE_LABELS: Record<NoticeKind, string> = {
 
 export interface Notice {
   kind: Exclude<NoticeKind, 'DUE_TOMORROW'>;
-  /** CLASS: everyone. COURSE: students taking audienceId. PERMISSION: roles with audienceId. USER: the member audienceId. */
-  audience: 'CLASS' | 'COURSE' | 'PERMISSION' | 'USER';
+  /**
+   * CLASS: everyone. COURSE: students taking audienceId. PERMISSION: roles with audienceId. USER: the member audienceId.
+   * AUTHOR: whoever wrote the Forum question or answer audienceId (the sender looks it up, so anonymous posts stay anonymous).
+   */
+  audience: 'CLASS' | 'COURSE' | 'PERMISSION' | 'USER' | 'AUTHOR';
   audienceId?: string;
   title: string;
   body?: string;

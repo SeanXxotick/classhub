@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Forum mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/*
+ * Design mockup for the Forum in the News tab, and tags on announcements (not app code). Same look as the other mockups.
+ * Shows: the Announcements | Forum switch, the question list with filters, asking (with the anonymous
+ * option), a question with its answers and a best answer, and what officers can do. Names are made up.
+ */
+:root {
+  --ch-brand: #0f766e;
+  --ch-bg: #f6f8fb; --ch-surface: #ffffff; --ch-surface-2: #eef1f6;
+  --ch-text: #1a1c1e; --ch-text-muted: #596478; --ch-border: #d5dbe5; --ch-border-strong: #8892a5;
+  --ch-scrim: rgba(15, 20, 28, 0.45); --ch-on-solid: #ffffff;
+  --ch-success: #146c34; --ch-warning: #a35207; --ch-danger: #b91c1c; --ch-info: #0369a1;
+  --ch-tint: 13%;
+  --ch-success-soft: color-mix(in srgb, var(--ch-success) var(--ch-tint), var(--ch-surface));
+  --ch-warning-soft: color-mix(in srgb, var(--ch-warning) var(--ch-tint), var(--ch-surface));
+  --ch-danger-soft: color-mix(in srgb, var(--ch-danger) var(--ch-tint), var(--ch-surface));
+  --ch-brand-soft: color-mix(in srgb, var(--ch-brand) var(--ch-tint), var(--ch-surface));
+  --ch-hover: color-mix(in srgb, var(--ch-text) 5%, transparent);
+  --radius: 14px; --radius-sm: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ch-brand: #2dd4bf;
+    --ch-bg: #0f141c; --ch-surface: #161d27; --ch-surface-2: #222b37;
+    --ch-text: #e6e9ef; --ch-text-muted: #a7b1c2; --ch-border: #344052; --ch-border-strong: #66748a;
+    --ch-scrim: rgba(0, 0, 0, 0.6); --ch-on-solid: #0f141c;
+    --ch-success: #4ade80; --ch-warning: #fbbf24; --ch-danger: #f87171; --ch-info: #38bdf8;
+  }
+}
+:root[data-theme='dark'] {
+  --ch-brand: #2dd4bf;
+  --ch-bg: #0f141c; --ch-surface: #161d27; --ch-surface-2: #222b37;
+  --ch-text: #e6e9ef; --ch-text-muted: #a7b1c2; --ch-border: #344052; --ch-border-strong: #66748a;
+  --ch-scrim: rgba(0, 0, 0, 0.6); --ch-on-solid: #0f141c;
+  --ch-success: #4ade80; --ch-warning: #fbbf24; --ch-danger: #f87171; --ch-info: #38bdf8;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ch-bg); color: var(--ch-text); font: 15px/1.45 Roboto, system-ui, sans-serif; }
+button, input, textarea, select { font: inherit; color: inherit; }
+.page { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+.page-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.page-head h1 { font-size: 20px; margin: 0; flex: 1 1 260px; }
+.muted { color: var(--ch-text-muted); }
+.small { font-size: 13px; }
+.semibold { font-weight: 600; }
+.layout { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.label { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-text-muted); margin: 0 0 8px; }
+.note { font-size: 13px; color: var(--ch-text-muted); margin: 8px 0 0; }
+.btn { border: 0; border-radius: 999px; min-height: 40px; padding: 0 18px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; justify-content: center; }
+.btn.solid { background: var(--ch-brand); color: var(--ch-on-solid); }
+.btn.solid:disabled { opacity: .45; cursor: default; }
+.btn.outline { background: none; border: 1px solid var(--ch-border-strong); }
+.btn.text { background: none; color: var(--ch-brand); }
+.btn.small { min-height: 32px; padding: 0 12px; font-size: 13px; }
+.btn.danger-text { color: var(--ch-danger); }
+.seg-role { display: inline-flex; border: 1px solid var(--ch-border); border-radius: 999px; overflow: hidden; }
+.seg-role button { border: 0; background: none; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--ch-text-muted); }
+.seg-role button.on { background: var(--ch-brand-soft); color: var(--ch-brand); }
+
+/* Phone frame */
+.phone { background: var(--ch-bg); border: 1px solid var(--ch-border); border-radius: 28px; overflow: hidden; max-width: 420px; position: relative; min-height: 720px; display: flex; flex-direction: column; }
+.topbar { display: flex; align-items: center; gap: 8px; padding: 14px 16px 8px; font-weight: 700; font-size: 18px; }
+.topbar .back { background: none; border: 0; color: var(--ch-brand); font-weight: 600; cursor: pointer; padding: 0; font-size: 15px; }
+.tabs { display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--ch-border); font-size: 13px; font-weight: 600; color: var(--ch-text-muted); overflow: hidden; }
+.tabs span { padding: 10px 8px; white-space: nowrap; }
+.tabs span.on { color: var(--ch-brand); border-bottom: 3px solid var(--ch-brand); }
+.content { padding: 14px 14px 90px; flex: 1; display: flex; flex-direction: column; gap: 12px; }
+
+/* Announcements | Forum switch */
+.switch { display: grid; grid-template-columns: 1fr 1fr; background: var(--ch-surface-2); border-radius: 999px; padding: 4px; gap: 4px; }
+.switch button { border: 0; background: none; border-radius: 999px; min-height: 38px; font-weight: 600; cursor: pointer; color: var(--ch-text-muted); display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; }
+.switch button.on { background: var(--ch-surface); color: var(--ch-text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.count { background: var(--ch-danger); color: #fff; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 1px 6px; }
+
+/* Filters */
+.filters { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.chip { border: 1px solid var(--ch-border); background: var(--ch-surface); border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; flex: none; }
+.chip.on { background: var(--ch-brand-soft); border-color: var(--ch-brand); color: var(--ch-brand); }
+.search { display: flex; gap: 8px; }
+.search input, .search select { flex: 1; min-width: 0; background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: 10px; padding: 8px 10px; font-size: 14px; }
+.search select { flex: 0 1 46%; }
+
+/* Question card */
+.q { background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: var(--radius); padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; text-align: left; width: 100%; }
+.q:hover { background: color-mix(in srgb, var(--ch-surface) 92%, var(--ch-text)); }
+.q .title { font-weight: 600; overflow-wrap: anywhere; }
+.q .meta { font-size: 12px; color: var(--ch-text-muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.badge { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 9px; display: inline-flex; align-items: center; gap: 4px; }
+.badge.ok { background: var(--ch-success-soft); color: var(--ch-success); }
+.badge.wait { background: var(--ch-surface-2); color: var(--ch-text-muted); }
+.badge.closed { background: var(--ch-warning-soft); color: var(--ch-warning); }
+.badge.course { background: var(--ch-surface-2); color: var(--ch-text); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.who { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.anon-real { display: block; font-size: 12px; color: var(--ch-warning); font-weight: 600; }
+.av { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 700; color: #fff; flex: none; }
+.av.anon { background: var(--ch-border-strong); }
+.empty { text-align: center; color: var(--ch-text-muted); padding: 30px 10px; }
+.fab { position: absolute; right: 16px; bottom: 16px; background: var(--ch-brand); color: var(--ch-on-solid); border: 0; border-radius: 16px; min-height: 52px; padding: 0 18px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+
+/* Detail */
+.qd { background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.qd h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
+.qd p { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.answer { background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.answer.best { border: 2px solid var(--ch-success); background: color-mix(in srgb, var(--ch-success) 6%, var(--ch-surface)); }
+.answer .text { overflow-wrap: anywhere; white-space: pre-wrap; }
+.helpers { background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: var(--radius); padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+.hhead { display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 14px; }
+.hrow { display: flex; align-items: center; gap: 10px; font-size: 14px; min-width: 0; }
+.hrow .who { min-width: 0; overflow-wrap: anywhere; }
+.rank { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--ch-surface-2); flex: none; }
+.rank.r1 { background: #f5c542; color: #3d2c00; } .rank.r2 { background: #c9d1dc; color: #26303c; } .rank.r3 { background: #d99a6c; color: #3a1d08; }
+.pts { font-size: 12px; color: var(--ch-text-muted); white-space: nowrap; }
+.link { background: none; border: 0; color: var(--ch-brand); font-weight: 600; font-size: 13px; cursor: pointer; padding: 0; }
+.best-tag { color: var(--ch-success); font-weight: 700; font-size: 12px; display: inline-flex; gap: 4px; align-items: center; }
+.reply { display: flex; gap: 8px; align-items: flex-end; position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 12px; background: var(--ch-surface); border-top: 1px solid var(--ch-border); }
+.reply textarea { flex: 1; min-width: 0; resize: none; background: var(--ch-surface-2); border: 1px solid var(--ch-border); border-radius: 12px; padding: 8px 10px; min-height: 40px; max-height: 120px; }
+.closed-bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px; text-align: center; background: var(--ch-surface-2); color: var(--ch-text-muted); font-size: 13px; }
+.hidden-note { background: var(--ch-warning-soft); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 13px; }
+
+/* Ask dialog */
+.scrim { position: absolute; inset: 0; background: var(--ch-scrim); display: none; align-items: flex-end; justify-content: center; z-index: 5; }
+.scrim.open { display: flex; }
+.sheet { background: var(--ch-surface); width: 100%; border-radius: 22px 22px 0 0; padding: 18px 16px 16px; max-height: 92%; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
+.sheet h2 { margin: 0; font-size: 19px; }
+.field label { display: block; font-size: 13px; font-weight: 600; color: var(--ch-text-muted); margin-bottom: 5px; }
+.field input, .field textarea, .field select { width: 100%; background: var(--ch-surface); border: 1px solid var(--ch-border-strong); border-radius: 10px; padding: 9px 11px; }
+.field textarea { min-height: 90px; resize: vertical; }
+.counter { text-align: right; font-size: 12px; color: var(--ch-text-muted); margin-top: 3px; }
+.toggle { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--ch-border); border-radius: var(--radius-sm); padding: 10px 12px; cursor: pointer; }
+.toggle .sw { width: 40px; height: 24px; border-radius: 999px; background: var(--ch-border-strong); position: relative; flex: none; margin-top: 1px; transition: background .15s; }
+.toggle .sw::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left .15s; }
+.toggle.on .sw { background: var(--ch-brand); }
+.toggle.on .sw::after { left: 19px; }
+.preview { font-size: 13px; color: var(--ch-text-muted); display: flex; align-items: center; gap: 6px; }
+.sheet-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.menu { position: absolute; right: 14px; top: 52px; background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.15); display: none; flex-direction: column; z-index: 6; min-width: 200px; overflow: hidden; }
+.menu.open { display: flex; }
+.menu button { border: 0; background: none; text-align: left; padding: 11px 14px; cursor: pointer; font-size: 14px; }
+.menu button:hover { background: var(--ch-hover); }
+.menu .danger { color: var(--ch-danger); }
+.toast { position: absolute; left: 50%; bottom: 80px; transform: translateX(-50%); background: var(--ch-text); color: var(--ch-bg); padding: 9px 14px; border-radius: 10px; font-size: 13px; display: none; z-index: 9; width: max-content; max-width: calc(100% - 32px); }
+.side ul { padding-left: 18px; margin: 4px 0 0; }
+.side li { margin: 4px 0; font-size: 14px; }
+.side h3 { font-size: 15px; margin: 18px 0 4px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="page-head">
+    <h1>Forum in News: design mockup</h1>
+    <span class="small muted">View as</span>
+    <div class="seg-role" id="roles">
+      <button data-role="student" class="on">Student</button>
+      <button data-role="officer">Officer</button>
+    </div>
+    <button class="btn outline small" id="theme">Dark mode</button>
+    <button class="btn outline small" id="reset">Reset</button>
+  </div>
+
+  <div class="layout">
+    <div>
+      <p class="label">The News tab on a phone</p>
+      <div class="phone" id="phone">
+        <div class="topbar" id="topbar"></div>
+        <div class="tabs" id="tabs"><span>Home</span><span>Ledger</span><span>Schedule</span><span>Contents</span><span class="on">News</span><span>Members</span></div>
+        <div class="content" id="content"></div>
+        <div id="bottom"></div>
+        <div class="menu" id="menu"></div>
+        <div class="scrim" id="ask"><div class="sheet" id="askSheet"></div></div>
+        <div class="toast" id="toast" role="status"></div>
+      </div>
+    </div>
+
+    <div class="side">
+      <p class="label">How it works</p>
+      <h3>Announcements | Forum</h3>
+      <ul>
+        <li>One switch at the top of News. Each side has its own red count of what is new.</li>
+        <li>Announcements: officers post, everyone comments, as now. New: a <b>tag</b> (a course, or General). Tap "Announcements" in the phone to see them.</li>
+        <li>The same tag filter works on both sides, so "Operations Research" shows its announcements and its forum questions.</li>
+        <li>An announcement tagged with a course notifies only the students taking that course.</li>
+      </ul>
+      <h3>Asking</h3>
+      <ul>
+        <li>Any member asks with "Ask a question": a title, optional details and a tag (a course, or General).</li>
+        <li><b>Ask anonymously</b>: classmates see "Anonymous classmate". Officers who manage News can see who asked, in case of misuse; the switch says so.</li>
+        <li>The asker can edit or delete their own question.</li>
+      </ul>
+      <h3>Answering</h3>
+      <ul>
+        <li>Anyone can answer. Answers always show the name.</li>
+        <li>The asker (or an officer) marks the <b>best answer</b>. It moves to the top in green with "Picked by the asker" or "Picked by an officer", and the question shows "Answered" in the list.</li>
+      </ul>
+      <h3>Top helpers</h3>
+      <ul>
+        <li>Each best answer gives its author 1 point. If the pick moves to another answer, the point moves too.</li>
+        <li>The Forum shows the top 3 this month; "See all" opens the full list, this month or all time.</li>
+        <li>You cannot answer your own question, so you cannot award yourself.</li>
+        <li>Members with no points are not listed. Anyone can hide themselves from the list in Account and still earn points.</li>
+      </ul>
+      <h3>Finding</h3>
+      <ul>
+        <li>Filters: All, Unanswered, Answered, Mine; a tag picker; and search on titles and details.</li>
+      </ul>
+      <h3>Officers (switch "View as" to Officer)</h3>
+      <ul>
+        <li>The ⋮ menu on any question: Close to new answers, Hide from the class, Delete.</li>
+        <li>"Post as announcement": turns a question and its best answer into an announcement.</li>
+        <li>They can see who asked an anonymous question.</li>
+      </ul>
+      <h3>Notifications</h3>
+      <ul>
+        <li>A new question tagged with a course: the students taking that course. Tagged General: the whole class.</li>
+        <li>The asker: when someone answers. The person whose answer is picked as best: when that happens.</li>
+        <li>All can be muted in Account, like the other notifications.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+const ME = 'Lim, Ana';
+const COURSES = { or: { name: 'Operations Research', color: '#2563EB' }, se: { name: 'Software Engineering', color: '#7C3AED' }, aa: { name: 'Abstract Algebra', color: '#0E7490' } };
+const COLORS = ['#0F766E', '#7C3AED', '#DB2777', '#2563EB', '#CC4A0A'];
+let Q, A, role, view, openId, filter, course, search, anon, menuFor, section;
+
+function seed() {
+  Q = [
+    { id: 'q1', title: 'Is the OR long quiz on Friday open notes?', body: 'Sir mentioned it last meeting but I did not catch it.', course: 'or', by: 'Reyes, Ben', anon: false, at: '2 hours ago', closed: false, hidden: false,
+      answers: [
+        { id: 'a1', by: 'Cruz, Mika', text: 'Open notes but no laptops. One short bond paper of formulas only.', at: '1 hour ago' },
+        { id: 'a2', by: 'Santos, Carlo', text: 'I think it was closed notes?', at: '1 hour ago' },
+      ], best: 'a1', pickedBy: 'asker' },
+    { id: 'q2', title: 'Where do we submit the SE documentation chapter 3?', body: '', course: 'se', by: 'Garcia, Lea', anon: true, at: '5 hours ago', closed: false, hidden: false, answers: [], best: null },
+    { id: 'q3', title: 'Can someone explain the proof that every subgroup of a cyclic group is cyclic?', body: 'Page 64 of the module. I get lost at the division algorithm part.', course: 'aa', by: 'Lim, Ana', anon: false, at: 'Yesterday', closed: false, hidden: false,
+      answers: [{ id: 'a3', by: 'Navarro, Kim', text: 'Take the smallest positive power m of the generator in H. For any power n in H, write n = qm + r with 0 ≤ r < m; then g^r is in H, so r must be 0. Hence H is generated by g^m.', at: 'Yesterday' }], best: null },
+    { id: 'q4', title: 'Is there a class shirt this semester?', body: '', course: '', by: 'Dizon, Paolo', anon: false, at: 'Nov 14', closed: true, hidden: false, answers: [{ id: 'a4', by: 'Mendoza, Rafael', text: 'Yes, the Treasurer posted it in Announcements.', at: 'Nov 14' }], best: 'a4', pickedBy: 'officer' },
+  ];
+  A = [
+    { id: 'n1', title: 'OR long quiz moved to Friday', body: 'Sir moved the long quiz to Friday, 8:00 AM, Room 304. Bring a calculator.', course: 'or', by: 'Mendoza, Rafael', at: '3 hours ago' },
+    { id: 'n2', title: 'Class shirt orders until Nov 21', body: 'PHP 350 each. Pay the Treasurer in cash or GCash and record it in the Ledger.', course: '', by: 'Dollano, Dea', at: 'Yesterday' },
+    { id: 'n3', title: 'SE chapter 3 submission link is up', body: 'Submit through the Contents tab, folder "SE Docs".', course: 'se', by: 'Mendoza, Rafael', at: 'Nov 15' },
+  ];
+  section = 'FORUM';
+  role = 'student'; view = 'list'; openId = null; filter = 'ALL'; course = ''; search = ''; anon = false; menuFor = null;
+}
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const initials = (n) => n.split(', ').reverse().map((p) => p[0]).join('').slice(0, 2);
+const colorOf = (n) => COLORS[[...n].reduce((s, c) => s + c.charCodeAt(0), 0) % COLORS.length];
+const officer = () => role === 'officer';
+function who(name, isAnon) {
+  if (isAnon) return `<span class="who"><span class="av anon">?</span><span>Anonymous classmate${name === ME ? ' <span class="muted">(you)</span>' : ''}${officer() ? `<span class="anon-real">Asked by ${esc(name)}. Only officers see this.</span>` : ''}</span></span>`;
+  return `<span class="who"><span class="av" style="background:${colorOf(name)}">${initials(name)}</span>${esc(name)}</span>`;
+}
+const courseBadge = (c) => c ? `<span class="badge course"><i class="dot" style="background:${COURSES[c].color}"></i>${esc(COURSES[c].name)}</span>` : '<span class="badge course">General</span>';
+// Points from earlier this month (made up), plus the best answers on this page.
+const EARLIER = { 'Navarro, Kim': 5, 'Cruz, Mika': 3, 'Mendoza, Rafael': 2, 'Santos, Carlo': 1, 'Lim, Ana': 1 };
+function helpers() {
+  const pts = { ...EARLIER };
+  for (const q of Q) { const a = q.answers.find((x) => x.id === q.best); if (a) pts[a.by] = (pts[a.by] ?? 0) + 1; }
+  return Object.entries(pts).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+function board(all) {
+  const list = helpers();
+  const rows = (all ? list : list.slice(0, 3)).map(([name, n], i) => `<div class="hrow"><span class="rank r${i + 1}">${i + 1}</span>${who(name, false)}<span style="flex:1"></span><span class="pts">${n} best answer${n === 1 ? '' : 's'}</span></div>`).join('');
+  return `<div class="helpers"><div class="hhead"><span>🏆 Top helpers this month</span>${all ? '' : '<button class="link" id="seeAll">See all</button>'}</div>${rows}</div>`;
+}
+function status(q) {
+  if (q.closed) return '<span class="badge closed">Closed</span>';
+  return q.best ? '<span class="badge ok">✓ Answered</span>' : `<span class="badge wait">${q.answers.length ? `${q.answers.length} answer${q.answers.length === 1 ? '' : 's'}, none picked` : 'No answer yet'}</span>`;
+}
+
+function render() {
+  $('menu').classList.remove('open');
+  if (view === 'list') renderList(); else renderDetail();
+}
+
+function renderList() {
+  $('topbar').innerHTML = 'BSM CS 3A';
+  const visible = Q.filter((q) => !q.hidden || officer());
+  const list = visible.filter((q) =>
+    (filter === 'ALL' || (filter === 'OPEN' && !q.best && !q.closed) || (filter === 'DONE' && q.best) || (filter === 'MINE' && q.by === ME)) &&
+    (!course || q.course === course || (course === 'GEN' && !q.course)) &&
+    (!search || (q.title + ' ' + q.body).toLowerCase().includes(search.toLowerCase())));
+  $('content').innerHTML = `
+    <div class="switch"><button data-section="ANN" class="${section === 'ANN' ? 'on' : ''}">Announcements <span class="count">1</span></button><button data-section="FORUM" class="${section === 'FORUM' ? 'on' : ''}">Forum <span class="count">2</span></button></div>
+    ${section === 'FORUM' ? `<div class="filters">${[['ALL', 'All'], ['OPEN', 'Unanswered'], ['DONE', 'Answered'], ['MINE', 'Mine']].map(([v, l]) => `<button class="chip${filter === v ? ' on' : ''}" data-filter="${v}">${l}</button>`).join('')}</div>` : ''}
+    <div class="search"><input id="search" placeholder="Search" value="${esc(search)}" aria-label="Search" />
+      <select id="course" aria-label="Course"><option value="">All tags</option><option value="GEN" ${course === 'GEN' ? 'selected' : ''}>General</option>${Object.entries(COURSES).map(([id, c]) => `<option value="${id}" ${course === id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+    ${section === 'FORUM' && filter === 'ALL' && !search && !course ? board(false) : ''}
+    ${section === 'ANN' ? annList() : list.length === 0 ? '<div class="empty">No questions here yet.<br>Ask the first one.</div>' : list.map((q) => `
+      <button class="q" data-open="${q.id}">
+        ${q.hidden ? '<span class="badge closed">Hidden from the class</span>' : ''}
+        <span class="title">${esc(q.title)}</span>
+        <span class="meta">${courseBadge(q.course)}${status(q)}</span>
+        <span class="meta">${who(q.by, q.anon)}<span>·</span><span>${esc(q.at)}</span><span>·</span><span>${q.answers.length} answer${q.answers.length === 1 ? '' : 's'}</span></span>
+      </button>`).join('')}`;
+  $('bottom').innerHTML = section === 'ANN' ? (officer() ? '<button class="fab" id="annBtn">＋ New announcement</button>' : '') : '<button class="fab" id="askBtn">＋ Ask a question</button>';
+  if ($('annBtn')) $('annBtn').onclick = openAnn;
+  $('search').oninput = (e) => { search = e.target.value; const pos = e.target.selectionStart; renderList(); $('search').focus(); $('search').setSelectionRange(pos, pos); };
+  $('course').onchange = (e) => { course = e.target.value; renderList(); };
+  if ($('askBtn')) $('askBtn').onclick = openAsk;
+  if ($('seeAll')) $('seeAll').onclick = () => {
+    $('askSheet').innerHTML = `<h2>Top helpers</h2><div class="filters"><button class="chip on">This month</button><button class="chip">All time</button></div>${board(true)}<p class="small muted" style="margin:0">Points come from answers marked as best. You can hide yourself from this list in Account.</p><div class="sheet-actions"><button class="btn text" id="cancelAsk">Close</button></div>`;
+    $('cancelAsk').onclick = () => $('ask').classList.remove('open');
+    $('ask').classList.add('open');
+  };
+}
+
+function renderDetail() {
+  const q = Q.find((x) => x.id === openId);
+  const mine = q.by === ME;
+  const canPick = (mine || officer()) && !q.closed;
+  $('topbar').innerHTML = `<button class="back" id="back">‹ Forum</button><span style="flex:1"></span>${mine || officer() ? '<button class="btn text small" id="more" aria-label="More">⋮</button>' : ''}`;
+  const answers = [...q.answers].sort((a, b) => (a.id === q.best ? -1 : b.id === q.best ? 1 : 0));
+  $('content').innerHTML = `
+    ${q.hidden ? '<div class="hidden-note">Hidden from the class. Only officers see it.</div>' : ''}
+    <div class="qd">
+      <div class="meta small">${courseBadge(q.course)} ${status(q)}</div>
+      <h2>${esc(q.title)}</h2>
+      ${q.body ? `<p>${esc(q.body)}</p>` : ''}
+      <div class="small muted">${who(q.by, q.anon)} · ${esc(q.at)}</div>
+      ${officer() && q.best ? '<div class="actions"><button class="btn outline small" id="promote">Post as announcement</button></div>' : ''}
+    </div>
+    <div class="label" style="margin:6px 0 0">${q.answers.length} answer${q.answers.length === 1 ? '' : 's'}</div>
+    ${answers.length === 0 ? '<div class="empty" style="padding:16px">No answers yet. Know the answer? Write it below.</div>' : answers.map((a) => `
+      <div class="answer${a.id === q.best ? ' best' : ''}">
+        ${a.id === q.best ? `<span class="best-tag">✓ Best answer <span class="muted" style="font-weight:500">· Picked by ${q.pickedBy === 'officer' ? 'an officer' : 'the asker'}</span></span>` : ''}
+        <div class="small">${who(a.by, false)} <span class="muted">· ${esc(a.at)}</span></div>
+        <div class="text">${esc(a.text)}</div>
+        ${canPick ? `<div class="actions"><button class="btn text small" data-best="${a.id}">${a.id === q.best ? 'Remove best answer' : 'Mark as best answer'}</button></div>` : ''}
+      </div>`).join('')}`;
+  $('bottom').innerHTML = q.closed
+    ? '<div class="closed-bar">Closed by an officer. No new answers.</div>'
+    : '<div class="reply"><textarea id="answer" rows="1" maxlength="1000" placeholder="Write an answer"></textarea><button class="btn solid" id="send">Send</button></div>';
+  $('back').onclick = () => { view = 'list'; render(); };
+  if ($('more')) $('more').onclick = () => openMenu(q, mine);
+  if ($('send')) $('send').onclick = () => {
+    const t = $('answer').value.trim();
+    if (!t) return;
+    q.answers.push({ id: 'a' + Date.now(), by: ME, text: t, at: 'Just now' });
+    render(); toast(q.anon && q.by !== ME ? 'Answer sent. The asker gets a notification.' : 'Answer sent.');
+  };
+  if ($('promote')) $('promote').onclick = () => toast('Opens a new announcement with the question and the best answer filled in.');
+}
+
+function openMenu(q, mine) {
+  const items = [];
+  if (mine) items.push(['edit', 'Edit question'], ['delete', 'Delete question', 'danger']);
+  if (officer()) {
+    items.push([q.closed ? 'open' : 'close', q.closed ? 'Open to new answers' : 'Close to new answers'], [q.hidden ? 'show' : 'hide', q.hidden ? 'Show to the class' : 'Hide from the class']);
+    if (!mine) items.push(['delete', 'Delete question', 'danger']);
+  }
+  $('menu').innerHTML = items.map(([id, label, cls]) => `<button data-menu="${id}" class="${cls ?? ''}">${label}</button>`).join('');
+  $('menu').classList.add('open');
+  menuFor = q;
+}
+
+function openAsk() {
+  anon = false;
+  $('askSheet').innerHTML = `
+    <h2>Ask a question</h2>
+    <div class="field"><label for="qt">Question</label><input id="qt" maxlength="150" placeholder="e.g. Is the quiz on Friday open notes?" /><div class="counter" id="qtc">0 / 150</div></div>
+    <div class="field"><label for="qb">Details (optional)</label><textarea id="qb" maxlength="1000" placeholder="Add what you already know, or a page number"></textarea></div>
+    <div class="field"><label for="qc">Tag</label><select id="qc"><option value="">General (the whole class)</option>${Object.entries(COURSES).map(([id, c]) => `<option value="${id}">${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="toggle" id="anon" role="switch" aria-checked="false" tabindex="0"><span class="sw"></span><span><b>Ask anonymously</b><br><span class="small muted">Classmates will not see your name. Officers who manage News can, in case of misuse.</span></span></div>
+    <div class="preview" id="preview"></div>
+    <div class="small muted" id="who-notify"></div>
+    <div class="sheet-actions"><button class="btn text" id="cancelAsk">Cancel</button><button class="btn solid" id="postAsk" disabled>Ask</button></div>`;
+  const upd = () => {
+    $('qtc').textContent = `${$('qt').value.length} / 150`;
+    $('postAsk').disabled = !$('qt').value.trim();
+    $('anon').classList.toggle('on', anon); $('anon').setAttribute('aria-checked', String(anon));
+    $('preview').innerHTML = `Shown as: ${anon ? '<span class="who"><span class="av anon">?</span>Anonymous classmate</span>' : who(ME, false)}`;
+    const c = $('qc').value;
+    $('who-notify').textContent = c ? `Students taking ${COURSES[c].name} get a notification.` : 'The whole class gets a notification.';
+  };
+  $('qt').oninput = upd; $('qc').onchange = upd;
+  $('anon').onclick = () => { anon = !anon; upd(); };
+  $('cancelAsk').onclick = () => $('ask').classList.remove('open');
+  $('postAsk').onclick = () => {
+    Q.unshift({ id: 'q' + Date.now(), title: $('qt').value.trim(), body: $('qb').value.trim(), course: $('qc').value, by: ME, anon, at: 'Just now', closed: false, hidden: false, answers: [], best: null });
+    $('ask').classList.remove('open'); filter = 'ALL'; render(); toast('Question posted.');
+  };
+  upd();
+  $('ask').classList.add('open');
+  $('qt').focus();
+}
+
+function annList() {
+  const list = A.filter((n) => (!course || n.course === course || (course === 'GEN' && !n.course)) && (!search || (n.title + ' ' + n.body).toLowerCase().includes(search.toLowerCase())));
+  if (list.length === 0) return '<div class="empty">No announcements with this tag.</div>';
+  return list.map((n) => `<div class="qd">
+    <div class="meta small">${courseBadge(n.course)}</div>
+    <h2 style="font-size:16px">${esc(n.title)}</h2><p class="small">${esc(n.body)}</p>
+    <div class="small muted">${who(n.by, false)} · ${esc(n.at)}</div></div>`).join('');
+}
+
+function openAnn() {
+  $('askSheet').innerHTML = `
+    <h2>New announcement</h2>
+    <div class="field"><label for="at">Title</label><input id="at" maxlength="120" /></div>
+    <div class="field"><label for="ab">Message</label><textarea id="ab"></textarea></div>
+    <div class="field"><label for="ac">Tag</label><select id="ac"><option value="">General (the whole class)</option>${Object.entries(COURSES).map(([id, c]) => `<option value="${id}">${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="small muted" id="an"></div>
+    <div class="sheet-actions"><button class="btn text" id="cancelAsk">Cancel</button><button class="btn solid" id="postAnn">Post</button></div>`;
+  const upd = () => { const c = $('ac').value; $('an').textContent = c ? `Students taking ${COURSES[c].name} get a notification.` : 'The whole class gets a notification.'; };
+  $('ac').onchange = upd; upd();
+  $('cancelAsk').onclick = () => $('ask').classList.remove('open');
+  $('postAnn').onclick = () => {
+    if (!$('at').value.trim()) return;
+    A.unshift({ id: 'n' + Date.now(), title: $('at').value.trim(), body: $('ab').value.trim(), course: $('ac').value, by: 'Mendoza, Rafael', at: 'Just now' });
+    $('ask').classList.remove('open'); render(); toast('Announcement posted.');
+  };
+  $('ask').classList.add('open');
+}
+
+function toast(t) { const el = $('toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => (el.style.display = 'none'), 2600); }
+
+document.addEventListener('click', (e) => {
+  const sec = e.target.closest('[data-section]'); if (sec) { section = sec.dataset.section; return renderList(); }
+  const f = e.target.closest('[data-filter]'); if (f) { filter = f.dataset.filter; return renderList(); }
+  const o = e.target.closest('[data-open]'); if (o) { openId = o.dataset.open; view = 'detail'; return render(); }
+  const b = e.target.closest('[data-best]');
+  if (b) { const q = Q.find((x) => x.id === openId); q.best = q.best === b.dataset.best ? null : b.dataset.best; q.pickedBy = q.by === ME ? 'asker' : 'officer'; render(); return toast(q.best ? 'Marked as the best answer.' : 'Best answer removed.'); }
+  const m = e.target.closest('[data-menu]');
+  if (m) {
+    const q = menuFor; const a = m.dataset.menu;
+    if (a === 'close') q.closed = true; if (a === 'open') q.closed = false;
+    if (a === 'hide') q.hidden = true; if (a === 'show') q.hidden = false;
+    if (a === 'delete') { Q = Q.filter((x) => x !== q); view = 'list'; render(); return toast('Question deleted.'); }
+    if (a === 'edit') { $('menu').classList.remove('open'); return toast('Opens the question form with its text filled in.'); }
+    render(); return toast({ close: 'Closed to new answers.', open: 'Open to new answers.', hide: 'Hidden from the class.', show: 'Shown to the class.' }[a]);
+  }
+  const r = e.target.closest('[data-role]');
+  if (r) { role = r.dataset.role; document.querySelectorAll('[data-role]').forEach((x) => x.classList.toggle('on', x === r)); return render(); }
+  if (!e.target.closest('#menu') && !e.target.closest('#more')) $('menu').classList.remove('open');
+});
+$('ask').onclick = (e) => e.target === e.currentTarget && $('ask').classList.remove('open');
+$('reset').onclick = () => { seed(); document.querySelectorAll('[data-role]').forEach((x) => x.classList.toggle('on', x.dataset.role === 'student')); render(); };
+$('theme').onclick = () => {
+  const dark = document.documentElement.dataset.theme !== 'dark' && !(document.documentElement.dataset.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  $('theme').textContent = dark ? 'Light mode' : 'Dark mode';
+};
+seed();
+render();
+</script>
+</body>
+</html>

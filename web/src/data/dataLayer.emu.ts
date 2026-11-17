@@ -47,10 +47,11 @@ import { watchVisibleRecords, type VisibleRecords } from './ledgerWatch';
 import { reportClientError } from './clientErrors';
 import { newRole } from './models';
 import {
-  addNoClass, cancelClaim, confirmClaim, deleteAnnouncement, markSeen, meetingsOn, newAnnouncement, newClaim, newMeeting,
+  addNoClass, addNoClasses, removeNoClasses, cancelClaim, confirmClaim, deleteAnnouncement, markSeen, meetingsOn, newAnnouncement, newClaim, newMeeting,
   rejectClaim, saveAnnouncement, saveAttendance, saveMeeting, sendClaim, sheetId,
 } from './features';
 import { query, where } from 'firebase/firestore';
+import { addAnswer, askQuestion, deleteQuestion, newAnswer, newQuestion, pickBest, removeAnswer } from './forum';
 
 // EMU_PROJECT keeps a run apart from data someone is trying by hand in the same emulator.
 const PROJECT = process.env.EMU_PROJECT || 'demo-classhub';
@@ -416,6 +417,46 @@ describe('claims, announcements and the timetable', () => {
     await deleteAnnouncement(as(MAYOR.uid), MAYOR.uid, classId, post.id);
   });
 
+  it('forum: an anonymous question, an answer, a reply and a best answer; removing and deleting clean up', async () => {
+    const outbox = async () => (await getDocs(collection(adminDb, 'classes', classId, 'outbox'))).docs.map((d) => d.data());
+    const before = (await outbox()).length;
+    const qid = await askQuestion(as(STUDENT.uid), STUDENT, classId, { title: ' Is the quiz open notes? ', body: '', courseId: '', anonymous: true });
+    const read = async () => newQuestion({ ...((await getDoc(doc(adminDb, 'classes', classId, 'forum', qid))).data() as object), id: qid });
+    let q = await read();
+    expect([q.title, q.uid, q.name, q.anonymous]).toEqual(['Is the quiz open notes?', '', '', true]);
+    expect((await getDoc(doc(adminDb, 'classes', classId, 'forumAuthors', qid))).get('uid')).toBe(STUDENT.uid);
+
+    await addAnswer(as(TREASURER.uid), TREASURER, classId, q, null, 'Open notes, no laptops.', false);
+    const answers = async () => (await getDocs(collection(adminDb, 'classes', classId, 'forumAnswers'))).docs.map((d) => newAnswer({ ...(d.data() as object), id: d.id }));
+    const a1 = (await answers())[0];
+    // The anonymous asker replies, still anonymous; a classmate cannot post anonymously.
+    await addAnswer(as(STUDENT.uid), STUDENT, classId, await read(), a1, 'Even a calculator?', true);
+    await expect(addAnswer(as(MAYOR.uid), MAYOR, classId, await read(), null, 'Hmm', true)).rejects.toBeTruthy();
+    expect((await answers()).find((a) => a.parentId === a1.id)?.uid).toBe('');
+    q = await read();
+    expect(q.answerCount).toBe(2);
+
+    // Notices: the question to the class, the answer and the reply to the authors of what they answer.
+    await expect.poll(async () => (await outbox()).length).toBe(before + 4);
+    const sent = (await outbox()).slice(-4).map((n) => `${n.kind} ${n.audience} ${n.audienceId === qid ? 'Q' : n.audienceId === a1.id ? 'A' : n.audienceId}`).sort();
+    expect(sent).toEqual(['FORUM_ANSWER AUTHOR A', 'FORUM_ANSWER AUTHOR Q', 'FORUM_ANSWER AUTHOR Q', 'FORUM_QUESTION CLASS ']);
+    expect((await outbox()).some((n) => String(n.title).startsWith('An anonymous classmate asked'))).toBe(true);
+
+    await expect(pickBest(as(TREASURER.uid), classId, qid, a1, true)).rejects.toBeTruthy();
+    await pickBest(as(STUDENT.uid), classId, qid, a1, true);
+    q = await read();
+    expect([q.bestAnswerId, q.bestAnswerUid, q.pickedBy]).toEqual([a1.id, TREASURER.uid, 'ASKER']);
+    // The writer removes the best answer; it stops being the best answer.
+    await removeAnswer(as(TREASURER.uid), classId, a1, q);
+    q = await read();
+    expect([q.bestAnswerId, q.pickedBy]).toEqual(['', '']);
+
+    await deleteQuestion(as(STUDENT.uid), classId, qid);
+    for (const sub of ['forum', 'forumAnswers', 'forumAuthors']) {
+      expect((await getDocs(collection(adminDb, 'classes', classId, sub))).size).toBe(0);
+    }
+  });
+
   it('the Mayor adds a weekly meeting and marks a day as no classes; a member cannot', async () => {
     await saveMeeting(as(MAYOR.uid), classId, newMeeting({ courseId: 'course1', dayOfWeek: 1, startMinutes: 480, endMinutes: 570, room: 'Room 204', instructor: '  Prof. Santos ' }));
     await addNoClass(as(MAYOR.uid), MAYOR.uid, classId, '2026-11-16', '', 'Holiday');
@@ -430,6 +471,19 @@ describe('claims, announcements and the timetable', () => {
     expect(day).toHaveLength(1);
     expect(day[0].cancelled?.reason).toBe('Holiday');
     expect(meetingsOn(meetings, marks, Date.UTC(2026, 10, 23, 2))[0].cancelled).toBeNull();
+
+    // Several days in one save: all marks written, one notification, and removed together.
+    const outboxBefore = (await getDocs(collection(adminDb, 'classes', classId, 'outbox'))).size;
+    await addNoClasses(as(MAYOR.uid), MAYOR.uid, classId, [{ dateKey: '2026-11-23', courseId: '' }, { dateKey: '2026-11-30', courseId: 'course1' }], ' Class suspension ');
+    const after = (await getDocs(collection(adminDb, 'classes', classId, 'noClass'))).docs.filter((d) => d.get('reason') === 'Class suspension');
+    expect(after.map((d) => d.get('dateKey')).sort()).toEqual(['2026-11-23', '2026-11-30']);
+    // The notification is queued after the save, without waiting for it.
+    await expect.poll(async () => (await getDocs(collection(adminDb, 'classes', classId, 'outbox'))).size).toBe(outboxBefore + 1);
+    const outbox = (await getDocs(collection(adminDb, 'classes', classId, 'outbox'))).docs.map((d) => d.data());
+    expect(outbox.some((n) => n.title === 'No classes on Monday, Nov 23 and 1 more day' && n.audience === 'CLASS')).toBe(true);
+    await expect(addNoClasses(as(STUDENT.uid), STUDENT.uid, classId, [{ dateKey: '2026-11-24', courseId: '' }], '')).rejects.toBeTruthy();
+    await removeNoClasses(as(MAYOR.uid), classId, after.map((d) => d.id));
+    expect((await getDocs(collection(adminDb, 'classes', classId, 'noClass'))).docs.filter((d) => d.get('reason') === 'Class suspension')).toHaveLength(0);
   });
 });
 
@@ -510,6 +564,8 @@ describe('leaving, error log and deleting a class', () => {
     await setDoc(doc(as(owner.uid), 'classes', small.classId, 'schedule', 's1'), { title: 'Quiz 1', kind: 'QUIZ', dueMillis: 5 });
     await addPayment(as(owner.uid), owner.uid, small.classId, { memberId: STUDENT.uid, memberName: STUDENT.name, amountCentavos: 1000 });
     await addWithdrawal(as(owner.uid), owner.uid, small.classId, { memberId: STUDENT.uid, memberName: STUDENT.name, amountCentavos: 1000 });
+    const asked = await askQuestion(as(STUDENT.uid), STUDENT, small.classId, { title: 'Anyone?', body: '', courseId: '', anonymous: true });
+    await addAnswer(as(owner.uid), owner, small.classId, newQuestion({ id: asked }), null, 'Yes.', false);
 
     const steps: string[] = [];
     await deleteClass(as(owner.uid), owner.uid, small.classId, (p) => steps.push(p.step));
@@ -517,7 +573,7 @@ describe('leaving, error log and deleting a class', () => {
     expect(steps.at(-1)).toBe('done');
     expect((await getDoc(doc(adminDb, 'classes', small.classId))).exists()).toBe(false);
     expect((await getDoc(doc(adminDb, 'invites', small.inviteCode))).exists()).toBe(false);
-    for (const sub of ['records', 'summary', 'members', 'roles', 'joinRequests', 'schedule']) {
+    for (const sub of ['records', 'summary', 'members', 'roles', 'joinRequests', 'schedule', 'forum', 'forumAnswers', 'forumAuthors']) {
       expect((await getDocs(collection(adminDb, 'classes', small.classId, sub))).size).toBe(0);
     }
   });

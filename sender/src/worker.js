@@ -61,10 +61,24 @@ export function tokensFor(kind, devices) {
     .filter((d) => !seen.has(d.token) && seen.add(d.token));
 }
 
-/** Where a tap on the notification opens. */
-export function linkOf(notice, classId) {
+/** Where a tap on the notification opens. Forum notices open the Forum, at the question when it is known. */
+export function linkOf(notice, classId, questionId = '') {
+  if (notice.kind === 'FORUM_QUESTION' || notice.kind === 'FORUM_ANSWER') {
+    return `/class/${classId}?tab=NEWS&forum=${questionId ? encodeURIComponent(questionId) : 'all'}`;
+  }
   const tab = { ANNOUNCEMENT: 'NEWS', COMMENT: 'NEWS', SCHEDULE_NEW: 'SCHEDULE', DUE_TOMORROW: 'SCHEDULE', NO_CLASS: 'SCHEDULE', CLAIM_SENT: 'LEDGER', CLAIM_DECIDED: 'LEDGER', PAYMENT_DUE: 'LEDGER', JOIN_REQUEST: 'MEMBERS' }[notice.kind];
   return `/class/${classId}${tab ? `?tab=${tab}` : ''}`;
+}
+
+/**
+ * AUTHOR notices name a Forum question or answer instead of a person: its author record says who wrote it,
+ * which keeps anonymous posts anonymous in the app. Returns the notice addressed to that member (USER), and
+ * the question to open, or null when the post is gone.
+ */
+export function resolveAuthor(notice, record) {
+  if (notice.audience !== 'AUTHOR') return { notice, questionId: '' };
+  if (!record || typeof record.uid !== 'string' || !record.uid) return null;
+  return { notice: { ...notice, audience: 'USER', audienceId: record.uid }, questionId: record.questionId ?? '' };
 }
 
 // ---------------------------------------------------------------- One run
@@ -104,6 +118,19 @@ export async function runOnce(cfg) {
       summary.dropped++;
       continue;
     }
+    // A Forum notice for the writer of a post: find who that is (one more request).
+    let questionId = '';
+    if (notice.audience === 'AUTHOR') {
+      const res = await call(`${base}/classes/${classId}/forumAuthors/${encodeURIComponent(notice.audienceId ?? '')}`);
+      const resolved = resolveAuthor(notice, res.ok ? docOf(await res.json()) : null);
+      if (!resolved) {
+        await remove(notice.name);
+        summary.dropped++;
+        continue;
+      }
+      Object.assign(notice, resolved.notice);
+      questionId = resolved.questionId;
+    }
     const members = await list(`classes/${classId}/members`);
     const roles = notice.audience === 'PERMISSION' ? await list(`classes/${classId}/roles`) : [];
     let done = new Set();
@@ -135,7 +162,7 @@ export async function runOnce(cfg) {
         summary.sent++;
         continue;
       }
-      const link = linkOf(notice, classId);
+      const link = linkOf(notice, classId, questionId);
       const res = await call(`${cfg.fcm}/v1/projects/${cfg.projectId}/messages:send`, {
         method: 'POST',
         body: JSON.stringify({

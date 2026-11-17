@@ -510,7 +510,10 @@ service cloud.firestore {
         && isText(d.body, 300)
         && isText(d.audienceId, 128)
         && (
-          (d.kind == 'ANNOUNCEMENT' && d.audience == 'CLASS' && can(c, 'ANNOUNCEMENTS_MANAGE'))
+          (d.kind == 'ANNOUNCEMENT' && d.audience in ['CLASS', 'COURSE'] && can(c, 'ANNOUNCEMENTS_MANAGE'))
+          || (d.kind == 'FORUM_QUESTION' && d.audience in ['CLASS', 'COURSE'] && isMember(c))
+          // AUTHOR: the writer of the forum question or answer audienceId, looked up by the sender.
+          || (d.kind == 'FORUM_ANSWER' && d.audience == 'AUTHOR' && isMember(c))
           || (d.kind in ['NO_CLASS', 'SCHEDULE_NEW'] && d.audience in ['CLASS', 'COURSE'] && can(c, 'SCHEDULE_MANAGE'))
           || (d.kind == 'CLAIM_SENT' && d.audience == 'PERMISSION' && d.audienceId == 'RECORDS_MANAGE' && isMember(c))
           || (d.kind == 'CLAIM_DECIDED' && d.audience == 'USER' && can(c, 'RECORDS_MANAGE'))
@@ -622,7 +625,7 @@ service cloud.firestore {
     function isAnnouncement() {
       let d = request.resource.data;
       return d.keys().hasAll(['title', 'body', 'pinned', 'createdByUid', 'createdAtMillis', 'editedAtMillis'])
-        && d.keys().hasOnly(['title', 'body', 'pinned', 'createdByUid', 'createdAtMillis', 'editedAtMillis', 'commentCount', 'lastCommentId', 'commentsOff', 'id'])
+        && d.keys().hasOnly(['title', 'body', 'pinned', 'createdByUid', 'createdAtMillis', 'editedAtMillis', 'commentCount', 'lastCommentId', 'commentsOff', 'courseId', 'id'])
         && d.get('id', '') == ''
         && isFilled(d.title, 120)
         && isText(d.body, 4000)
@@ -631,7 +634,9 @@ service cloud.firestore {
         && d.editedAtMillis is int
         && d.get('commentCount', 0) is int
         && d.get('lastCommentId', '') is string
-        && d.get('commentsOff', false) is bool;
+        && d.get('commentsOff', false) is bool
+        // Nov 17: the tag, a course id or '' for General. Missing on announcements from before.
+        && isText(d.get('courseId', ''), 128);
     }
 
     function postPath(c, p) {
@@ -657,6 +662,108 @@ service cloud.firestore {
         && get(postPath(c, d.postId)).data.get('commentsOff', false) == false
         && (d.parentId == ''
           || (get(commentPath(c, d.parentId)).data.postId == d.postId && get(commentPath(c, d.parentId)).data.parentId == ''));
+    }
+
+    // ---- Forum (docs/PLAN-FORUM.md)
+
+    function forumPath(c, id) {
+      return /databases/$(database)/documents/classes/$(c)/forum/$(id);
+    }
+
+    function forumAnswerPath(c, id) {
+      return /databases/$(database)/documents/classes/$(c)/forumAnswers/$(id);
+    }
+
+    function forumAuthorPath(c, id) {
+      return /databases/$(database)/documents/classes/$(c)/forumAuthors/$(id);
+    }
+
+    // Who wrote forum question or answer `id` (its data d): named in it, or, when anonymous, in its author record.
+    function forumWriter(c, id, d) {
+      return d.uid != '' ? d.uid : get(forumAuthorPath(c, id)).data.uid;
+    }
+
+    // Shown under their own member name, or anonymous with no name at all.
+    function isForumByline(c, d) {
+      return d.anonymous is bool
+        && ((d.anonymous == false && d.uid == uid() && d.name == get(memberPath(c, uid())).data.name)
+          || (d.anonymous == true && d.uid == '' && d.name == ''));
+    }
+
+    function isForumQuestion() {
+      let d = request.resource.data;
+      return hasFields(d, ['title', 'body', 'courseId', 'anonymous', 'uid', 'name', 'createdAtMillis', 'editedAtMillis',
+          'answerCount', 'lastAnswerId', 'bestAnswerId', 'bestAnswerUid', 'pickedBy', 'pickedAtMillis', 'closed', 'hidden'])
+        && isFilled(d.title, 150)
+        && isText(d.body, 2000)
+        && isText(d.courseId, 128)
+        && d.anonymous is bool
+        && d.uid is string
+        && d.name is string
+        && d.createdAtMillis is int
+        && d.editedAtMillis is int
+        && d.answerCount is int
+        && d.lastAnswerId is string
+        && d.bestAnswerId is string
+        && d.bestAnswerUid is string
+        && d.pickedBy in ['', 'ASKER', 'OFFICER']
+        && d.pickedAtMillis is int
+        && d.closed is bool
+        && d.hidden is bool;
+    }
+
+    function isNewForumQuestion(c, id) {
+      let d = request.resource.data;
+      return isMember(c) && isOpen(c) && isForumQuestion() && isForumByline(c, d)
+        && isRecentMillis(d.createdAtMillis)
+        && d.editedAtMillis == 0
+        && d.answerCount == 0 && d.lastAnswerId == ''
+        && d.bestAnswerId == '' && d.bestAnswerUid == '' && d.pickedBy == '' && d.pickedAtMillis == 0
+        && d.closed == false && d.hidden == false
+        && getAfter(forumAuthorPath(c, id)).data.uid == uid();
+    }
+
+    // An answer (parentId '') or a reply to an answer of the same question. Only the asker may write
+    // anonymously, and only on their own question.
+    function isNewForumAnswer(c, id) {
+      let d = request.resource.data;
+      let q = get(forumPath(c, d.questionId)).data;
+      return isMember(c) && isOpen(c)
+        && hasFields(d, ['questionId', 'parentId', 'uid', 'name', 'anonymous', 'text', 'createdAtMillis', 'removedAtMillis'])
+        && isFilled(d.questionId, 128)
+        && isText(d.parentId, 128)
+        && isFilled(d.text, 1000)
+        && isRecentMillis(d.createdAtMillis)
+        && d.removedAtMillis == 0
+        && isForumByline(c, d)
+        && (d.anonymous == false || forumWriter(c, d.questionId, q) == uid())
+        && q.closed == false
+        && q.hidden == false
+        && getAfter(forumPath(c, d.questionId)).data.lastAnswerId == id
+        && getAfter(forumAuthorPath(c, id)).data.uid == uid()
+        && (d.parentId == ''
+          || (get(forumAnswerPath(c, d.parentId)).data.questionId == d.questionId && get(forumAnswerPath(c, d.parentId)).data.parentId == ''));
+    }
+
+    // The asker or a News officer sets or clears the best answer. A pick names a live answer to this
+    // question that is not anonymous and not the asker's own; pickedBy says who picked.
+    function isPickingBest(c, id) {
+      let d = request.resource.data;
+      let asker = forumWriter(c, id, resource.data);
+      let mine = asker == uid();
+      return isMember(c) && isOpen(c)
+        && changesOnly(['bestAnswerId', 'bestAnswerUid', 'pickedBy', 'pickedAtMillis'])
+        && resource.data.closed == false
+        && (mine || can(c, 'ANNOUNCEMENTS_MANAGE'))
+        && ((d.bestAnswerId == '' && d.bestAnswerUid == '' && d.pickedBy == '' && d.pickedAtMillis == 0)
+          || (isRecentMillis(d.pickedAtMillis)
+            && ((mine && d.pickedBy == 'ASKER') || (!mine && d.pickedBy == 'OFFICER'))
+            && get(forumAnswerPath(c, d.bestAnswerId)).data.questionId == id
+            && get(forumAnswerPath(c, d.bestAnswerId)).data.parentId == ''
+            && get(forumAnswerPath(c, d.bestAnswerId)).data.removedAtMillis == 0
+            && get(forumAnswerPath(c, d.bestAnswerId)).data.uid == d.bestAnswerUid
+            && d.bestAnswerUid != ''
+            && d.bestAnswerUid != asker));
     }
 
     function isMeeting() {
@@ -1026,6 +1133,71 @@ service cloud.firestore {
         allow delete: if can(classId, 'ANNOUNCEMENTS_MANAGE') || isOwnerClosing(classId);
       }
 
+      // ---- Forum (docs/PLAN-FORUM.md). Hidden questions are read only by News officers, so members
+      // query with hidden == false.
+      match /forum/{questionId} {
+        allow read: if isMember(classId) && (resource.data.hidden == false || can(classId, 'ANNOUNCEMENTS_MANAGE'));
+        allow create: if isNewForumQuestion(classId, questionId);
+        allow update: if
+          // The asker edits the words and the tag.
+          (isMember(classId) && isOpen(classId) && isForumQuestion()
+            && changesOnly(['title', 'body', 'courseId', 'editedAtMillis'])
+            && isRecentMillis(request.resource.data.editedAtMillis)
+            && forumWriter(classId, questionId, resource.data) == uid())
+          // Any member raises the count by one, only in the batch that adds the answer it names.
+          || (isMember(classId) && isOpen(classId) && resource.data.closed == false
+            && changesOnly(['answerCount', 'lastAnswerId'])
+            && request.resource.data.answerCount == resource.data.answerCount + 1
+            && request.resource.data.lastAnswerId is string
+            && !exists(forumAnswerPath(classId, request.resource.data.lastAnswerId))
+            && getAfter(forumAnswerPath(classId, request.resource.data.lastAnswerId)).data.questionId == questionId)
+          || isPickingBest(classId, questionId)
+          // Anyone clears a best answer whose text was removed.
+          || (isMember(classId)
+            && changesOnly(['bestAnswerId', 'bestAnswerUid', 'pickedBy', 'pickedAtMillis'])
+            && resource.data.bestAnswerId != ''
+            && request.resource.data.bestAnswerId == '' && request.resource.data.bestAnswerUid == ''
+            && request.resource.data.pickedBy == '' && request.resource.data.pickedAtMillis == 0
+            && getAfter(forumAnswerPath(classId, resource.data.bestAnswerId)).data.removedAtMillis != 0)
+          // News officers close and hide.
+          || (can(classId, 'ANNOUNCEMENTS_MANAGE') && isOpen(classId)
+            && changesOnly(['closed', 'hidden'])
+            && request.resource.data.closed is bool && request.resource.data.hidden is bool);
+        allow delete: if can(classId, 'ANNOUNCEMENTS_MANAGE') || isOwnerClosing(classId)
+          || (isMember(classId) && forumWriter(classId, questionId, resource.data) == uid());
+      }
+
+      // Answers and replies. Removing one blanks its text and keeps its place. Nobody edits one.
+      match /forumAnswers/{answerId} {
+        allow read: if isMember(classId);
+        allow create: if isNewForumAnswer(classId, answerId);
+        allow update: if isMember(classId)
+          && resource.data.removedAtMillis == 0
+          && (forumWriter(classId, answerId, resource.data) == uid() || can(classId, 'ANNOUNCEMENTS_MANAGE'))
+          && changesOnly(['text', 'removedAtMillis'])
+          && request.resource.data.text == ''
+          && isRecentMillis(request.resource.data.removedAtMillis);
+        // Left behind by a deleted question: anyone in the class may clear them.
+        allow delete: if can(classId, 'ANNOUNCEMENTS_MANAGE') || isOwnerClosing(classId)
+          || (isMember(classId) && !exists(forumPath(classId, resource.data.questionId)));
+      }
+
+      // Who wrote each forum question and answer: { uid, questionId }. Only the writer and News officers read it.
+      match /forumAuthors/{postId} {
+        allow read: if signedIn() && (resource.data.uid == uid() || can(classId, 'ANNOUNCEMENTS_MANAGE'));
+        allow create: if isMember(classId) && isOpen(classId)
+          && hasFields(request.resource.data, ['uid', 'questionId'])
+          && request.resource.data.uid == uid()
+          && isFilled(request.resource.data.questionId, 128)
+          && ((request.resource.data.questionId == postId
+              && !exists(forumPath(classId, postId)) && existsAfter(forumPath(classId, postId)))
+            || (!exists(forumAnswerPath(classId, postId))
+              && getAfter(forumAnswerPath(classId, postId)).data.questionId == request.resource.data.questionId));
+        allow delete: if can(classId, 'ANNOUNCEMENTS_MANAGE') || isOwnerClosing(classId)
+          || (signedIn() && resource.data.uid == uid())
+          || (isMember(classId) && !exists(forumPath(classId, resource.data.questionId)));
+      }
+
       // Each member's up and down votes on announcements and comments: one document per member holding
       // a map from the announcement or comment id to 1 or -1. Only they write it; every member may read it.
       match /votes/{voterId} {
@@ -1041,9 +1213,11 @@ service cloud.firestore {
       match /seen/{studentId} {
         allow read: if isMember(classId);
         allow create, update: if isMember(classId) && studentId == uid()
-          && request.resource.data.keys().hasOnly(['announcements'])
-          && request.resource.data.announcements is map
-          && request.resource.data.announcements.size() <= 500;
+          && request.resource.data.keys().hasOnly(['announcements', 'forumAt', 'hideFromBoard'])
+          && request.resource.data.get('announcements', {}) is map
+          && request.resource.data.get('announcements', {}).size() <= 500
+          && request.resource.data.get('forumAt', 0) is int
+          && request.resource.data.get('hideFromBoard', false) is bool;
         allow delete: if (signedIn() && studentId == uid()) || isOwnerClosing(classId);
       }
 

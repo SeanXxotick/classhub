@@ -761,6 +761,203 @@ async function main() {
     await assertSucceeds(deleteDoc(doc(db('mayor'), `${P}/p1`)));
   });
 
+  // ---------------------------------------------------------------- Forum (docs/PLAN-FORUM.md)
+  // student asks, maria (Treasurer, no News permission) answers, sec (Secretary) moderates.
+
+  const F = `classes/${CLASS}/forum`;
+  const FA = `classes/${CLASS}/forumAnswers`;
+  const FW = `classes/${CLASS}/forumAuthors`;
+  const readAs = async (path) => {
+    let data;
+    await admin(async (a) => (data = (await getDoc(doc(a, path))).data()));
+    return data;
+  };
+  const memberName = async (who) => (await readAs(`classes/${CLASS}/members/${who}`))?.name ?? nameOf(who);
+  const question = (fields = {}) => ({
+    title: 'Is the quiz open notes?', body: '', courseId: '', anonymous: false, uid: '', name: '', createdAtMillis: Date.now(), editedAtMillis: 0,
+    answerCount: 0, lastAnswerId: '', bestAnswerId: '', bestAnswerUid: '', pickedBy: '', pickedAtMillis: 0, closed: false, hidden: false, ...fields,
+  });
+  /** Asks a question the way the app does: the question and its author record in one batch. */
+  const ask = async (who, id, fields = {}, record = {}) => {
+    const d = db(who);
+    const anonymous = fields.anonymous === true;
+    const b = writeBatch(d);
+    b.set(doc(d, `${F}/${id}`), question({ uid: anonymous ? '' : who, name: anonymous ? '' : await memberName(who), ...fields }));
+    if (record !== null) b.set(doc(d, `${FW}/${id}`), { uid: who, questionId: id, ...record });
+    return b.commit();
+  };
+  /** Answers or replies: the answer, its author record and the question's count, in one batch. */
+  const answer = async (who, id, qid, fields = {}, { bump = {}, record = {} } = {}) => {
+    const d = db(who);
+    const anonymous = fields.anonymous === true;
+    const b = writeBatch(d);
+    b.set(doc(d, `${FA}/${id}`), {
+      questionId: qid, parentId: '', uid: anonymous ? '' : who, name: anonymous ? '' : await memberName(who), anonymous, text: 'Open notes, no laptops.',
+      createdAtMillis: Date.now(), removedAtMillis: 0, ...fields,
+    });
+    if (record !== null) b.set(doc(d, `${FW}/${id}`), { uid: who, questionId: qid, ...record });
+    b.update(doc(d, `${F}/${qid}`), { answerCount: increment(1), lastAnswerId: id, ...bump });
+    return b.commit();
+  };
+  const pick = (who, qid, aid, auid, by, fields = {}) =>
+    updateDoc(doc(db(who), `${F}/${qid}`), { bestAnswerId: aid, bestAnswerUid: auid, pickedBy: by, pickedAtMillis: Date.now(), ...fields });
+
+  await test('Forum: any member asks under their own name or anonymously, always with an author record', async () => {
+    await assertFails(ask('student', 'q0', {}, null));
+    await assertFails(ask('student', 'q0', {}, { uid: 'maria' }));
+    await assertFails(ask('student', 'q0', { uid: 'maria' }));
+    await assertFails(ask('student', 'q0', { name: 'Someone Else' }));
+    await assertFails(ask('student', 'q0', { anonymous: true, uid: 'student' }));
+    await assertFails(ask('student', 'q0', { anonymous: true, name: 'Student' }));
+    await assertFails(ask('student', 'q0', { title: '   ' }));
+    await assertFails(ask('student', 'q0', { title: 'x'.repeat(151) }));
+    await assertFails(ask('student', 'q0', { body: 'x'.repeat(2001) }));
+    await assertFails(ask('student', 'q0', { answerCount: 3 }));
+    await assertFails(ask('student', 'q0', { closed: true }));
+    await assertFails(ask('student', 'q0', { hidden: true }));
+    await assertFails(ask('student', 'q0', { pickedBy: 'ASKER' }));
+    await assertFails(ask('student', 'q0', { extra: 1 }));
+    await assertFails(ask('outsider', 'q0'));
+    await assertSucceeds(ask('student', 'q1', { courseId: 'or' }));
+    await assertSucceeds(ask('student', 'q2', { anonymous: true }));
+    // A record cannot be written for someone else's question, or for one that already exists.
+    await assertFails(setDoc(doc(db('maria'), `${FW}/q1`), { uid: 'maria', questionId: 'q1' }));
+  });
+
+  await test('Forum: an anonymous question hides its asker from classmates, not from News officers', async () => {
+    const q2 = await assertSucceeds(getDoc(doc(db('maria'), `${F}/q2`)));
+    expect(q2.get('uid') === '' && q2.get('name') === '', 'the question itself must not name the asker');
+    await assertFails(getDoc(doc(db('maria'), `${FW}/q2`)));
+    await assertFails(getDocs(collection(db('maria'), FW)));
+    await assertSucceeds(getDoc(doc(db('student'), `${FW}/q2`)));
+    await assertSucceeds(getDoc(doc(db('sec'), `${FW}/q2`)));
+    await assertSucceeds(getDocs(collection(db('sec'), FW)));
+  });
+
+  await test('Forum: answers and replies, one level, count kept by the same batch; only the asker answers anonymously', async () => {
+    await assertSucceeds(answer('maria', 'a1', 'q1'));
+    await assertSucceeds(answer('mayor', 'a2', 'q1', { text: 'Closed notes I think.' }));
+    await assertSucceeds(answer('student', 'r1', 'q1', { parentId: 'a1', text: 'Thanks! Even a calculator?' }));
+    expect((await readAs(`${F}/q1`)).answerCount === 3, 'the count should be 3');
+    await assertFails(answer('maria', 'r2', 'q1', { parentId: 'r1' }));
+    await assertFails(answer('maria', 'r2', 'q1', { parentId: 'nothing' }));
+    await assertFails(answer('maria', 'x1', 'q1', { uid: 'student' }));
+    await assertFails(answer('maria', 'x1', 'q1', { name: 'Student' }));
+    await assertFails(answer('maria', 'x1', 'q1', { text: ' ' }));
+    await assertFails(answer('maria', 'x1', 'q1', { text: 'x'.repeat(1001) }));
+    await assertFails(answer('maria', 'x1', 'q1', { removedAtMillis: 5 }));
+    await assertFails(answer('maria', 'x1', 'q1', {}, { record: null }));
+    await assertFails(answer('maria', 'x1', 'q1', {}, { record: { uid: 'student' } }));
+    await assertFails(answer('maria', 'x1', 'q1', {}, { record: { questionId: 'q2' } }));
+    await assertFails(answer('maria', 'x1', 'q1', {}, { bump: { answerCount: increment(2) } }));
+    await assertFails(answer('maria', 'x1', 'q1', {}, { bump: { title: 'Hacked' } }));
+    // Anonymous: only the asker, only on their own question.
+    await assertFails(answer('maria', 'x1', 'q2', { anonymous: true }));
+    await assertFails(answer('mayor', 'x1', 'q1', { anonymous: true }));
+    await assertSucceeds(answer('maria', 'a3', 'q2'));
+    await assertSucceeds(answer('student', 'r3', 'q2', { anonymous: true, parentId: 'a3', text: 'Which folder?' }));
+    const r3 = await assertSucceeds(getDoc(doc(db('maria'), `${FA}/r3`)));
+    expect(r3.get('uid') === '' && r3.get('name') === '', 'the anonymous reply must not name the asker');
+    // No count without an answer, and no answer without the count.
+    await assertFails(updateDoc(doc(db('maria'), `${F}/q1`), { answerCount: increment(1), lastAnswerId: 'a1' }));
+    await assertFails(setDoc(doc(db('maria'), `${FA}/x2`), {
+      questionId: 'q1', parentId: '', uid: 'maria', name: await memberName('maria'), anonymous: false, text: 'Hi', createdAtMillis: Date.now(), removedAtMillis: 0,
+    }));
+    await assertFails(getDoc(doc(db('outsider'), `${FA}/a1`)));
+    await assertSucceeds(getDocs(query(collection(db('student'), FA), where('questionId', '==', 'q1'))));
+  });
+
+  await test('Forum: the asker or a News officer picks the best answer; never their own, a reply or someone else\'s pick', async () => {
+    await assertFails(pick('maria', 'q1', 'a1', 'maria', 'ASKER'));
+    await assertFails(pick('maria', 'q1', 'a1', 'maria', 'OFFICER'));
+    await assertFails(pick('student', 'q1', 'a1', 'mayor', 'ASKER'));
+    await assertFails(pick('student', 'q1', 'a1', 'maria', 'OFFICER'));
+    await assertFails(pick('student', 'q1', 'r1', 'student', 'ASKER'));
+    await assertFails(pick('student', 'q1', 'a3', 'maria', 'ASKER'));
+    await assertFails(pick('student', 'q1', 'a1', 'maria', 'ASKER', { title: 'Changed' }));
+    await assertSucceeds(pick('student', 'q1', 'a1', 'maria', 'ASKER'));
+    await assertSucceeds(pick('sec', 'q1', 'a2', 'mayor', 'OFFICER'));
+    await assertFails(pick('sec', 'q1', 'a1', 'maria', 'ASKER'));
+    await assertSucceeds(updateDoc(doc(db('student'), `${F}/q1`), { bestAnswerId: '', bestAnswerUid: '', pickedBy: '', pickedAtMillis: 0 }));
+    // An anonymous asker picks too, recorded as the asker.
+    await assertSucceeds(pick('student', 'q2', 'a3', 'maria', 'ASKER'));
+    // The asker's own anonymous reply cannot be picked, even by an officer.
+    await assertFails(pick('sec', 'q2', 'r3', '', 'OFFICER'));
+  });
+
+  await test('Forum: the asker edits their question; writers and officers remove answers; a removed best answer is cleared', async () => {
+    await assertSucceeds(updateDoc(doc(db('student'), `${F}/q1`), { title: 'Is Friday\'s quiz open notes?', courseId: 'se', editedAtMillis: Date.now() }));
+    await assertSucceeds(updateDoc(doc(db('student'), `${F}/q2`), { body: 'For the SE chapter 3.', editedAtMillis: Date.now() }));
+    await assertFails(updateDoc(doc(db('maria'), `${F}/q1`), { title: 'Hacked', editedAtMillis: Date.now() }));
+    await assertFails(updateDoc(doc(db('student'), `${F}/q1`), { anonymous: true, uid: '', name: '' }));
+    await assertFails(updateDoc(doc(db('student'), `${F}/q1`), { answerCount: 0 }));
+    await assertFails(updateDoc(doc(db('maria'), `${FA}/a1`), { text: 'Edited' }));
+    await assertFails(updateDoc(doc(db('student'), `${FA}/a1`), { text: '', removedAtMillis: Date.now() }));
+    await assertFails(updateDoc(doc(db('maria'), `${F}/q2`), { bestAnswerId: '', bestAnswerUid: '', pickedBy: '', pickedAtMillis: 0 }));
+    await assertSucceeds(updateDoc(doc(db('maria'), `${FA}/a3`), { text: '', removedAtMillis: Date.now() }));
+    await assertSucceeds(updateDoc(doc(db('maria'), `${F}/q2`), { bestAnswerId: '', bestAnswerUid: '', pickedBy: '', pickedAtMillis: 0 }));
+    await assertSucceeds(updateDoc(doc(db('student'), `${FA}/r3`), { text: '', removedAtMillis: Date.now() }));
+    await assertSucceeds(updateDoc(doc(db('sec'), `${FA}/a2`), { text: '', removedAtMillis: Date.now() }));
+    await assertFails(updateDoc(doc(db('sec'), `${FA}/a2`), { text: '', removedAtMillis: Date.now() }));
+  });
+
+  await test('Forum: News officers close and hide; hidden questions are read only by them', async () => {
+    await assertFails(updateDoc(doc(db('maria'), `${F}/q1`), { closed: true }));
+    await assertFails(updateDoc(doc(db('student'), `${F}/q1`), { hidden: true }));
+    await assertSucceeds(updateDoc(doc(db('sec'), `${F}/q1`), { closed: true }));
+    await assertFails(answer('maria', 'x3', 'q1'));
+    await assertFails(pick('student', 'q1', 'a1', 'maria', 'ASKER'));
+    await assertSucceeds(updateDoc(doc(db('sec'), `${F}/q1`), { closed: false, hidden: true }));
+    await assertFails(getDoc(doc(db('maria'), `${F}/q1`)));
+    await assertFails(getDocs(collection(db('maria'), F)));
+    await assertSucceeds(getDocs(query(collection(db('maria'), F), where('hidden', '==', false))));
+    await assertSucceeds(getDocs(collection(db('sec'), F)));
+    await assertFails(answer('maria', 'x3', 'q1'));
+    await assertSucceeds(updateDoc(doc(db('sec'), `${F}/q1`), { hidden: false }));
+  });
+
+  await test('Forum: the asker deletes their question; what it leaves behind may be cleared', async () => {
+    await assertFails(deleteDoc(doc(db('maria'), `${F}/q2`)));
+    await assertFails(deleteDoc(doc(db('maria'), `${FA}/a3`)));
+    const s = db('student');
+    const b = writeBatch(s);
+    b.delete(doc(s, `${F}/q2`));
+    b.delete(doc(s, `${FW}/q2`));
+    await assertSucceeds(b.commit());
+    await assertSucceeds(deleteDoc(doc(db('maria'), `${FA}/a3`)));
+    await assertSucceeds(deleteDoc(doc(db('student'), `${FA}/r3`)));
+    await assertSucceeds(deleteDoc(doc(db('student'), `${FW}/a3`)));
+    await assertSucceeds(deleteDoc(doc(db('student'), `${FW}/r3`)));
+    // A live question's answers and records stay.
+    await assertFails(deleteDoc(doc(db('student'), `${FA}/a1`)));
+    await assertFails(deleteDoc(doc(db('student'), `${FW}/a1`)));
+    await assertSucceeds(deleteDoc(doc(db('sec'), `${F}/q1`)));
+  });
+
+  await test('Forum and tags: notices, tagged announcements, the forum visit time', async () => {
+    const notice = (who, fields) => setDoc(doc(db(who), `classes/${CLASS}/outbox/f-${who}-${Math.random().toString(36).slice(2)}`),
+      { kind: 'FORUM_QUESTION', audience: 'CLASS', audienceId: '', title: 'New question', body: '', createdByUid: who, createdAtMillis: Date.now(), ...fields });
+    await assertSucceeds(notice('student', {}));
+    await assertSucceeds(notice('student', { audience: 'COURSE', audienceId: 'or' }));
+    await assertSucceeds(notice('student', { kind: 'FORUM_ANSWER', audience: 'AUTHOR', audienceId: 'q1' }));
+    await assertFails(notice('student', { kind: 'FORUM_ANSWER', audience: 'CLASS' }));
+    await assertFails(notice('student', { audience: 'PERMISSION', audienceId: 'RECORDS_MANAGE' }));
+    await assertFails(notice('outsider', {}));
+    await assertSucceeds(notice('sec', { kind: 'ANNOUNCEMENT', audience: 'COURSE', audienceId: 'or' }));
+    await assertFails(notice('student', { kind: 'ANNOUNCEMENT', audience: 'COURSE', audienceId: 'or' }));
+    const P = `classes/${CLASS}/announcements`;
+    const post = { title: 'OR quiz moved', body: '', pinned: false, createdByUid: 'sec', createdAtMillis: Date.now(), editedAtMillis: 0 };
+    await assertSucceeds(setDoc(doc(db('sec'), `${P}/tag1`), { ...post, courseId: 'or' }));
+    await assertFails(setDoc(doc(db('sec'), `${P}/tag2`), { ...post, courseId: 5 }));
+    await assertSucceeds(updateDoc(doc(db('sec'), `${P}/tag1`), { courseId: '', editedAtMillis: Date.now() }));
+    await assertSucceeds(deleteDoc(doc(db('sec'), `${P}/tag1`)));
+    const S = `classes/${CLASS}/seen/student`;
+    await assertSucceeds(setDoc(doc(db('student'), S), { forumAt: Date.now(), hideFromBoard: true }, { merge: true }));
+    await assertFails(setDoc(doc(db('student'), S), { forumAt: 'today' }, { merge: true }));
+    await assertFails(setDoc(doc(db('student'), S), { hideFromBoard: 'yes' }, { merge: true }));
+    await assertFails(setDoc(doc(db('maria'), S), { hideFromBoard: false }, { merge: true }));
+  });
+
   await test('Votes: one document per member, written only by them, read by the class', async () => {
     const V = `classes/${CLASS}/votes`;
     await assertSucceeds(setDoc(doc(db('student'), `${V}/student`), { marks: { p1: 1 } }, { merge: true }));
