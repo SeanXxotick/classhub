@@ -9,6 +9,7 @@ import './design/tokens.css';
 import './design/components.css';
 import { App } from './ui/App';
 import { NoticeProvider } from './ui/common';
+import { AppCrashed, ErrorBoundary } from './ui/ErrorBoundary';
 import { applyTheme } from './ui/settings';
 
 applyTheme();
@@ -20,10 +21,12 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
-      <NoticeProvider>
-        <App />
-      </NoticeProvider>
-    </BrowserRouter>
+    <ErrorBoundary fallback={() => <AppCrashed />}>
+      <BrowserRouter>
+        <NoticeProvider>
+          <App />
+        </NoticeProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   </StrictMode>,
 );

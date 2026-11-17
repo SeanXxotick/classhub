@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { readFile, sizeText, viewOf } from '../../data/files';
 import type { ContentFile } from '../../data/models';
@@ -6,8 +6,10 @@ import { blobBase64, nativeApp } from '../../data/native';
 import { saveFile, Spinner } from '../common';
 import { useClass } from '../classroom/ClassContext';
 import { SubPage } from '../classroom/SubPage';
+import { ErrorBoundary, lazyWithReload } from '../ErrorBoundary';
 
-const PdfPages = lazy(() => import('./PdfPages'));
+// Loaded on the first PDF. After an update the old file is gone, so the page reloads once to get the new one.
+const PdfPages = lazyWithReload(() => import('./PdfPages'));
 
 /** /class/:classId/file/:contentId: an uploaded file, opened inside ClassHub where it can be. */
 export function FileViewerScreen() {
@@ -77,9 +79,23 @@ function FileBody({ classId, file }: { classId: string; file: ContentFile }) {
       ) : !blob ? (
         <Spinner />
       ) : view === 'PDF' ? (
-        <Suspense fallback={<Spinner />}>
-          <PdfPages blob={blob} />
-        </Suspense>
+        <ErrorBoundary
+          fallback={() => (
+            <div className="card stack" style={{ alignItems: 'center', textAlign: 'center' }}>
+              <p style={{ margin: 0 }}>The PDF viewer could not load. Check your connection, then reload ClassHub.</p>
+              <button type="button" className="btn solid block" onClick={() => window.location.reload()}>
+                Reload
+              </button>
+              <button type="button" className="btn outline block" onClick={save}>
+                {native ? 'Save to Downloads' : 'Download'}
+              </button>
+            </div>
+          )}
+        >
+          <Suspense fallback={<Spinner />}>
+            <PdfPages blob={blob} />
+          </Suspense>
+        </ErrorBoundary>
       ) : view === 'IMAGE' ? (
         <ImageView blob={blob} name={file.name} />
       ) : (

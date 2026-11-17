@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ICONS } from './iconData';
 import { photoSrc } from '../data/photoRepo';
@@ -377,14 +378,17 @@ export function Dialog({ title, children, actions, onClose }: { title: ReactNode
     // Focus only when the dialog opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return (
+  // Drawn on the page body: inside the top bar (which blurs what is behind it) a fixed scrim is placed
+  // within the bar instead of the screen, which cut the About dialog in half on wide screens.
+  return createPortal(
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={ref}>
         <h2 id={titleId}>{title}</h2>
         {children}
         <div className="dialog-actions">{actions}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
