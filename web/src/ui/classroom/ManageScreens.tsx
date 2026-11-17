@@ -524,7 +524,9 @@ export function CoursesScreen() {
 }
 
 function CourseDialog({ course, onClose }: { course: Course; onClose: () => void }) {
-  const { actions } = useClass();
+  const { state, actions } = useClass();
+  // The class's own palette: the standard colors, then custom colors other courses already use, so they can be reused.
+  const palette = [...new Set([...COURSE_COLORS, ...state.courses.map((c) => (c.id === course.id ? '' : (c.color ?? '').toUpperCase()))])].filter(Boolean);
   const [rename, setRename] = useState(course.name);
   const [color, setColor] = useState(course.color ?? '');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -578,7 +580,10 @@ function CourseDialog({ course, onClose }: { course: Course; onClose: () => void
         <div className="small semibold muted" style={{ margin: '14px 0 6px' }}>
           Color in the timetable
         </div>
-        <ColorPicker label="Course color" choices={COURSE_COLORS} selected={color} onSelect={setColor} />
+        <ColorPicker label="Course color" choices={palette} selected={color} onSelect={setColor} custom />
+        <p className="small muted" style={{ margin: '6px 0 0' }}>
+          Use + to choose any color. A very light color is made darker so text on it stays readable.
+        </p>
       </form>
     </Dialog>
   );
