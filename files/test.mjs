@@ -130,6 +130,43 @@ await test('every allowed type with its real first bytes is accepted', async () 
   expect(r.status, 201, 'webp');
   await get(mayor, `/classes/${classId}/files/${(await r.json()).key}`, 'DELETE');
 });
+await test('Office viewer: a member gets a 10-minute link that works without signing in', async () => {
+  const b = new Uint8Array(500);
+  b.set([0x50, 0x4b, 0x03, 0x04]);
+  const r = await up(mayor, classId, 'Week 3 slides.pptx', b);
+  const { key } = await r.json();
+  const link = await get(student, `/classes/${classId}/files/${key}/view`, 'POST');
+  expect(link.status, 200, 'student asks for a link');
+  const { url, expiresAtMillis } = await link.json();
+  if (!url.endsWith('/Week%203%20slides.pptx')) throw new Error(`the link should end with the file name: ${url}`);
+  const minutes = (expiresAtMillis - Date.now()) / 60_000;
+  if (minutes < 9 || minutes > 10.1) throw new Error(`expires in ${minutes} minutes`);
+  // Microsoft's viewer fetches it with no sign-in at all.
+  const plain = await fetch(url);
+  expect(plain.status, 200, 'fetch by link');
+  expect(plain.headers.get('content-type'), 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'type');
+  expect(plain.headers.get('cache-control'), 'no-store', 'not cached');
+  expect((await plain.arrayBuffer()).byteLength, 500, 'size');
+
+  // Tampering with any part breaks the signature.
+  const parts = new URL(url).pathname.split('/');
+  const swap = (i, v) => `${W}${[...parts.slice(0, i), v, ...parts.slice(i + 1)].join('/')}`;
+  const later = String(Number(parts[4]) + 60_000);
+  expect((await fetch(swap(4, later))).status, 403, 'expiry pushed back');
+  expect((await fetch(swap(5, parts[5].replace(/^./, (c) => (c === 'A' ? 'B' : 'A'))))).status, 403, 'signature changed');
+  expect((await fetch(swap(4, String(Date.now() - 1000)))).status, 403, 'already expired');
+  expect((await fetch(swap(4, String(Date.now() + 3600_000)))).status, 403, 'too far ahead');
+
+  // Outsiders cannot ask for one; PDFs and pictures never get one.
+  expect((await get(outsider, `/classes/${classId}/files/${key}/view`, 'POST')).status, 403, 'outsider');
+  const p = await (await up(mayor, classId, 'notes.pdf', pdf())).json();
+  expect((await get(mayor, `/classes/${classId}/files/${p.key}/view`, 'POST')).status, 400, 'pdf');
+
+  // Once the file is deleted, the link stops working.
+  await get(mayor, `/classes/${classId}/files/${key}`, 'DELETE');
+  await get(mayor, `/classes/${classId}/files/${p.key}`, 'DELETE');
+  expect((await fetch(url)).status, 404, 'deleted file');
+});
 await test('a file over 10 MB is refused', async () => {
   const r = await up(mayor, classId, 'big.pdf', pdf(10 * 1024 * 1024 + 1));
   expect(r.status, 413, 'status');

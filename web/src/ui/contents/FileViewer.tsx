@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { readFile, sizeText, viewOf } from '../../data/files';
+import { officeViewerUrl, readFile, sizeText, viewOf } from '../../data/files';
 import type { ContentFile } from '../../data/models';
 import { blobBase64, nativeApp } from '../../data/native';
 import { saveFile, Spinner } from '../common';
@@ -34,10 +34,16 @@ function FileBody({ classId, file }: { classId: string; file: ContentFile }) {
   const [blob, setBlob] = useState<Blob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Office files: the viewer's address, or why it cannot show (then the file opens in another app instead).
+  const [viewer, setViewer] = useState<string | null>(null);
+  const [viewerError, setViewerError] = useState<string | null>(null);
   const view = viewOf(file);
   const native = nativeApp();
+  // An Office file is shown by Microsoft's viewer, so it is only downloaded here when it is saved or shared.
+  const lazy = view === 'OFFICE' && !viewerError;
 
   useEffect(() => {
+    if (lazy) return;
     let cancelled = false;
     readFile(classId, file).then(
       (b) => !cancelled && setBlob(b),
@@ -46,26 +52,61 @@ function FileBody({ classId, file }: { classId: string; file: ContentFile }) {
     return () => {
       cancelled = true;
     };
-  }, [classId, file]);
+  }, [classId, file, lazy]);
 
-  const save = () => blob && saveFile(file.name, blob, setNotice).catch(() => setNotice('The file could not be saved.'));
-  const share = async () => {
-    if (!blob || !native) return;
-    await native.shareFile({ name: file.name, mimeType: file.mimeType, data: await blobBase64(blob), title: file.name }).catch(() => setNotice('The file could not be shared.'));
+  useEffect(() => {
+    if (view !== 'OFFICE') return;
+    let cancelled = false;
+    officeViewerUrl(classId, file.key).then(
+      (u) => !cancelled && setViewer(u),
+      (e: Error) => !cancelled && setViewerError(e.message),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [classId, file.key, view]);
+
+  const [fetching, setFetching] = useState(false);
+  /** The file itself: already here, or downloaded now (Office files in the viewer). */
+  const contents = async (): Promise<Blob | null> => {
+    if (blob) return blob;
+    setFetching(true);
+    try {
+      const b = await readFile(classId, file);
+      setBlob(b);
+      return b;
+    } catch (e) {
+      setNotice((e as Error).message);
+      return null;
+    } finally {
+      setFetching(false);
+    }
   };
+  const save = async () => {
+    const b = await contents();
+    if (b) await saveFile(file.name, b, setNotice).catch(() => setNotice('The file could not be saved.'));
+  };
+  const share = async () => {
+    if (!native) return;
+    const b = await contents();
+    if (!b) return;
+    await native.shareFile({ name: file.name, mimeType: file.mimeType, data: await blobBase64(b), title: file.name }).catch(() => setNotice('The file could not be shared.'));
+  };
+  const inViewer = view === 'OFFICE' && !viewerError;
+  const buttons = inViewer || (blob && view !== 'OTHER' && view !== 'OFFICE');
 
   return (
     <div className="stack file-view">
       <div className="row file-view-bar">
         <span className="grow small muted file-view-name">{`${file.name} · ${sizeText(file.sizeBytes)}`}</span>
-        {blob && native && view !== 'OTHER' && (
-          <button type="button" className="btn outline small" onClick={share}>
+        {buttons && native && (
+          <button type="button" className="btn outline small" disabled={fetching} onClick={share}>
             Share
           </button>
         )}
-        {blob && view !== 'OTHER' && (
-          <button type="button" className="btn outline small" onClick={save}>
-            {native ? 'Save' : 'Download'}
+        {buttons && (
+          <button type="button" className="btn outline small" disabled={fetching} onClick={save}>
+            {fetching ? 'Getting the file…' : native ? 'Save' : 'Download'}
           </button>
         )}
       </div>
@@ -74,7 +115,13 @@ function FileBody({ classId, file }: { classId: string; file: ContentFile }) {
           {notice}
         </p>
       )}
-      {error ? (
+      {inViewer ? (
+        viewer ? (
+          <iframe className="file-view-office" src={viewer} title={file.name} allowFullScreen />
+        ) : (
+          <Spinner />
+        )
+      ) : error ? (
         <p className="empty">{error}</p>
       ) : !blob ? (
         <Spinner />
@@ -100,7 +147,7 @@ function FileBody({ classId, file }: { classId: string; file: ContentFile }) {
         <ImageView blob={blob} name={file.name} />
       ) : (
         <div className="card stack" style={{ alignItems: 'center', textAlign: 'center' }}>
-          <p style={{ margin: 0 }}>Word, PowerPoint and Excel files open in another app.</p>
+          <p style={{ margin: 0 }}>{viewerError ? `${viewerError} It can still open in another app.` : 'This file opens in another app.'}</p>
           {native ? (
             <>
               <button type="button" className="btn solid block" onClick={share}>

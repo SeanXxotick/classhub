@@ -5,6 +5,9 @@
  *   GET    /classes/{classId}/files/{fileId} the file, for members of the class
  *   DELETE /classes/{classId}/files/{fileId} "Manage contents" only
  *   GET    /classes/{classId}/usage          bytes used of the class limit, for members
+ *   POST   /classes/{classId}/files/{fileId}/view   a 10-minute link to a Word, PowerPoint or Excel file, for
+ *                                                   members, so Microsoft's Office viewer can show it
+ *   GET    /v/{classId}/{fileId}/{expires}/{signature}/{name}   that link (no sign-in: the signature is the key)
  *
  * Every request carries the caller's Firebase sign-in (Authorization: Bearer <ID token>). The token's signature
  * is checked against Google's public keys, then membership and role are read from Firestore with the caller's
@@ -48,6 +51,10 @@ const FILE_ID = /^[A-Za-z0-9]{20}$/;
 /** Files uploaded but never saved in a content item are removed after a day. */
 const UNUSED_GRACE_MS = 24 * 3600_000;
 
+/** Office files can be shown by Microsoft's viewer through a short-lived link. PDFs and pictures never get one. */
+const OFFICE_TYPES = new Set([TYPES.doc, TYPES.docx, TYPES.ppt, TYPES.pptx, TYPES.xls, TYPES.xlsx]);
+const VIEW_LINK_MS = 10 * 60_000;
+
 class HttpError extends Error {
   constructor(status, code, message) {
     super(message);
@@ -83,6 +90,7 @@ async function route(request, env) {
   const parts = url.pathname.split('/').filter(Boolean);
   // Local testing only: run the clean-up now.
   if (env.EMULATOR_FIRESTORE && request.method === 'POST' && url.pathname === '/__sweep') return json(await sweep(env));
+  if (parts[0] === 'v' && request.method === 'GET') return viewByLink(env, parts);
   if (parts[0] !== 'classes' || !ID.test(parts[1] ?? '')) throw new HttpError(404, 'NOT_FOUND', 'Not found.');
   const classId = parts[1];
   const token = (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
@@ -100,6 +108,9 @@ async function route(request, env) {
     return upload(request, env, classId, user.uid);
   }
   const fileId = parts[3] ?? '';
+  if (parts.length === 5 && parts[4] === 'view' && FILE_ID.test(fileId) && request.method === 'POST') {
+    return makeViewLink(env, url, classId, fileId);
+  }
   if (parts.length !== 4 || !FILE_ID.test(fileId)) throw new HttpError(404, 'NOT_FOUND', 'Not found.');
   const key = `classes/${classId}/${fileId}`;
   if (request.method === 'GET') {
@@ -126,6 +137,66 @@ async function route(request, env) {
     return json({ deleted: fileId });
   }
   throw new HttpError(405, 'METHOD', 'Not allowed.');
+}
+
+// ---------------------------------------------------------------- Office viewer links
+
+/** HMAC-SHA256 of "classId/fileId/expires" with the VIEW_SECRET, as base64url. */
+async function viewSignature(env, classId, fileId, expires) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.VIEW_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return b64url(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${classId}/${fileId}/${expires}`)));
+}
+
+/** For a member: a link to one Office file that works without signing in, for the next 10 minutes. */
+async function makeViewLink(env, url, classId, fileId) {
+  if (!env.VIEW_SECRET) throw new HttpError(501, 'VIEW_OFF', 'Viewing in ClassHub is not set up yet.');
+  const object = await env.FILES.head(`classes/${classId}/${fileId}`);
+  if (!object) throw new HttpError(404, 'NOT_FOUND', 'This file is no longer there.');
+  if (!OFFICE_TYPES.has(object.httpMetadata?.contentType)) throw new HttpError(400, 'NOT_OFFICE', 'Only Word, PowerPoint and Excel files open this way.');
+  const expires = Date.now() + VIEW_LINK_MS;
+  const signature = await viewSignature(env, classId, fileId, expires);
+  // The name ends the address, so the viewer can tell the file type from it.
+  const name = encodeURIComponent(object.customMetadata?.name ?? 'file');
+  return json({ url: `${url.origin}/v/${classId}/${fileId}/${expires}/${signature}/${name}`, expiresAtMillis: expires });
+}
+
+/** The link above: checks the signature and the time, then sends the file. */
+async function viewByLink(env, parts) {
+  const [, classId, fileId, expiresText, signature] = parts;
+  const expires = Number(expiresText);
+  const valid =
+    !!env.VIEW_SECRET &&
+    parts.length === 6 &&
+    ID.test(classId ?? '') &&
+    FILE_ID.test(fileId ?? '') &&
+    /^\d{13}$/.test(expiresText ?? '') &&
+    expires > Date.now() &&
+    expires <= Date.now() + VIEW_LINK_MS &&
+    sameText(signature ?? '', await viewSignature(env, classId, fileId, expires));
+  if (!valid) throw new HttpError(403, 'LINK_EXPIRED', 'This link has expired. Open the file again from ClassHub.');
+  const object = await env.FILES.get(`classes/${classId}/${fileId}`);
+  if (!object) throw new HttpError(404, 'NOT_FOUND', 'This file is no longer there.');
+  if (!OFFICE_TYPES.has(object.httpMetadata?.contentType)) throw new HttpError(403, 'NOT_OFFICE', 'Not available.');
+  const name = object.customMetadata?.name ?? 'file';
+  return new Response(object.body, {
+    headers: {
+      'Content-Type': object.httpMetadata.contentType,
+      'Content-Length': String(object.size),
+      'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'Content-Security-Policy': "sandbox; default-src 'none'",
+      'X-Content-Type-Options': 'nosniff',
+      'X-Robots-Tag': 'noindex, nofollow',
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
+/** Compares two strings in constant time, so a signature cannot be guessed one character at a time. */
+function sameText(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 async function upload(request, env, classId, uid) {

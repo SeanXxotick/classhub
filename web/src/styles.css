@@ -2230,6 +2230,7 @@ a.list-row:hover {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.file-view-office { width: 100%; height: calc(100dvh - 170px); min-height: 420px; border: 0; border-radius: var(--ch-radius-md); background: #fff; }
 .file-view-image {
   display: block;
   max-width: 100%;

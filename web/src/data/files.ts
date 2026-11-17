@@ -20,13 +20,39 @@ export const FILE_ACCEPT = FILE_EXTENSIONS.map((e) => `.${e}`).join(',');
 
 const CACHE = 'classhub-files-v1';
 
-export type FileView = 'PDF' | 'IMAGE' | 'OTHER';
+export type FileView = 'PDF' | 'IMAGE' | 'OFFICE' | 'OTHER';
 
-/** How the app shows a file: PDFs and pictures inside ClassHub, the rest in another app. */
+const OFFICE_TYPES = new Set([
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
+
+/** How the app shows a file: PDFs and pictures by ClassHub itself, Word, PowerPoint and Excel by Microsoft's viewer. */
 export function viewOf(file: Pick<ContentFile, 'mimeType'>): FileView {
   if (file.mimeType === 'application/pdf') return 'PDF';
   if (file.mimeType.startsWith('image/')) return 'IMAGE';
+  if (OFFICE_TYPES.has(file.mimeType)) return 'OFFICE';
   return 'OTHER';
+}
+
+/**
+ * The address of Microsoft's Office viewer showing this file. The files Worker makes a link that works without
+ * signing in for 10 minutes, which the viewer fetches the file through.
+ */
+export async function officeViewerUrl(classId: string, key: string): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(`${fileUrl(classId, key)}/view`, { method: 'POST', headers: { Authorization: `Bearer ${await idToken()}` } });
+  } catch {
+    throw new Error('Showing this file needs internet.');
+  }
+  if (!res.ok) throw await failure(res);
+  const { url } = (await res.json()) as { url: string };
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
 }
 
 /** "2.4 MB", "830 KB". */
