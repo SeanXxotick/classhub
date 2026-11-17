@@ -72,7 +72,7 @@ export function HistoryScreen() {
       ) : (
         <div className="stack">
           <p className="small muted" style={{ margin: 0 }}>
-            Every change officers make to the ledger, members, roles, class settings and announcements. Nobody can edit or delete these entries.
+            Officer actions. Entries cannot be edited or deleted.
           </p>
           <FilterChips
             label="Show"

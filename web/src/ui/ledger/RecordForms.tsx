@@ -74,7 +74,7 @@ function RecordFormScreen({ type }: { type: Extract<RecordType, 'PAYMENT' | 'WIT
       <form className="card stack" onSubmit={submit} noValidate>
         <p className="small muted" style={{ margin: 0 }}>
           {type === 'OPENING'
-            ? 'What a student already had in the class fund, or owed, before these records start. Enter it once per student. It only matches the real fund when no earlier charge is still waiting to be paid out.'
+            ? 'What a student already had in the class fund, or owed, before these records start.'
             : type === 'WITHDRAWAL'
             ? 'Money a student takes out of the class fund. It lowers their balance, and it may be more than they have in.'
             : 'Money a student pays into the class fund. Adds to their balance.'}
@@ -258,9 +258,6 @@ export function ChargeStudentsScreen() {
     <SubPage title={recordLabel('CHARGE')} wide>
       <div className="split">
         <form className="card stack" onSubmit={submit} noValidate>
-          <p className="small muted" style={{ margin: 0 }}>
-            Deducts the same amount from each chosen student's balance, like a quiz fee. Cash on hand does not change.
-          </p>
           <AmountField value={amountText} onChange={(v) => (setAmountText(v), setError(null))} label="Amount per student" />
           <Field label="Description">
             <input value={note} placeholder="e.g. Quiz - Operations Research" onChange={(e) => (setNote(e.target.value.slice(0, 80)), setError(null))} />

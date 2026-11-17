@@ -312,7 +312,7 @@ export function RolesScreen() {
             );
           })}
           <p className="small muted" style={{ margin: 0, padding: 16 }}>
-            Tap a role to rename it, change its color or choose what it can do. New members join as {defaultRoleName}.
+            New members join as {defaultRoleName}.
           </p>
           {coloring && (
             <Dialog
@@ -581,9 +581,6 @@ function CourseDialog({ course, onClose }: { course: Course; onClose: () => void
           Color in the timetable
         </div>
         <ColorPicker label="Course color" choices={palette} selected={color} onSelect={setColor} custom />
-        <p className="small muted" style={{ margin: '6px 0 0' }}>
-          Use + to choose any color. A very light color is made darker so text on it stays readable.
-        </p>
       </form>
     </Dialog>
   );
@@ -695,7 +692,7 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
       <div className="card">
         <div className="section-label" style={{ padding: '0 0 6px' }}>Modules</div>
         <p className="small muted" style={{ margin: 0 }}>
-          Turn off what your class does not use. Turning a module off hides its tab for everyone and stops its reminders. Nothing is deleted, so turning it back on brings everything back.
+          Turning a module off hides its tab. Nothing is deleted.
         </p>
         <Switch label="Ledger" sub="Class fund, charges, payments and balances" checked={ledger} onChange={setLedger} />
         <Switch label="Schedule" sub="Deliverables, quizzes and exams, with the weekly timetable and attendance" checked={schedule} onChange={setSchedule} />
@@ -707,7 +704,7 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
       <div className="card">
         <div className="section-label" style={{ padding: '0 0 6px' }}>Schedule icons</div>
         <p className="small muted" style={{ margin: 0 }}>
-          The icon each type of schedule item shows for everyone in the class. Its color comes from the item's course.
+          Its color comes from the item's course.
         </p>
         {SCHEDULE_KINDS.map((kind) => {
           const icon = ScheduleIcons.iconFor(kind, scheduleIcons);
@@ -727,7 +724,7 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
 
       <div className="card">
         <div className="section-label" style={{ padding: '0 0 6px' }}>Content icons</div>
-        <p className="small muted" style={{ margin: 0 }}>The icon for each type of link in Contents. One link can have its own icon and color from its edit screen.</p>
+        <p className="small muted" style={{ margin: 0 }}>One link can have its own icon and color from its edit screen.</p>
         {CONTENT_KINDS.map((kind) => {
           const icon = ContentIcons.iconFor(kind, contentIcons);
           const color = NEUTRAL_ICON;

@@ -196,9 +196,6 @@ export function CreateClassScreen({ user }: { user: AppUser }) {
           </Field>
           <span className="small semibold muted">Accent color</span>
           <ColorPicker label="Accent color" choices={ACCENT_CHOICES} selected={accent} onSelect={setAccent} custom />
-          <p className="small muted" style={{ margin: 0 }}>
-            Default roles are created for you: Mayor, Treasurer, Secretary and Member. You can change them later.
-          </p>
           {error && <p className="error-text" role="alert" style={{ margin: 0 }}>{error}</p>}
           <button className="btn solid big block" type="submit" disabled={busy}>
             {busy ? <Spinner small /> : 'Create class'}
@@ -276,7 +273,6 @@ export function JoinClassScreen({ user }: { user: AppUser }) {
           <button className="btn solid big block" type="submit" disabled={busy || code.length !== InviteCode.LENGTH}>
             {busy ? <Spinner small /> : className ? `Ask to join ${className}` : 'Ask to join'}
           </button>
-          <p className="small muted" style={{ margin: 0 }}>An officer of the class approves your request. You then join as a Member, and the Mayor can give you an officer role afterward.</p>
         </form>
       </div>
     </>

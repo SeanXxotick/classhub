@@ -477,7 +477,7 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
       <p className="small muted" style={{ margin: 0 }}>
         {source === 'FILE'
           ? 'Upload a PDF, picture, Word, PowerPoint or Excel file of up to 10 MB. Only your classmates can open it.'
-          : "Share a link to class material. Files stay in Google Drive (or wherever they are); make sure the link's sharing allows your classmates to open it."}
+          : 'Make sure the link is shared with your classmates.'}
       </p>
       {source === 'FILE' && (
         <div className="card stack upload-box">

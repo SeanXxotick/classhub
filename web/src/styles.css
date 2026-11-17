@@ -2258,3 +2258,104 @@ a.list-row:hover {
   width: 100%;
   height: 100%;
 }
+
+/* ------------------------------------------------------------------ Take attendance (week strip, meetings, marks) */
+.att-banner.taken { padding: 10px 12px; border-radius: var(--ch-radius-sm); background: var(--ch-success-soft); color: var(--ch-text); font-size: 14px; font-weight: 600; border: 1px solid color-mix(in srgb, var(--ch-success) 40%, transparent); }
+.att-week-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.att-arrow { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--ch-border); background: none; color: inherit; font-size: 18px; cursor: pointer; }
+.att-arrow:disabled { opacity: 0.35; cursor: default; }
+.att-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.att-day { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; padding: 8px 2px 7px; border: 1px solid var(--ch-border); border-radius: var(--ch-radius-sm); background: var(--ch-surface); color: inherit; font: inherit; cursor: pointer; }
+.att-day:hover:not(:disabled) { background: var(--ch-hover); }
+.att-day:disabled { opacity: 0.4; cursor: default; }
+.att-day.done { border-color: var(--ch-success); background: var(--ch-success-soft); }
+.att-day.cancelled { background: var(--ch-surface-2); }
+.att-day.cancelled .att-num { color: var(--ch-text-muted); text-decoration: line-through; }
+.att-day.selected { outline: 2.5px solid var(--ch-primary); outline-offset: 1px; }
+.att-dow { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--ch-text-muted); }
+.att-num { font-size: 17px; font-weight: 600; }
+.att-dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; min-height: 14px; align-items: center; }
+.att-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--ch-border-strong); }
+.att-dot.on { background: var(--ch-success); border-color: var(--ch-success); }
+.att-nc { font-size: 10px; font-weight: 700; color: var(--ch-text-muted); }
+.att-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; font-size: 12px; color: var(--ch-text-muted); }
+.att-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.att-meetings { border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md); overflow: hidden; }
+.att-meeting { display: flex; gap: 12px; align-items: flex-start; width: 100%; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--ch-border); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.att-meeting:last-child { border-bottom: 0; }
+.att-meeting:hover { background: var(--ch-hover); }
+.att-meeting.taken { background: var(--ch-success-soft); }
+.att-meeting .grow { min-width: 0; display: flex; flex-direction: column; }
+.att-meeting-title { overflow-wrap: anywhere; }
+.att-radio { flex: none; display: grid; place-items: center; width: 20px; height: 20px; margin-top: 2px; border-radius: 50%; border: 2px solid var(--ch-border-strong); }
+.att-meeting.selected .att-radio { border-color: var(--ch-primary); }
+.att-meeting.selected .att-radio::after { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--ch-primary); }
+.att-status { font-size: 13px; color: var(--ch-text-muted); margin-top: 2px; overflow-wrap: anywhere; }
+.att-status.ok { color: var(--ch-success); font-weight: 600; }
+.att-students { display: flex; flex-direction: column; }
+.att-student { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--ch-border); }
+.att-student:last-child { border-bottom: 0; }
+.att-student .grow { min-width: 0; overflow-wrap: anywhere; }
+.att-seg { display: inline-flex; flex: none; border: 1px solid var(--ch-border); border-radius: 999px; overflow: hidden; }
+.att-seg button { border: 0; background: none; color: var(--ch-text-muted); font: inherit; font-size: 12px; font-weight: 600; padding: 6px 9px; min-height: 34px; cursor: pointer; }
+.att-seg button + button { border-left: 1px solid var(--ch-border); }
+.att-seg button.on[data-mark='PRESENT'] { background: var(--ch-success-soft); color: var(--ch-success); }
+.att-seg button.on[data-mark='LATE'] { background: var(--ch-warning-soft); color: var(--ch-warning); }
+.att-seg button.on[data-mark='ABSENT'] { background: var(--ch-danger-soft); color: var(--ch-danger); }
+.att-seg button.on[data-mark='EXCUSED'] { background: var(--ch-info-soft); color: var(--ch-info); }
+@media (max-width: 400px) {
+  .att-student { flex-wrap: wrap; }
+  .att-seg { width: 100%; }
+  .att-seg button { flex: 1; }
+}
+.att-summary { display: flex; flex-direction: column; margin-top: 12px; }
+.att-sum-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--ch-border); font-size: 14px; overflow-wrap: anywhere; }
+.att-sum-row:last-child { border-bottom: 0; }
+.att-change { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: 12px; row-gap: 2px; padding: 7px 0; border-bottom: 1px solid var(--ch-border); font-size: 14px; }
+.att-change > :first-child { flex: 1 1 12em; min-width: 0; overflow-wrap: anywhere; }
+.att-change > :last-child { flex: none; }
+.att-row-badge { display: flex; margin-top: 4px; }
+.att-change:last-child { border-bottom: 0; }
+
+/* ------------------------------------------------------------------ No classes (uses the attendance week strip) */
+.att-day.nc-picked { border-color: var(--ch-danger); background: var(--ch-danger-soft); }
+.att-day.nc-picked .att-nc { color: var(--ch-danger); }
+.nc-day-head { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 14px; background: var(--ch-surface-2); font-size: 13px; font-weight: 700; }
+.nc-day-head .grow { min-width: 0; overflow-wrap: anywhere; }
+.att-meetings .nc-meeting { border-top: 1px solid var(--ch-border); border-bottom: 0; }
+.nc-meeting:disabled { opacity: 0.6; cursor: default; }
+.nc-meeting.on .att-meeting-title { text-decoration: line-through; text-decoration-color: var(--ch-danger); }
+.nc-box { flex: none; display: grid; place-items: center; width: 20px; height: 20px; margin-top: 2px; border-radius: 6px; border: 2px solid var(--ch-border-strong); color: #fff; font-size: 13px; font-weight: 700; }
+.nc-meeting.on .nc-box { background: var(--ch-danger); border-color: var(--ch-danger); }
+.att-status.warn { color: var(--ch-warning); font-weight: 600; }
+.nc-reasons { display: flex; flex-wrap: wrap; gap: 6px; }
+.nc-reason { border: 1px solid var(--ch-border); background: var(--ch-surface); color: inherit; font: inherit; font-size: 13px; font-weight: 600; border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.nc-reason.on { border-color: var(--ch-primary); background: var(--ch-primary-soft); color: var(--ch-primary-text); }
+.nc-summary { padding: 10px 12px; border-radius: var(--ch-radius-sm); background: var(--ch-danger-soft); font-size: 14px; }
+.nc-confirm-day { display: flex; flex-direction: column; padding: 8px 0; border-bottom: 1px solid var(--ch-border); font-size: 14px; overflow-wrap: anywhere; }
+.nc-confirm-day:last-child { border-bottom: 0; }
+
+/* ------------------------------------------------------------------ News: Announcements | Forum, tags, Forum */
+.news-switch button { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; }
+.news-switch button.ch-selected { background: var(--ch-primary-soft); color: var(--ch-primary-text); }
+.news-count { background: var(--ch-danger); color: #fff; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 1px 6px; line-height: 1.4; }
+.forum-search { display: flex; gap: 8px; min-width: 0; }
+.forum-search > :first-child { flex: 1 1 auto; min-width: 0; }
+.forum-tag-select { flex: 0 1 45%; min-width: 0; }
+.forum-search > .forum-tag-select:only-child { flex: 1 1 auto; }
+.forum-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 9px; background: var(--ch-surface-2); color: var(--ch-text); max-width: 100%; overflow-wrap: anywhere; }
+.forum-card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: var(--ch-radius-md); padding: 12px 14px; }
+.forum-card:hover { background: color-mix(in srgb, var(--ch-text) 4%, var(--ch-surface)); }
+.forum-title { font-weight: 600; overflow-wrap: anywhere; }
+.forum-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; color: var(--ch-text-muted); min-width: 0; overflow-wrap: anywhere; }
+.forum-real { flex-basis: 100%; font-size: 12px; font-weight: 600; color: var(--ch-warning); }
+.forum-asker { color: var(--ch-primary-text); background: var(--ch-primary-soft); }
+.comment.forum-best { border: 2px solid var(--ch-success); background: var(--ch-success-soft); border-radius: var(--ch-radius-sm); padding: 10px 12px; }
+.forum-best-tag { font-size: 12px; font-weight: 700; color: var(--ch-success); }
+.forum-helpers-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.forum-helper { display: flex; align-items: center; gap: 10px; padding: 5px 0; min-width: 0; }
+.forum-helper-name { min-width: 0; overflow-wrap: anywhere; }
+.forum-rank { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--ch-surface-2); }
+.forum-rank.r1 { background: #f5c542; color: #3d2c00; }
+.forum-rank.r2 { background: #c9d1dc; color: #26303c; }
+.forum-rank.r3 { background: #d99a6c; color: #3a1d08; }

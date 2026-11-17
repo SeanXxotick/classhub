@@ -511,7 +511,7 @@ function ScheduleDetailsDialog({
               </button>
             )}
             <p className="small muted" style={{ margin: 0 }}>
-              Only you can change your own mark. Everyone in the class can see who has marked it done.
+              Everyone sees who marked it done.
             </p>
             <hr className="divider" />
             <div className="row">
@@ -628,9 +628,6 @@ function ScheduleForm({ existing, defaultDay, busy }: { existing: ScheduleItem |
 
   return (
     <form className="card stack" onSubmit={submit} noValidate>
-      <p className="small muted" style={{ margin: 0 }}>
-        Everyone in the class sees this. Each student marks it done for themselves.
-      </p>
       <span className="small semibold muted">Type</span>
       <div className="chips" role="radiogroup" aria-label="Type">
         {SCHEDULE_KINDS.map((k) => (

@@ -96,7 +96,7 @@ export function InviteDialog({
           <path d={qrPath(matrix, QUIET)} fill="#0f172a" />
         </svg>
         <p className="small muted" style={{ margin: 0, textAlign: 'center' }}>
-          Classmates can scan this with their phone camera to join. They join as {roleName}.
+          Students join as {roleName}.
         </p>
         <button className="btn text small" disabled={busy} onClick={() => void qrImage()}>
           {native ? 'Share QR image' : 'Save QR image'}

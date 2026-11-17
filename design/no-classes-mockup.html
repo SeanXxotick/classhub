@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>No classes mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/*
+ * Design mockup for "No classes" (not app code). Same look as attendance-mockup.html.
+ * Shows: picking one or more days on a week strip, ticking the meetings to cancel, quick reasons,
+ * the confirmation, and the upcoming list in the Schedule tab with Remove asking first.
+ * Names are made up.
+ */
+:root {
+  --ch-brand: #0f766e;
+  --ch-bg: #f6f8fb; --ch-surface: #ffffff; --ch-surface-2: #eef1f6;
+  --ch-text: #1a1c1e; --ch-text-muted: #596478; --ch-border: #d5dbe5; --ch-border-strong: #8892a5;
+  --ch-scrim: rgba(15, 20, 28, 0.45); --ch-on-solid: #ffffff;
+  --ch-success: #146c34; --ch-warning: #a35207; --ch-danger: #b91c1c; --ch-info: #0369a1;
+  --ch-tint: 13%;
+  --ch-success-soft: color-mix(in srgb, var(--ch-success) var(--ch-tint), var(--ch-surface));
+  --ch-warning-soft: color-mix(in srgb, var(--ch-warning) var(--ch-tint), var(--ch-surface));
+  --ch-danger-soft: color-mix(in srgb, var(--ch-danger) var(--ch-tint), var(--ch-surface));
+  --ch-brand-soft: color-mix(in srgb, var(--ch-brand) var(--ch-tint), var(--ch-surface));
+  --ch-hover: color-mix(in srgb, var(--ch-text) 5%, transparent);
+  --radius: 14px; --radius-sm: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ch-brand: #2dd4bf;
+    --ch-bg: #0f141c; --ch-surface: #161d27; --ch-surface-2: #222b37;
+    --ch-text: #e6e9ef; --ch-text-muted: #a7b1c2; --ch-border: #344052; --ch-border-strong: #66748a;
+    --ch-scrim: rgba(0, 0, 0, 0.6); --ch-on-solid: #0f141c;
+    --ch-success: #4ade80; --ch-warning: #fbbf24; --ch-danger: #f87171; --ch-info: #38bdf8;
+  }
+}
+:root[data-theme='dark'] {
+  --ch-brand: #2dd4bf;
+  --ch-bg: #0f141c; --ch-surface: #161d27; --ch-surface-2: #222b37;
+  --ch-text: #e6e9ef; --ch-text-muted: #a7b1c2; --ch-border: #344052; --ch-border-strong: #66748a;
+  --ch-scrim: rgba(0, 0, 0, 0.6); --ch-on-solid: #0f141c;
+  --ch-success: #4ade80; --ch-warning: #fbbf24; --ch-danger: #f87171; --ch-info: #38bdf8;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ch-bg); color: var(--ch-text); font: 15px/1.45 Roboto, system-ui, sans-serif; }
+button, input { font: inherit; color: inherit; }
+.page { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+.page-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.page-head h1 { font-size: 20px; margin: 0; flex: 1; }
+.muted { color: var(--ch-text-muted); }
+.small { font-size: 13px; }
+.semibold { font-weight: 600; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.label { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-text-muted); margin: 0 0 8px; }
+.note { font-size: 13px; color: var(--ch-text-muted); margin: 8px 0 0; }
+.btn { border: 0; border-radius: 999px; min-height: 40px; padding: 0 18px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.btn.solid { background: var(--ch-brand); color: var(--ch-on-solid); }
+.btn.solid:disabled { opacity: .45; cursor: default; }
+.btn.danger { background: var(--ch-danger); color: #fff; }
+.btn.outline { background: none; border: 1px solid var(--ch-border-strong); }
+.btn.text { background: none; color: var(--ch-brand); }
+.btn.text.danger-text { color: var(--ch-danger); }
+.btn.small { min-height: 34px; padding: 0 14px; font-size: 14px; }
+.dialog { background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: 22px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,.12); }
+.dialog h2 { margin: 0 0 6px; font-size: 20px; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.stack { display: flex; flex-direction: column; gap: 14px; }
+
+/* Week strip (same as Take attendance; here several days can be picked) */
+.week-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.arrow { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--ch-border); background: none; cursor: pointer; }
+.week { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.day { border: 1px solid var(--ch-border); background: var(--ch-surface); border-radius: var(--radius-sm); padding: 8px 2px 7px; text-align: center; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; position: relative; }
+.day:hover:not(:disabled) { background: var(--ch-hover); }
+.day:disabled { opacity: .4; cursor: default; }
+.day .dow { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--ch-text-muted); }
+.day .num { font-size: 17px; font-weight: 600; }
+.day .sub { font-size: 10px; font-weight: 700; color: var(--ch-text-muted); min-height: 14px; }
+.day.marked { background: var(--ch-surface-2); }
+.day.marked .num { text-decoration: line-through; color: var(--ch-text-muted); }
+.day.picked { background: var(--ch-danger-soft); border-color: var(--ch-danger); }
+.day.picked .sub { color: var(--ch-danger); }
+.day.picked::after { content: '✓'; position: absolute; top: 3px; right: 5px; font-size: 11px; font-weight: 700; color: var(--ch-danger); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--ch-text-muted); }
+.hint { font-size: 13px; color: var(--ch-text-muted); margin-top: 8px; }
+
+/* Meetings to cancel */
+.day-group { border: 1px solid var(--ch-border); border-radius: var(--radius); overflow: hidden; }
+.day-head { display: flex; align-items: center; gap: 8px; padding: 9px 14px; background: var(--ch-surface-2); font-size: 13px; font-weight: 700; }
+.day-head .grow { flex: 1; min-width: 0; }
+.link { background: none; border: 0; color: var(--ch-brand); font-weight: 600; font-size: 13px; cursor: pointer; padding: 0; }
+.meet { display: flex; gap: 12px; align-items: flex-start; padding: 11px 14px; border-top: 1px solid var(--ch-border); cursor: pointer; }
+.meet:hover { background: var(--ch-hover); }
+.meet.off { cursor: default; opacity: .6; }
+.check { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--ch-border-strong); flex: none; margin-top: 2px; display: grid; place-items: center; font-size: 13px; font-weight: 700; color: #fff; }
+.meet.on .check { background: var(--ch-danger); border-color: var(--ch-danger); }
+.meet .body { min-width: 0; flex: 1; }
+.meet .title { overflow-wrap: anywhere; }
+.meet.on .title { text-decoration: line-through; text-decoration-color: var(--ch-danger); }
+.meet .status { font-size: 13px; color: var(--ch-text-muted); margin-top: 2px; overflow-wrap: anywhere; }
+.meet .status.warn { color: var(--ch-warning); font-weight: 600; }
+.course-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+
+/* Reason */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-btn { border: 1px solid var(--ch-border); background: var(--ch-surface); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.chip-btn.on { background: var(--ch-brand-soft); border-color: var(--ch-brand); color: var(--ch-brand); }
+.field label { display: block; font-size: 13px; font-weight: 600; color: var(--ch-text-muted); margin-bottom: 6px; }
+.field input { width: 100%; background: var(--ch-surface); border: 1px solid var(--ch-border-strong); border-radius: 10px; padding: 10px 12px; }
+.counter { text-align: right; font-size: 12px; color: var(--ch-text-muted); margin-top: 4px; }
+.summary-bar { border-radius: var(--radius-sm); padding: 10px 12px; background: var(--ch-danger-soft); font-size: 14px; }
+.summary-bar.empty { background: var(--ch-surface-2); color: var(--ch-text-muted); }
+
+/* Confirmation */
+.scrim { position: fixed; inset: 0; background: var(--ch-scrim); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+.scrim.open { display: flex; }
+.scrim .dialog { width: min(460px, 100%); max-height: calc(100vh - 32px); overflow: auto; }
+.c-day { padding: 8px 0; border-bottom: 1px solid var(--ch-border); font-size: 14px; }
+.c-day:last-child { border-bottom: 0; }
+.c-day .muted { overflow-wrap: anywhere; }
+.notify { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; font-size: 13px; color: var(--ch-text-muted); }
+
+/* Schedule list */
+.card { background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: var(--radius); }
+.list-head { padding: 10px 14px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-text-muted); border-bottom: 1px solid var(--ch-border); }
+.nc-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-bottom: 1px solid var(--ch-border); }
+.nc-row:last-child { border-bottom: 0; }
+.nc-icon { width: 38px; height: 38px; border-radius: 10px; background: var(--ch-danger-soft); color: var(--ch-danger); display: grid; place-items: center; font-weight: 700; flex: none; }
+.nc-row .body { flex: 1; min-width: 0; }
+.nc-row .title { font-weight: 600; overflow-wrap: anywhere; }
+.nc-row .sub { font-size: 13px; color: var(--ch-text-muted); overflow-wrap: anywhere; }
+.reason-pill { display: inline-block; margin-top: 4px; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 9px; background: var(--ch-surface-2); }
+.empty { padding: 18px 14px; color: var(--ch-text-muted); font-size: 14px; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ch-text); color: var(--ch-bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; display: none; z-index: 20; max-width: calc(100% - 32px); }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="page-head">
+    <h1>No classes: design mockup</h1>
+    <button class="btn outline small" id="theme">Dark mode</button>
+    <button class="btn outline small" id="reset">Reset</button>
+  </div>
+
+  <div class="layout">
+    <div>
+      <p class="label">1 · The No classes dialog</p>
+      <div class="dialog" role="dialog" aria-label="No classes">
+        <h2>No classes</h2>
+        <p class="small muted" style="margin:0 0 14px">Pick the days, then the classes that will not meet. Students in those classes get a notification.</p>
+
+        <div class="stack">
+          <div>
+            <div class="week-nav">
+              <button class="arrow" id="prevWeek" aria-label="Earlier week">‹</button>
+              <span class="semibold" id="weekLabel"></span>
+              <button class="arrow" id="nextWeek" aria-label="Later week">›</button>
+            </div>
+            <div class="week" id="week"></div>
+            <div class="legend"><span><b style="color:var(--ch-danger)">✓</b> Picked</span><span><b>NC</b> Already no classes</span><span>Faded: no classes in the timetable</span></div>
+            <div class="hint">Tap several days for a suspension or a break. Use the arrows to reach later weeks.</div>
+          </div>
+
+          <div id="groups" class="stack" style="gap:10px"></div>
+
+          <div>
+            <div class="field"><label>Reason (optional)</label></div>
+            <div class="chips" id="chips"></div>
+            <div class="field" style="margin-top:8px"><input id="reason" maxlength="200" placeholder="Or type your own" /></div>
+            <div class="counter" id="counter"></div>
+          </div>
+
+          <div id="summary"></div>
+        </div>
+
+        <div class="dialog-actions">
+          <button class="btn text">Cancel</button>
+          <button class="btn solid" id="next">Next</button>
+        </div>
+      </div>
+      <p class="note">Try it: tap Mon 23 to Wed 25 for a suspension, untick one class, pick a reason, then Next. Thu 19 is already marked; Tue 24 has a class whose attendance was already taken.</p>
+    </div>
+
+    <div>
+      <p class="label">2 · Upcoming in the Schedule tab</p>
+      <div class="card" id="upcoming"></div>
+      <p class="note">Marks saved together show as one entry ("Mon, Nov 23 to Wed, Nov 25 · 5 classes"). Remove asks first, and says that students will see the classes again. Students see the same list without Remove.</p>
+
+      <div style="margin-top:26px">
+        <p class="label">3 · What changes</p>
+        <ul class="note" style="padding-left:18px;margin-top:0">
+          <li>Several days at once, and any mix of classes, instead of one day and "whole day or one course".</li>
+          <li>You see the actual meetings you are cancelling, with time and room.</li>
+          <li>Days already marked cannot be marked twice.</li>
+          <li>A warning when attendance was already taken for a meeting.</li>
+          <li>One notification for the whole set, not one per day.</li>
+          <li>Remove asks before classes come back on.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="confirm">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="cTitle">
+    <h2 id="cTitle"></h2>
+    <div id="cBody"></div>
+    <div class="dialog-actions">
+      <button class="btn text" id="cBack">Back</button>
+      <button class="btn danger" id="cOk"></button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const COURSES = {
+  or: { name: 'Operations Research', color: '#2563EB' },
+  se: { name: 'Software Engineering', color: '#7C3AED' },
+  aa: { name: 'Abstract Algebra', color: '#0E7490' },
+};
+const MEETINGS = [
+  { id: 'm1', course: 'or', day: 1, start: 480, end: 570, room: 'Room 304' },
+  { id: 'm2', course: 'se', day: 1, start: 780, end: 870, room: 'Computer Lab 2' },
+  { id: 'm3', course: 'or', day: 2, start: 480, end: 570, room: 'Room 304' },
+  { id: 'm4', course: 'aa', day: 2, start: 780, end: 870, room: 'Room 210' },
+  { id: 'm5', course: 'se', day: 3, start: 600, end: 690, room: 'Computer Lab 2' },
+  { id: 'm6', course: 'aa', day: 4, start: 900, end: 990, room: 'Room 210' },
+  { id: 'm7', course: 'or', day: 5, start: 780, end: 870, room: 'Room 304' },
+];
+const TODAY = '2026-11-17';
+const REASONS = ['Holiday', 'Class suspension', 'Instructor not available', 'University event', 'Exam week'];
+let MARKS, TAKEN, weekStart, picked, unticked, reason, removing;
+
+function seed() {
+  MARKS = [{ id: 'k1', group: 'g1', date: '2026-11-19', courses: ['aa'], reason: 'Founding anniversary' }];
+  TAKEN = new Set(['2026-11-24|m3']); // pretend attendance was taken ahead by mistake
+  weekStart = '2026-11-16'; picked = new Set(); unticked = new Set(); reason = '';
+}
+
+const parse = (k) => new Date(Date.UTC(+k.slice(0, 4), +k.slice(5, 7) - 1, +k.slice(8, 10)));
+const key = (d) => d.toISOString().slice(0, 10);
+const addDays = (k, n) => { const d = parse(k); d.setUTCDate(d.getUTCDate() + n); return key(d); };
+const weekday = (k) => parse(k).getUTCDay();
+const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const nice = (k) => `${DOW[weekday(k)]}, ${M[parse(k).getUTCMonth()]} ${parse(k).getUTCDate()}`;
+const clock = (m) => { const h = Math.floor(m / 60), mm = m % 60; return `${h % 12 || 12}:${String(mm).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const $ = (id) => document.getElementById(id);
+
+const meetingsOn = (k) => MEETINGS.filter((m) => m.day === weekday(k)).sort((a, b) => a.start - b.start);
+const markedCourse = (k, c) => MARKS.some((x) => x.date === k && (x.courses.length === 0 || x.courses.includes(c)));
+const free = (k) => meetingsOn(k).filter((m) => !markedCourse(k, m.course));
+const chosen = () => [...picked].sort().flatMap((k) => free(k).filter((m) => !unticked.has(`${k}|${m.id}`)).map((m) => ({ k, m })));
+
+function render() {
+  const end = addDays(weekStart, 5);
+  $('weekLabel').textContent = `${M[parse(weekStart).getUTCMonth()]} ${parse(weekStart).getUTCDate()} to ${M[parse(end).getUTCMonth()]} ${parse(end).getUTCDate()}`;
+  $('week').innerHTML = [0, 1, 2, 3, 4, 5].map((i) => {
+    const k = addDays(weekStart, i);
+    const all = meetingsOn(k), left = free(k);
+    const nothing = all.length === 0;
+    const marked = all.length > 0 && left.length === 0;
+    const on = picked.has(k);
+    const sub = marked ? 'NC' : on ? `${left.filter((m) => !unticked.has(`${k}|${m.id}`)).length} of ${left.length}` : nothing ? '' : `${left.length} class${left.length === 1 ? '' : 'es'}`;
+    return `<button class="day${marked ? ' marked' : ''}${on ? ' picked' : ''}" data-day="${k}" ${nothing || marked ? 'disabled' : ''} aria-pressed="${on}">
+      <span class="dow">${DOW[weekday(k)]}</span><span class="num">${parse(k).getUTCDate()}</span><span class="sub">${sub}</span></button>`;
+  }).join('');
+
+  const days = [...picked].sort();
+  $('groups').innerHTML = days.length === 0
+    ? '<div class="summary-bar empty">Pick one or more days above.</div>'
+    : days.map((k) => {
+      const list = meetingsOn(k);
+      const left = free(k);
+      const allOn = left.every((m) => !unticked.has(`${k}|${m.id}`));
+      return `<div class="day-group"><div class="day-head"><span class="grow">${nice(k)}</span>
+        <button class="link" data-all="${k}">${allOn ? 'Untick all' : 'Tick all'}</button></div>` +
+        list.map((m) => {
+          const c = COURSES[m.course];
+          const already = markedCourse(k, m.course);
+          const on = !already && !unticked.has(`${k}|${m.id}`);
+          const status = already ? 'Already no classes'
+            : TAKEN.has(`${k}|${m.id}`) ? '<span class="status warn">Attendance was already taken for this class</span>'
+            : `${clock(m.start)} to ${clock(m.end)} · ${esc(m.room)}`;
+          return `<div class="meet${on ? ' on' : ''}${already ? ' off' : ''}" ${already ? '' : `data-meet="${k}|${m.id}"`} role="checkbox" aria-checked="${on}" tabindex="0">
+            <span class="check">${on ? '✓' : ''}</span>
+            <div class="body"><div class="title"><b>${clock(m.start)}</b>&nbsp; <i class="course-dot" style="background:${c.color}"></i>${esc(c.name)}</div>
+            <div class="status">${status}</div></div></div>`;
+        }).join('') + '</div>';
+    }).join('');
+
+  $('chips').innerHTML = REASONS.map((r) => `<button class="chip-btn${reason === r ? ' on' : ''}" data-reason="${esc(r)}">${esc(r)}</button>`).join('');
+  $('reason').value = reason;
+  $('counter').textContent = `${reason.length} / 200`;
+
+  const list = chosen();
+  const n = list.length;
+  $('summary').innerHTML = n === 0 ? '' : `<div class="summary-bar"><b>${n} class${n === 1 ? '' : 'es'}</b> on ${new Set(list.map((x) => x.k)).size} day${new Set(list.map((x) => x.k)).size === 1 ? '' : 's'} will be marked no classes.</div>`;
+  $('next').disabled = n === 0;
+  renderUpcoming();
+}
+
+function renderUpcoming() {
+  const groups = {};
+  for (const x of MARKS) (groups[x.group] ??= []).push(x);
+  const rows = Object.values(groups).sort((a, b) => (a[0].date < b[0].date ? -1 : 1)).map((g) => {
+    const dates = [...new Set(g.map((x) => x.date))].sort();
+    const when = dates.length === 1 ? nice(dates[0]) : `${nice(dates[0])} to ${nice(dates[dates.length - 1])}`;
+    const count = g.reduce((s, x) => s + (x.courses.length === 0 ? meetingsOn(x.date).length : meetingsOn(x.date).filter((m) => x.courses.includes(m.course)).length), 0);
+    const which = g.every((x) => x.courses.length === 0) ? 'Whole day' : [...new Set(g.flatMap((x) => x.courses.length ? x.courses : meetingsOn(x.date).map((m) => m.course)))].map((c) => COURSES[c].name).join(', ');
+    return `<div class="nc-row"><div class="nc-icon">NC</div><div class="body">
+      <div class="title">${esc(when)}</div><div class="sub">${count} class${count === 1 ? '' : 'es'} · ${esc(which)}</div>
+      ${g[0].reason ? `<span class="reason-pill">${esc(g[0].reason)}</span>` : ''}</div>
+      <button class="btn text small danger-text" data-remove="${g[0].group}">Remove</button></div>`;
+  });
+  $('upcoming').innerHTML = `<div class="list-head">No classes</div>` + (rows.join('') || '<div class="empty">Nothing coming up.</div>');
+}
+
+function openConfirm() {
+  removing = null;
+  const list = chosen();
+  const byDay = {};
+  for (const x of list) (byDay[x.k] ??= []).push(x.m);
+  const taken = list.filter((x) => TAKEN.has(`${x.k}|${x.m.id}`)).length;
+  $('cTitle').textContent = `Mark ${list.length} class${list.length === 1 ? '' : 'es'} as no classes?`;
+  $('cOk').textContent = 'Mark no classes';
+  $('cBody').innerHTML = Object.entries(byDay).map(([k, ms]) => `<div class="c-day"><b>${nice(k)}</b>
+      <div class="muted">${ms.length === meetingsOn(k).length ? 'Whole day · ' : ''}${ms.map((m) => `${clock(m.start)} ${esc(COURSES[m.course].name)}`).join('; ')}</div></div>`).join('') +
+    (reason ? `<div class="c-day"><span class="muted">Reason:</span> ${esc(reason)}</div>` : '') +
+    (taken ? `<div class="summary-bar" style="margin-top:10px;background:var(--ch-warning-soft)">${taken} of these already ${taken === 1 ? 'has' : 'have'} attendance. It stays saved and still counts.</div>` : '') +
+    `<div class="notify">🔔 <span>Students in these classes get one notification: "No classes on ${esc(nice(Object.keys(byDay)[0]))}${Object.keys(byDay).length > 1 ? ` and ${Object.keys(byDay).length - 1} more day${Object.keys(byDay).length > 2 ? 's' : ''}` : ''}"${reason ? `, with the reason` : ''}.</span></div>`;
+  $('confirm').classList.add('open');
+}
+function openRemove(group) {
+  removing = group;
+  const g = MARKS.filter((x) => x.group === group);
+  const dates = [...new Set(g.map((x) => x.date))].sort();
+  $('cTitle').textContent = 'Classes are back on?';
+  $('cOk').textContent = 'Remove';
+  $('cBody').innerHTML = `<p style="margin:0">${esc(dates.length === 1 ? nice(dates[0]) : `${nice(dates[0])} to ${nice(dates[dates.length - 1])}`)} will show the classes again in everyone's timetable. No notification is sent.</p>`;
+  $('confirm').classList.add('open');
+}
+const close = () => $('confirm').classList.remove('open');
+function toast(t) { const el = $('toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => (el.style.display = 'none'), 2800); }
+
+document.addEventListener('click', (e) => {
+  const d = e.target.closest('[data-day]');
+  if (d && !d.disabled) { const k = d.dataset.day; picked.has(k) ? picked.delete(k) : picked.add(k); return render(); }
+  const m = e.target.closest('[data-meet]');
+  if (m) { const k = m.dataset.meet; unticked.has(k) ? unticked.delete(k) : unticked.add(k); return render(); }
+  const a = e.target.closest('[data-all]');
+  if (a) { const k = a.dataset.all; const left = free(k); const allOn = left.every((x) => !unticked.has(`${k}|${x.id}`)); left.forEach((x) => (allOn ? unticked.add(`${k}|${x.id}`) : unticked.delete(`${k}|${x.id}`))); return render(); }
+  const r = e.target.closest('[data-reason]');
+  if (r) { reason = reason === r.dataset.reason ? '' : r.dataset.reason; return render(); }
+  const rm = e.target.closest('[data-remove]');
+  if (rm) return openRemove(rm.dataset.remove);
+});
+$('reason').oninput = (e) => { reason = e.target.value; $('counter').textContent = `${reason.length} / 200`; document.querySelectorAll('.chip-btn').forEach((c) => c.classList.toggle('on', c.dataset.reason === reason)); };
+$('prevWeek').onclick = () => { weekStart = addDays(weekStart, -7); render(); };
+$('nextWeek').onclick = () => { weekStart = addDays(weekStart, 7); render(); };
+$('next').onclick = openConfirm;
+$('cBack').onclick = close;
+$('confirm').onclick = (e) => e.target === e.currentTarget && close();
+$('cOk').onclick = () => {
+  if (removing) { MARKS = MARKS.filter((x) => x.group !== removing); close(); render(); return toast('Classes are back on.'); }
+  const group = 'g' + Date.now();
+  const byDay = {};
+  for (const x of chosen()) (byDay[x.k] ??= []).push(x.m.course);
+  for (const [k, cs] of Object.entries(byDay)) {
+    const whole = free(k).length === meetingsOn(k).length && cs.length === meetingsOn(k).length;
+    MARKS.push({ id: group + k, group, date: k, courses: whole ? [] : [...new Set(cs)], reason });
+  }
+  const n = chosen().length;
+  picked = new Set(); unticked = new Set(); reason = '';
+  close(); render();
+  toast(`Marked ${n} class${n === 1 ? '' : 'es'} as no classes.`);
+};
+$('reset').onclick = () => { seed(); render(); };
+$('theme').onclick = () => {
+  const dark = document.documentElement.dataset.theme !== 'dark' && !(document.documentElement.dataset.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  $('theme').textContent = dark ? 'Light mode' : 'Dark mode';
+};
+seed();
+weekStart = '2026-11-16';
+render();
+</script>
+</body>
+</html>

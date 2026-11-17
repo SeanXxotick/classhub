@@ -49,3 +49,7 @@ release/
 web/dist/
 web/test-results/
 web/playwright-report/
+
+# Generated: wrangler cache, emulator build
+.wrangler/
+web/dist-emu/

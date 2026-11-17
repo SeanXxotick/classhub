@@ -5,7 +5,7 @@ import {
   CLAIM_METHODS,
   CLAIM_METHOD_LABELS,
   addComment,
-  addNoClass,
+  addNoClasses,
   removeComment,
   setVote,
   tally,
@@ -27,7 +27,7 @@ import {
   newAnnouncement,
   newMeeting,
   rejectClaim,
-  removeNoClass,
+  removeNoClasses,
   saveAttendance,
   sheetId,
   useAttendance,
@@ -55,10 +55,15 @@ import { formatMoney, parsePesos } from '../../domain/money';
 import { courseShortName, layoutWeek } from '../../domain/weekGrid';
 import { weekImage } from './weekImage';
 import { attendanceExportSheets } from '../../domain/attendanceExport';
+import { groupNoClass } from '../../domain/noClassGroups';
 import { xlsxFile } from '../../domain/xlsx';
 import { Avatar, ConfirmDialog, CourseDot, Dialog, Field, RoleChip, hexColor, inAndroidApp, saveFile, shortDate, shortDateTime } from '../common';
 import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, Section, StatusBadge, TypeIcon } from '../../design';
 import { useClass, type ClassState } from '../classroom/ClassContext';
+import { useSearchParams } from 'react-router-dom';
+import { useForum, useForumAnswersSince, useForumAuthors } from '../../data/forum';
+import { forumUnseen } from '../../domain/forumUnseen';
+import { ForumView, TagBadge, TagSelect } from './ForumUi';
 
 /** Runs a write and shows the result in the snackbar. */
 function useRun() {
@@ -158,7 +163,7 @@ export function ClaimsCard({ state }: { state: ClassState }) {
           ))}
         </Card>
       ) : (
-        !manage && <Notice tone="info">Paid by GCash or bank? Tap "I paid" so the treasurer can confirm it.</Notice>
+        null
       )}
       {adding && <ClaimDialog state={state} onClose={() => setAdding(false)} />}
       {rejecting && (
@@ -323,7 +328,7 @@ function RemindDialog({ state, owing, onClose }: { state: ClassState; owing: Cla
       }
     >
       <p className="small muted" style={{ marginTop: 0 }}>
-        Each student gets a notification with what they owe. Students who turned notifications off will not get one.
+        Students with notifications off will not get it.
       </p>
       <label className="list-row" style={{ cursor: 'pointer', paddingLeft: 0 }}>
         <input type="checkbox" className="check" checked={allPicked} onChange={(e) => setPicked(new Set(e.target.checked ? owing.map((m) => m.id) : []))} />
@@ -460,7 +465,17 @@ export function StatementCard({ state }: { state: ClassState }) {
 
 export function NewsTab({ state }: { state: ClassState }) {
   const manage = state.can('ANNOUNCEMENTS_MANAGE');
-  const posts = useAnnouncements(db, state.classId, true).data;
+  const allPosts = useAnnouncements(db, state.classId, true).data;
+  // ?forum=all opens the Forum, ?forum=<id> one question (links from notifications use these).
+  const [params, setParams] = useSearchParams();
+  const forumParam = params.get('forum');
+  const inForum = forumParam !== null;
+  const openForum = (id: string) => setParams({ tab: 'NEWS', forum: id || 'all' }, { replace: !id });
+  const showAnnouncements = () => setParams({ tab: 'NEWS' }, { replace: true });
+  const questions = useForum(db, state.classId, manage, true).data;
+  const authors = useForumAuthors(db, state.classId, state.myUid, manage, true).data ?? [];
+  const [tag, setTag] = useState('*');
+  const posts = allPosts?.filter((p) => tag === '*' || p.courseId === tag);
   const seen = useSeen(db, state.classId, true).data ?? [];
   const votes = useVotes(db, state.classId, true).data ?? [];
   const memberIds = useMemo(() => new Set(state.members.map((m) => m.id)), [state.members]);
@@ -469,18 +484,60 @@ export function NewsTab({ state }: { state: ClassState }) {
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [seenOf, setSeenOf] = useState<Announcement | null>(null);
   const [deleting, setDeleting] = useState<Announcement | null>(null);
-  const mySeen = seen.find((s) => s.id === state.myUid)?.announcements ?? {};
-  const unseen = (posts ?? []).filter((p) => !mySeen[p.id]).map((p) => p.id).join(',');
+  const mine = seen.find((s) => s.id === state.myUid);
+  const mySeen = mine?.announcements ?? {};
+  const unseen = inForum ? '' : (allPosts ?? []).filter((p) => !mySeen[p.id]).map((p) => p.id).join(',');
+  const unseenPosts = (allPosts ?? []).filter((p) => !mySeen[p.id] && p.createdByUid !== state.myUid).length;
+  // What is new in the Forum since this member last opened it: questions, and answers or replies to them.
+  const myPostIds = new Set(authors.filter((a) => a.uid === state.myUid).map((a) => a.id));
+  const forumAt = mine?.forumAt ?? 0;
+  const answersSince = useForumAnswersSince(db, state.classId, forumAt, !!mine && !inForum).data ?? [];
+  const newQuestions = forumUnseen(questions ?? [], answersSince, state.myUid, myPostIds, forumAt).total;
 
   // Showing the list counts as opening the posts.
   useEffect(() => {
     if (unseen) markSeen(db, state.classId, state.myUid, unseen.split(',')).catch(() => {});
   }, [unseen, state.classId, state.myUid]);
 
+  const switcher = (
+    <div className="ch-segmented ch-full news-switch" role="group" aria-label="News">
+      <button type="button" className={inForum ? '' : 'ch-selected'} aria-pressed={!inForum} onClick={showAnnouncements}>
+        Announcements
+        {inForum && unseenPosts > 0 && <span className="news-count">{unseenPosts}</span>}
+      </button>
+      <button type="button" className={inForum ? 'ch-selected' : ''} aria-pressed={inForum} onClick={() => openForum('')}>
+        Forum
+        {!inForum && newQuestions > 0 && <span className="news-count">{newQuestions}</span>}
+      </button>
+    </div>
+  );
+
+  if (inForum) {
+    return (
+      <div className="stack">
+        {switcher}
+        <ForumView
+          state={state}
+          questions={questions}
+          authors={authors}
+          seen={seen}
+          lastVisit={forumAt}
+          openId={forumParam === 'all' ? '' : (forumParam ?? '')}
+          onOpen={openForum}
+          onPromote={(post) => {
+            showAnnouncements();
+            setEditing(post);
+          }}
+        />
+      </div>
+    );
+  }
+
   const seenBy = (id: string) => seen.filter((s) => s.announcements[id] && state.members.some((m) => m.id === s.id)).length;
 
   return (
     <div className="stack">
+      {switcher}
       {manage && (
         <div className="ch-row">
           <Button icon="bell" onClick={() => setEditing(newAnnouncement({}))}>
@@ -488,15 +545,23 @@ export function NewsTab({ state }: { state: ClassState }) {
           </Button>
         </div>
       )}
-      {posts && posts.length === 0 && <Notice tone="info">No announcements yet.</Notice>}
+      {(allPosts ?? []).length > 0 && state.courses.length > 0 && (
+        <div className="forum-search">
+          <TagSelect state={state} value={tag} onChange={setTag} label="Tag" all />
+        </div>
+      )}
+      {posts && posts.length === 0 && <Notice tone="info">{tag === '*' ? 'No announcements yet.' : 'No announcements with this tag.'}</Notice>}
       {(posts ?? []).map((p) => (
         <Card key={p.id}>
           <div className="stack" style={{ gap: 8 }}>
-            {p.pinned && (
-              <div className="ch-row">
-                <Badge tone="primary" icon="pin">
-                  Pinned
-                </Badge>
+            {(p.pinned || p.courseId) && (
+              <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
+                {p.pinned && (
+                  <Badge tone="primary" icon="pin">
+                    Pinned
+                  </Badge>
+                )}
+                <TagBadge state={state} courseId={p.courseId} />
               </div>
             )}
             <Byline state={state} uid={p.createdByUid} fallback="A former member" when={p.createdAtMillis} edited={!!p.editedAtMillis} size={40} />
@@ -751,6 +816,8 @@ function PostDialog({ state, post, onClose }: { state: ClassState; post: Announc
   const [title, setTitle] = useState(post.title);
   const [body, setBody] = useState(post.body);
   const [pinned, setPinned] = useState(post.pinned);
+  const [courseId, setCourseId] = useState(post.courseId);
+  const course = state.courses.find((c) => c.id === courseId);
   return (
     <Dialog
       title={post.id ? 'Edit announcement' : 'New announcement'}
@@ -763,7 +830,7 @@ function PostDialog({ state, post, onClose }: { state: ClassState; post: Announc
           <button
             className="btn solid"
             disabled={!title.trim()}
-            onClick={() => run(post.id ? 'Announcement saved.' : 'Announcement posted.', () => saveAnnouncement(db, state.myUid, state.classId, { ...post, title, body, pinned, commentsOff: !comments }), onClose)}
+            onClick={() => run(post.id ? 'Announcement saved.' : 'Announcement posted.', () => saveAnnouncement(db, state.myUid, state.classId, { ...post, title, body, pinned, commentsOff: !comments, courseId }), onClose)}
           >
             {post.id ? 'Save' : 'Post'}
           </button>
@@ -777,6 +844,11 @@ function PostDialog({ state, post, onClose }: { state: ClassState; post: Announc
         <Field label="Message">
           <textarea value={body} rows={6} maxLength={4000} onChange={(e) => setBody(e.target.value)} />
         </Field>
+        {state.courses.length > 0 && (
+          <Field label="Tag" help={post.id ? undefined : course ? `Only students taking ${course.name} get a notification.` : 'The whole class gets a notification.'}>
+            <TagSelect state={state} value={courseId} onChange={setCourseId} label="Tag" />
+          </Field>
+        )}
         <label className="row">
           <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} /> Pin to the top
         </label>
@@ -1002,6 +1074,14 @@ export function TimetableCard({ state }: { state: ClassState }) {
   const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
   const now = useClockTick();
   const todayKey = manilaDay(now).dateKey;
+  // Officers who take attendance see on today's meetings whether it was taken.
+  const attends = state.can('ATTENDANCE_MANAGE');
+  const sheets = useAttendance(db, state.classId, attends).data;
+  const attendanceBadge = (m: Meeting, phase: MeetingPhase, isToday: boolean, cancelled: boolean) => {
+    if (!attends || !isToday || cancelled || !sheets) return null;
+    if (sheets.some((x) => x.id === sheetId(todayKey, m.id))) return <Badge tone="success" icon="check">Attendance taken</Badge>;
+    return phase === 'LATER' ? null : <Badge tone="neutral">Attendance not taken</Badge>;
+  };
   // Folded, the card shows only today and tomorrow, so the deadlines below stay within reach.
   // "Show more" lists the next seven days, each with its date.
   const soon: [string, number][] = Array.from({ length: moreDays ? 7 : 2 }, (_, i) => {
@@ -1010,6 +1090,9 @@ export function TimetableCard({ state }: { state: ClassState }) {
     return [label ? `${label} · ${DAYS[manilaDay(millis).dayOfWeek]}` : niceDate(manilaDay(millis).dateKey), millis];
   });
   const coming = marks.filter((k) => k.dateKey >= todayKey).sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
+  // Marks saved together (a suspension over several days) show as one entry.
+  const comingGroups = groupNoClass(coming, (day) => meetings.some((m) => m.dayOfWeek === weekdayOf(day)));
+  const [removing, setRemoving] = useState<NoClassMark[] | null>(null);
   const viewingCancelled = viewing ? nextCancelled(viewing, meetings, marks, now) : null;
   const { actions } = useClass();
   const [saving, setSaving] = useState(false);
@@ -1071,7 +1154,9 @@ export function TimetableCard({ state }: { state: ClassState }) {
                   <DayHeader>{label}</DayHeader>
                   {list.length === 0 && <ListRow leading={<TypeIcon icon="moon" tone="neutral" />} title="No classes" />}
                   {list.map(({ meeting: m, cancelled }) => {
-                    const look = phaseLook(meetingPhase(m.startMinutes, m.endMinutes, millis, now), !!cancelled);
+                    const phase = meetingPhase(m.startMinutes, m.endMinutes, millis, now);
+                    const look = phaseLook(phase, !!cancelled);
+                    const taken = attendanceBadge(m, phase, manilaDay(millis).dateKey === todayKey, !!cancelled);
                     return (
                       <ListRow
                         key={m.id}
@@ -1080,7 +1165,8 @@ export function TimetableCard({ state }: { state: ClassState }) {
                         title={courseName(m.courseId)}
                         subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}${notMine(m)}${look.suffix}`}
                         trailing={look.trailing}
-                        children={cancelled ? <CancelledNote reason={cancelled.reason} /> : undefined}
+                        // Under the time and room, not beside them, so a long course name keeps its width on a phone.
+                        children={cancelled ? <CancelledNote reason={cancelled.reason} /> : taken ? <span className="att-row-badge">{taken}</span> : undefined}
                         chevron={manage}
                         onClick={manage ? () => setEditing(m) : undefined}
                       />
@@ -1107,25 +1193,44 @@ export function TimetableCard({ state }: { state: ClassState }) {
           </div>
         </Card>
       )}
-      {coming.length > 0 && (
+      {comingGroups.length > 0 && (
         <Card flush>
           <DayHeader>No classes</DayHeader>
-          {coming.map((k) => (
-            <ListRow
-              key={k.id}
-              leading={<TypeIcon icon="ban" tone="danger" />}
-              title={`${niceDate(k.dateKey)} · ${k.courseId ? courseName(k.courseId) : 'Whole day'}`}
-              subtitle={k.reason || undefined}
-              actions={
-                manage ? (
-                  <Button size="small" variant="text" onClick={() => run('Classes are back on.', () => removeNoClass(db, state.classId, k.id))}>
-                    Remove
-                  </Button>
-                ) : undefined
-              }
-            />
-          ))}
+          {comingGroups.map((group) => {
+            const dates = [...new Set(group.map((k) => k.dateKey))];
+            const affected = group.flatMap((k) => meetings.filter((m) => m.dayOfWeek === weekdayOf(k.dateKey) && (!k.courseId || k.courseId === m.courseId)));
+            const which = group.every((k) => !k.courseId) ? 'Whole day' : [...new Set(affected.map((m) => courseName(m.courseId)))].join(', ');
+            return (
+              <ListRow
+                key={group[0].id}
+                leading={<TypeIcon icon="ban" tone="danger" />}
+                title={dates.length === 1 ? niceDate(dates[0]) : `${niceDate(dates[0])} to ${niceDate(dates[dates.length - 1])}`}
+                subtitle={`${affected.length} class${affected.length === 1 ? '' : 'es'}${which ? ` · ${which}` : ''}`}
+                children={group[0].reason ? <span className="att-row-badge"><Badge tone="neutral">{group[0].reason}</Badge></span> : undefined}
+                actions={
+                  manage ? (
+                    <Button size="small" variant="text" onClick={() => setRemoving(group)}>
+                      Remove
+                    </Button>
+                  ) : undefined
+                }
+              />
+            );
+          })}
         </Card>
+      )}
+      {removing && (
+        <ConfirmDialog
+          title="Classes are back on?"
+          text={`${(() => {
+            const dates = [...new Set(removing.map((k) => k.dateKey))];
+            return dates.length === 1 ? niceDate(dates[0]) : `${niceDate(dates[0])} to ${niceDate(dates[dates.length - 1])}`;
+          })()} will show the classes again in everyone's timetable. No notification is sent.`}
+          confirm="Remove"
+          danger
+          onClose={() => setRemoving(null)}
+          onConfirm={() => run('Classes are back on.', () => removeNoClasses(db, state.classId, removing.map((k) => k.id)), () => setRemoving(null))}
+        />
       )}
       {taking && <AttendanceDialog state={state} meetings={meetings} onClose={() => setTaking(false)} />}
       {editing && <MeetingDialog state={state} meeting={editing} meetings={everyMeeting} onClose={() => setEditing(null)} />}
@@ -1222,16 +1327,109 @@ function MeetingDialog({ state, meeting, meetings, onClose }: { state: ClassStat
   );
 }
 
+const NO_CLASS_REASONS = ['Holiday', 'Class suspension', 'Instructor not available', 'University event', 'Exam week'];
+
+/**
+ * Marks one or more days as no classes. The officer picks days on a week strip (several at once for a
+ * suspension or a break), unticks any class that will still meet, gives a reason, and confirms. A day whose
+ * classes are all ticked is saved as a whole-day mark; otherwise one mark per course.
+ */
 function NoClassDialog({ state, meetings, onClose }: { state: ClassState; meetings: Meeting[]; onClose: () => void }) {
   const run = useRun();
-  const [dateKey, setDateKey] = useState(manilaDay(Date.now()).dateKey);
-  const [picked, setPicked] = useState('');
+  const marks = useNoClass(db, state.classId, true).data ?? [];
+  // Only officers who take attendance can read the sheets; for them, a warning when one was already taken.
+  const sheets = useAttendance(db, state.classId, state.can('ATTENDANCE_MANAGE')).data ?? [];
+  const today = manilaDay(Date.now()).dateKey;
+  const [weekStart, setWeekStart] = useState(mondayOf(today));
+  const [picked, setPicked] = useState<string[]>([]);
+  // Classes start unticked on a picked day; the officer ticks the ones that will not meet.
+  const [tickedKeys, setTickedKeys] = useState<string[]>([]);
   const [reason, setReason] = useState('');
-  // Only the courses that meet on the chosen day can be marked.
-  const dayOfWeek = dateKey ? new Date(`${dateKey}T00:00:00Z`).getUTCDay() : -1;
-  const meeting = new Set(meetings.filter((m) => m.dayOfWeek === dayOfWeek).map((m) => m.courseId));
-  const courses = state.courses.filter((c) => meeting.has(c.id));
-  const courseId = meeting.has(picked) ? picked : '';
+  const [confirming, setConfirming] = useState(false);
+
+  const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
+  const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
+  const meetingsOnDay = (day: string) => meetings.filter((m) => m.dayOfWeek === weekdayOf(day)).sort((a, b) => a.startMinutes - b.startMinutes);
+  const alreadyOff = (day: string, courseId: string) => marks.some((k) => k.dateKey === day && (!k.courseId || k.courseId === courseId));
+  const open = (day: string) => meetingsOnDay(day).filter((m) => !alreadyOff(day, m.courseId));
+  const tickKey = (day: string, m: Meeting) => `${day}|${m.id}`;
+  const ticked = (day: string, m: Meeting) => tickedKeys.includes(tickKey(day, m));
+  const taken = (day: string, m: Meeting) => sheets.some((x) => x.id === sheetId(day, m.id));
+  const days = [...picked].sort();
+  const chosen = days.flatMap((day) => open(day).filter((m) => ticked(day, m)).map((m) => ({ day, m })));
+  const chosenDays = [...new Set(chosen.map((x) => x.day))];
+  const takenCount = chosen.filter((x) => taken(x.day, x.m)).length;
+
+  const toggleDay = (day: string) => {
+    if (picked.includes(day)) {
+      setPicked(picked.filter((d) => d !== day));
+      setTickedKeys(tickedKeys.filter((k) => !k.startsWith(`${day}|`)));
+    } else {
+      setPicked([...picked, day]);
+    }
+  };
+  const toggleMeeting = (key: string) => setTickedKeys(tickedKeys.includes(key) ? tickedKeys.filter((k) => k !== key) : [...tickedKeys, key]);
+
+  /** What gets saved: a whole-day mark when every class of the day is ticked and none was marked before, else one per course. */
+  const toSave = () =>
+    chosenDays.flatMap((day) => {
+      const all = meetingsOnDay(day);
+      const ones = chosen.filter((x) => x.day === day).map((x) => x.m);
+      if (ones.length === all.length) return [{ dateKey: day, courseId: '' }];
+      return [...new Set(ones.map((m) => m.courseId))].map((courseId) => ({ dateKey: day, courseId }));
+    });
+  const save = () => {
+    const count = chosen.length;
+    run(`Marked ${count} class${count === 1 ? '' : 'es'} as no classes.`, () => addNoClasses(db, state.myUid, state.classId, toSave(), reason), onClose);
+  };
+
+  if (confirming && chosen.length > 0) {
+    const more = chosenDays.length - 1;
+    return (
+      <Dialog
+        title={`Mark ${chosen.length} class${chosen.length === 1 ? '' : 'es'} as no classes?`}
+        onClose={() => setConfirming(false)}
+        actions={
+          <>
+            <button className="btn text" onClick={() => setConfirming(false)}>
+              Back
+            </button>
+            <button className="btn solid danger" onClick={save}>
+              Mark no classes
+            </button>
+          </>
+        }
+      >
+        <div className="att-summary" style={{ marginTop: 0 }}>
+          {chosenDays.map((day) => {
+            const ones = chosen.filter((x) => x.day === day).map((x) => x.m);
+            return (
+              <div key={day} className="nc-confirm-day">
+                <b>{niceDate(day)}</b>
+                <span className="muted">
+                  {`${ones.length === meetingsOnDay(day).length ? 'Whole day · ' : ''}${ones.map((m) => `${clockText(m.startMinutes)} ${courseName(m.courseId)}`).join('; ')}`}
+                </span>
+              </div>
+            );
+          })}
+          {reason.trim() && (
+            <div className="nc-confirm-day">
+              <span>
+                <span className="muted">Reason:</span> {reason.trim()}
+              </span>
+            </div>
+          )}
+        </div>
+        {takenCount > 0 && <Notice tone="warning">{`${takenCount} of these already ${takenCount === 1 ? 'has' : 'have'} attendance. It stays saved and still counts.`}</Notice>}
+        <p className="small muted" style={{ margin: 0 }}>
+          {`Students in these classes get one notification: "No classes on ${niceDate(chosenDays[0])}${more > 0 ? ` and ${more} more day${more === 1 ? '' : 's'}` : ''}"${reason.trim() ? ', with the reason' : ''}.`}
+        </p>
+      </Dialog>
+    );
+  }
+
+  const week = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const monthDay = (day: string) => niceDate(day).replace(/^[A-Za-z]+, /, '');
   return (
     <Dialog
       title="No classes"
@@ -1241,30 +1439,129 @@ function NoClassDialog({ state, meetings, onClose }: { state: ClassState; meetin
           <button className="btn text" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn solid" disabled={!dateKey || courses.length === 0} onClick={() => run('Marked as no classes.', () => addNoClass(db, state.myUid, state.classId, dateKey, courseId, reason), onClose)}>
-            Save
+          <button className="btn solid" disabled={chosen.length === 0} onClick={() => setConfirming(true)}>
+            Next
           </button>
         </>
       }
     >
       <div className="stack">
-        <Field label="Date">
-          <input type="date" value={dateKey} onChange={(e) => setDateKey(e.target.value)} />
-        </Field>
-        <Field label="Which classes">
-          <select value={courseId} disabled={courses.length === 0} onChange={(e) => setPicked(e.target.value)}>
-            <option value="">The whole day</option>
-            {courses.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
+        <div>
+          <div className="att-week-nav">
+            <button type="button" className="att-arrow" aria-label="Earlier week" onClick={() => setWeekStart(addDays(weekStart, -7))}>
+              ‹
+            </button>
+            <span className="semibold">{`${monthDay(week[0])} to ${monthDay(week[6])}`}</span>
+            <button type="button" className="att-arrow" aria-label="Later week" onClick={() => setWeekStart(addDays(weekStart, 7))}>
+              ›
+            </button>
+          </div>
+          <div className="att-week">
+            {week.map((day) => {
+              const all = meetingsOnDay(day);
+              const left = open(day);
+              const off = all.length > 0 && left.length === 0;
+              const on = picked.includes(day);
+              const sub = off ? 'NC' : all.length === 0 ? '' : on ? `${left.filter((m) => ticked(day, m)).length} of ${left.length}` : `${left.length}`;
+              const label = `${niceDate(day)}: ${all.length === 0 ? 'no classes in the timetable' : off ? 'already no classes' : `${left.length} class${left.length === 1 ? '' : 'es'}${on ? ', picked' : ''}`}`;
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  className={'att-day' + (off ? ' cancelled' : '') + (on ? ' nc-picked' : '')}
+                  disabled={all.length === 0 || off}
+                  aria-pressed={on}
+                  aria-label={label}
+                  onClick={() => toggleDay(day)}
+                >
+                  <span className="att-dow">{DAY_SHORT[weekdayOf(day)]}</span>
+                  <span className="att-num">{Number(day.slice(8, 10))}</span>
+                  <span className="att-nc">{sub}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {days.map((day) => {
+            const left = open(day);
+            const allOn = left.every((m) => ticked(day, m));
+            return (
+              <div key={day} className="att-meetings">
+                <div className="nc-day-head">
+                  <span className="grow">{niceDate(day)}</span>
+                  <button
+                    type="button"
+                    className="btn text small"
+                    onClick={() => setTickedKeys(allOn ? tickedKeys.filter((k) => !k.startsWith(`${day}|`)) : [...tickedKeys.filter((k) => !k.startsWith(`${day}|`)), ...left.map((m) => tickKey(day, m))])}
+                  >
+                    {allOn ? 'Untick all' : 'Tick all'}
+                  </button>
+                </div>
+                {meetingsOnDay(day).map((m) => {
+                  const off = alreadyOff(day, m.courseId);
+                  const on = !off && ticked(day, m);
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={on}
+                      disabled={off}
+                      className={'att-meeting nc-meeting' + (on ? ' on' : '')}
+                      onClick={() => toggleMeeting(tickKey(day, m))}
+                    >
+                      <span className="nc-box" aria-hidden>
+                        {on ? '✓' : ''}
+                      </span>
+                      <span className="grow">
+                        <span className="att-meeting-title">
+                          <span className="semibold">{clockText(m.startMinutes)}</span> <CourseDot color={courseColor(m.courseId)} />
+                          {courseName(m.courseId)}
+                        </span>
+                        {off ? (
+                          <span className="att-status">Already no classes</span>
+                        ) : taken(day, m) ? (
+                          <span className="att-status warn">Attendance was already taken for this class</span>
+                        ) : (
+                          <span className="att-status">{`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}`}</span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+
+        <div>
+          <div className="small semibold muted" style={{ marginBottom: 6 }}>
+            Reason (optional)
+          </div>
+          <div className="nc-reasons">
+            {NO_CLASS_REASONS.map((r) => (
+              <button key={r} type="button" aria-pressed={reason === r} className={'nc-reason' + (reason === r ? ' on' : '')} onClick={() => setReason(reason === r ? '' : r)}>
+                {r}
+              </button>
             ))}
-          </select>
-        </Field>
-        {dateKey && courses.length === 0 && <p className="small muted" style={{ margin: 0 }}>The timetable has no classes on that day, so there is nothing to mark.</p>}
-        <Field label="Reason (optional)">
-          <input value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} />
-        </Field>
+          </div>
+          <input
+            className="input"
+            style={{ marginTop: 8 }}
+            aria-label="Reason (optional)"
+            placeholder="Or type your own"
+            value={reason}
+            maxLength={200}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </div>
+
+        {chosen.length > 0 && (
+          <div className="nc-summary">
+            <b>{`${chosen.length} class${chosen.length === 1 ? '' : 'es'}`}</b>
+            {` on ${chosenDays.length} day${chosenDays.length === 1 ? '' : 's'} will be marked no classes.`}
+          </div>
+        )}
       </div>
     </Dialog>
   );
@@ -1274,37 +1571,148 @@ function NoClassDialog({ state, meetings, onClose }: { state: ClassState; meetin
 
 const weekdayOf = (dateKey: string) => (dateKey ? new Date(`${dateKey}T00:00:00Z`).getUTCDay() : -1);
 
-/** The officer marks each student of one meeting on one date. Everyone starts as present. */
+/** Minutes after midnight, Philippine time (UTC+8, no daylight saving). */
+const manilaMinutes = (millis: number) => {
+  const d = new Date(millis + 8 * 3_600_000);
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
+};
+/** The YYYY-MM-DD date n days after this one. */
+const addDays = (dateKey: string, n: number) => {
+  const d = new Date(`${dateKey}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const mondayOf = (dateKey: string) => addDays(dateKey, -((weekdayOf(dateKey) + 6) % 7));
+const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MARK_LABELS: Record<AttendanceMark, string> = { PRESENT: 'Present', LATE: 'Late', ABSENT: 'Absent', EXCUSED: 'Excused' };
+const MARKS: AttendanceMark[] = ['PRESENT', 'LATE', 'ABSENT', 'EXCUSED'];
+/** "8:12 AM" in Philippine time. */
+
+/** A saved sheet as one mark per student (everyone not listed was present). */
+function marksOf(sheet: { absent: string[]; late: string[]; excused?: string[] } | undefined): Record<string, AttendanceMark> {
+  const out: Record<string, AttendanceMark> = {};
+  for (const uid of sheet?.late ?? []) out[uid] = 'LATE';
+  for (const uid of sheet?.excused ?? []) out[uid] = 'EXCUSED';
+  // Absent wins, as in the export.
+  for (const uid of sheet?.absent ?? []) out[uid] = 'ABSENT';
+  return out;
+}
+
+/**
+ * The officer marks each student of one meeting on one date. Everyone starts as present. A week strip and
+ * the meeting list show what is already taken, and saving asks first: a new sheet shows who is late, absent
+ * and excused; replacing a saved one shows only what changed.
+ */
 function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; meetings: Meeting[]; onClose: () => void }) {
   const run = useRun();
   const sheets = useAttendance(db, state.classId, true).data;
-  const [dateKey, setDateKey] = useState(manilaDay(Date.now()).dateKey);
+  const noClass = useNoClass(db, state.classId, true).data ?? [];
+  const now = useClockTick();
+  const today = manilaDay(now).dateKey;
+  const [dateKey, setDateKey] = useState(today);
+  const [weekStart, setWeekStart] = useState(mondayOf(today));
   const [pickedId, setPickedId] = useState('');
   const [marks, setMarks] = useState<Record<string, AttendanceMark>>({});
-  const noClass = useNoClass(db, state.classId, true).data ?? [];
-  const today = manilaDay(Date.now()).dateKey;
-  const future = dateKey > today;
-  const todays = meetings.filter((m) => m.dayOfWeek === weekdayOf(dateKey)).sort((a, b) => a.startMinutes - b.startMinutes);
-  const meeting = todays.find((m) => m.id === pickedId) ?? todays[0];
+  const [confirming, setConfirming] = useState(false);
+
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
+  const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
+  const sheetFor = (day: string, meetingId: string) => sheets?.find((x) => x.id === sheetId(day, meetingId));
+  const cancelledOn = (day: string, courseId: string) => noClass.find((x) => x.dateKey === day && (!x.courseId || x.courseId === courseId));
+  const meetingsOnDay = (day: string) => meetings.filter((m) => m.dayOfWeek === weekdayOf(day)).sort((a, b) => a.startMinutes - b.startMinutes);
+  const takerName = (uid: string) => state.members.find((m) => m.id === uid)?.name ?? 'a former member';
+
+  const todays = meetingsOnDay(dateKey);
+  // Unless one was picked: the first meeting not taken yet, preferring one that has already started today.
+  const started = (m: Meeting) => dateKey < today || m.startMinutes <= manilaMinutes(now);
+  const meeting =
+    todays.find((m) => m.id === pickedId) ??
+    todays.find((m) => !sheetFor(dateKey, m.id) && started(m)) ??
+    todays.find((m) => !sheetFor(dateKey, m.id)) ??
+    todays[0];
   const students = meeting ? byLastName(state.members.filter((m) => !m.excludedCourseIds.includes(meeting.courseId))) : [];
-  const saved = meeting ? sheets?.find((x) => x.id === sheetId(dateKey, meeting.id)) : undefined;
+  const saved = meeting ? sheetFor(dateKey, meeting.id) : undefined;
+  const cancelled = meeting ? cancelledOn(dateKey, meeting.courseId) : undefined;
   const key = `${dateKey}|${meeting?.id ?? ''}|${saved?.takenAtMillis ?? 0}`;
-  const cancelled = meeting ? noClass.find((x) => x.dateKey === dateKey && (!x.courseId || x.courseId === meeting.courseId)) : undefined;
 
   // Starts from what was saved for this meeting and date, if anything.
   useEffect(() => {
-    const next: Record<string, AttendanceMark> = {};
-    for (const uid of saved?.absent ?? []) next[uid] = 'ABSENT';
-    for (const uid of saved?.late ?? []) next[uid] = 'LATE';
-    for (const uid of saved?.excused ?? []) next[uid] = 'EXCUSED';
-    setMarks(next);
+    setMarks(marksOf(saved));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  const absent = students.filter((m) => marks[m.id] === 'ABSENT').length;
-  const late = students.filter((m) => marks[m.id] === 'LATE').length;
-  const excused = students.filter((m) => marks[m.id] === 'EXCUSED').length;
+  const markOf = (uid: string) => marks[uid] ?? 'PRESENT';
+  const withMark = (m: AttendanceMark) => students.filter((s) => markOf(s.id) === m);
+  const savedMarks = marksOf(saved);
+  const changes = saved ? students.filter((s) => (savedMarks[s.id] ?? 'PRESENT') !== markOf(s.id)) : [];
+  const canSave = !!meeting && sheets !== undefined && (!saved || changes.length > 0);
+
+  const pickDay = (day: string) => {
+    setDateKey(day);
+    setWeekStart(mondayOf(day));
+    setPickedId('');
+  };
+  const save = () => {
+    if (!meeting) return;
+    const counts = `${withMark('PRESENT').length} present, ${withMark('LATE').length} late, ${withMark('ABSENT').length} absent, ${withMark('EXCUSED').length} excused`;
+    run(`${saved ? 'Attendance replaced' : 'Attendance saved'}: ${counts}.`, () =>
+      saveAttendance(db, state.myUid, state.classId, dateKey, meeting, Object.fromEntries(students.map((m) => [m.id, markOf(m.id)])), !saved), onClose);
+  };
+
+  if (confirming && meeting) {
+    const where = `${courseName(meeting.courseId)} · ${niceDate(dateKey)} · ${clockText(meeting.startMinutes)}`;
+    const names = (list: typeof students) => (list.length ? list.map(listName).join('; ') : 'None');
+    return (
+      <Dialog
+        title={saved ? 'Replace saved attendance?' : 'Save attendance?'}
+        onClose={() => setConfirming(false)}
+        actions={
+          <>
+            <button className="btn text" onClick={() => setConfirming(false)}>
+              Back
+            </button>
+            <button className="btn solid" onClick={save}>
+              {saved ? 'Replace' : 'Save'}
+            </button>
+          </>
+        }
+      >
+        <p className="small muted" style={{ margin: 0 }}>
+          {saved ? `${where} · Saved ${shortDateTime(saved.takenAtMillis)} by ${takerName(saved.takenByUid)}` : where}
+        </p>
+        {saved ? (
+          <div className="att-summary">
+            <div className="small semibold">{`${changes.length} change${changes.length === 1 ? '' : 's'}`}</div>
+            {changes.map((s) => (
+              <div key={s.id} className="att-change">
+                <span>{listName(s)}</span>
+                <span>
+                  {MARK_LABELS[savedMarks[s.id] ?? 'PRESENT']} <span className="muted">→</span> <b>{MARK_LABELS[markOf(s.id)]}</b>
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="att-summary">
+            {(['LATE', 'ABSENT', 'EXCUSED'] as AttendanceMark[]).map((m) => (
+              <div key={m} className="att-sum-row">
+                <span className="muted">{`${MARK_LABELS[m]} (${withMark(m).length})`}</span>
+                <span>{names(withMark(m))}</span>
+              </div>
+            ))}
+            <div className="att-sum-row">
+              <span className="muted">Present</span>
+              <span>{withMark('PRESENT').length === students.length ? `${students.length} (everyone)` : `${withMark('PRESENT').length} others`}</span>
+            </div>
+          </div>
+        )}
+      </Dialog>
+    );
+  }
+
+  const weekLength = 7;
+  const week = Array.from({ length: weekLength }, (_, i) => addDays(weekStart, i));
+  const monthDay = (day: string) => niceDate(day).replace(/^[A-Za-z]+, /, '');
   return (
     <Dialog
       title="Take attendance"
@@ -1314,51 +1722,125 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
           <button className="btn text" onClick={onClose}>
             Cancel
           </button>
-          <button
-            className="btn solid"
-            disabled={!meeting || sheets === undefined || future}
-            onClick={() =>
-              meeting &&
-              run(`Attendance saved: ${students.length - absent - late - excused} present, ${late} late, ${absent} absent, ${excused} excused.`, () =>
-                saveAttendance(db, state.myUid, state.classId, dateKey, meeting, Object.fromEntries(students.map((m) => [m.id, marks[m.id] ?? 'PRESENT'])), !saved), onClose)
-            }
-          >
-            Save
+          <button className="btn solid" disabled={!canSave} onClick={() => setConfirming(true)}>
+            {saved ? (changes.length ? 'Update' : 'No changes') : 'Save'}
           </button>
         </>
       }
     >
       <div className="stack">
-        <Field label="Date">
-          <input type="date" value={dateKey} max={today} onChange={(e) => setDateKey(e.target.value)} />
-        </Field>
-        {future && <Notice tone="warning">That day has not come yet. Attendance can be taken on the day of the class or after it.</Notice>}
-        {!future && cancelled && <Notice tone="warning">{`This day is marked "No classes"${cancelled.reason ? `: ${cancelled.reason}` : ''}. Take attendance only if the class still met.`}</Notice>}
+        <div>
+          <div className="att-week-nav">
+            <button type="button" className="att-arrow" aria-label="Earlier week" onClick={() => setWeekStart(addDays(weekStart, -7))}>
+              ‹
+            </button>
+            <span className="semibold">{`${monthDay(week[0])} to ${monthDay(week[week.length - 1])}`}</span>
+            <button type="button" className="att-arrow" aria-label="Later week" disabled={addDays(weekStart, 7) > today} onClick={() => setWeekStart(addDays(weekStart, 7))}>
+              ›
+            </button>
+          </div>
+          <div className="att-week">
+            {week.map((day) => {
+              const list = meetingsOnDay(day);
+              const nc = list.length > 0 && list.every((m) => cancelledOn(day, m.courseId)) && !list.some((m) => sheetFor(day, m.id));
+              const taken = list.filter((m) => sheetFor(day, m.id)).length;
+              const done = list.length > 0 && taken === list.length;
+              const label = `${niceDate(day)}: ${list.length === 0 ? 'no classes in the timetable' : nc ? 'no classes' : `${taken} of ${list.length} taken`}`;
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  className={'att-day' + (done ? ' done' : '') + (nc ? ' cancelled' : '') + (day === dateKey ? ' selected' : '')}
+                  disabled={day > today}
+                  aria-label={label}
+                  aria-pressed={day === dateKey}
+                  onClick={() => pickDay(day)}
+                >
+                  <span className="att-dow">{DAY_SHORT[weekdayOf(day)]}</span>
+                  <span className="att-num">{Number(day.slice(8, 10))}</span>
+                  <span className="att-dots">
+                    {nc ? <span className="att-nc">NC</span> : list.map((m) => <i key={m.id} className={'att-dot' + (sheetFor(day, m.id) ? ' on' : '')} />)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {todays.length === 0 ? (
-          <p className="small muted" style={{ margin: 0 }}>The timetable has no classes on that day.</p>
+          <p className="small muted" style={{ margin: 0 }}>{`The timetable has no classes on ${niceDate(dateKey)}.`}</p>
         ) : (
-          <Field label="Class meeting">
-            <select value={meeting?.id ?? ''} onChange={(e) => setPickedId(e.target.value)}>
-              {todays.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {clockText(m.startMinutes)} · {courseName(m.courseId)}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <div className="att-meetings" role="radiogroup" aria-label="Class meeting">
+            {todays.map((m) => {
+              const sheet = sheetFor(dateKey, m.id);
+              const off = cancelledOn(dateKey, m.courseId);
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={m.id === meeting?.id}
+                  className={'att-meeting' + (sheet ? ' taken' : '') + (m.id === meeting?.id ? ' selected' : '')}
+                  onClick={() => setPickedId(m.id)}
+                >
+                  <span className="att-radio" />
+                  <span className="grow">
+                    <span className="att-meeting-title">
+                      <span className="semibold">{clockText(m.startMinutes)}</span> <CourseDot color={courseColor(m.courseId)} />
+                      {courseName(m.courseId)}
+                    </span>
+                    {sheet ? (
+                      <span className="att-status ok">✓ Taken</span>
+                    ) : off ? (
+                      <span className="att-status">{`No classes${off.reason ? `: ${off.reason}` : ''}`}</span>
+                    ) : (
+                      <span className="att-status">Not taken yet</span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         )}
-        {meeting && <div className="small muted">{saved ? 'Already taken. Saving replaces it.' : 'Everyone starts as present. Change only those who were late, absent or excused.'}</div>}
-        {students.map((m) => (
-          <label key={m.id} className="row">
-            <span className="grow">{listName(m)}</span>
-            <select className="input" value={marks[m.id] ?? 'PRESENT'} aria-label={`Attendance of ${m.name}`} style={{ width: 'auto', minHeight: 40, padding: '6px 10px' }} onChange={(e) => setMarks({ ...marks, [m.id]: e.target.value as AttendanceMark })}>
-              <option value="PRESENT">Present</option>
-              <option value="LATE">Late</option>
-              <option value="ABSENT">Absent</option>
-              <option value="EXCUSED">Excused</option>
-            </select>
-          </label>
-        ))}
+
+        {meeting && saved && (
+          <div className="att-banner taken">{`Taken on ${shortDateTime(saved.takenAtMillis)} by ${takerName(saved.takenByUid)}.`}</div>
+        )}
+        {meeting && !saved && cancelled && (
+          <Notice tone="warning">{`This day is marked "No classes"${cancelled.reason ? `: ${cancelled.reason}` : ''}. Take attendance only if the class still met.`}</Notice>
+        )}
+
+        {meeting && (
+          <div className="ch-row ch-wrap ch-gap-2">
+            <Badge tone="success">{`${withMark('PRESENT').length} present`}</Badge>
+            <Badge tone="warning">{`${withMark('LATE').length} late`}</Badge>
+            <Badge tone="danger">{`${withMark('ABSENT').length} absent`}</Badge>
+            <Badge tone="info">{`${withMark('EXCUSED').length} excused`}</Badge>
+          </div>
+        )}
+
+        <div className="att-students">
+          {students.map((m) => (
+            <div key={m.id} className="att-student">
+              <span className="grow">{listName(m)}</span>
+              <span className="att-seg" role="radiogroup" aria-label={`Attendance of ${m.name}`}>
+                {MARKS.map((mark) => (
+                  <button
+                    key={mark}
+                    type="button"
+                    role="radio"
+                    aria-checked={markOf(m.id) === mark}
+                    data-mark={mark}
+                    className={markOf(m.id) === mark ? 'on' : ''}
+                    onClick={() => setMarks({ ...marks, [m.id]: mark })}
+                  >
+                    {MARK_LABELS[mark]}
+                  </button>
+                ))}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </Dialog>
   );
@@ -1491,7 +1973,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
                 <ListRow
                   key={c.courseId}
                   title={<><CourseDot color={state.courses.find((x) => x.id === c.courseId)?.color} />{courseName(c.courseId)}</>}
-                  subtitle={`Taken ${times(c.taken)} · ${c.rows.length === 0 ? 'nobody absent, late or excused' : `${c.rows.length} student${c.rows.length === 1 ? '' : 's'} with absences, lates or excused days`}`}
+                  subtitle={`Taken ${times(c.taken)}`}
                   chevron={c.rows.length > 0}
                   onClick={c.rows.length > 0 ? () => setOpenCourse(c.courseId) : undefined}
                 />
@@ -1512,7 +1994,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
                 }
               >
                 <p className="small muted" style={{ marginTop: 0 }}>
-                  Taken {times(c.taken)}. Most absences first. Students who were always present are not listed.
+                  Taken {times(c.taken)}.
                 </p>
                 <Card flush>
                   {c.rows.map((r) => (

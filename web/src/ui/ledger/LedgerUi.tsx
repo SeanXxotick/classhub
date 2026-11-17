@@ -374,7 +374,7 @@ export function LedgerSettingsCard({ state, onSave }: { state: ClassState; onSav
           }
         >
           <div className="stack">
-            <Field label="Who can see every balance" help="Everyone always sees their own records, the fund totals and the pay-outs. The Mayor and the treasurers always see everything.">
+            <Field label="Who can see every balance" help="The Mayor and treasurers always see everything.">
               <select value={visibility} onChange={(e) => setVisibility(e.target.value as BalanceVisibility)}>
                 {BALANCE_VISIBILITIES.map((v) => (
                   <option key={v} value={v}>

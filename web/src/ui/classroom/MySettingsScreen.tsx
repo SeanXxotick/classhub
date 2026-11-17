@@ -26,7 +26,7 @@ export function MySettingsScreen() {
       {room && (
         <div className="stack">
           <p className="small muted" style={{ margin: 0 }}>
-            These settings are only for you, on this device. Nobody else in {room.name} sees or changes them.
+            Only you see these, on this device.
           </p>
 
           <div className="card">

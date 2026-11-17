@@ -113,7 +113,7 @@ export function AccountScreen({ user }: { user: AppUser }) {
               </span>
             </div>
             <p className="small muted" style={{ margin: '8px 0 0' }}>
-              Your photo shows in every class you are in: on the member list, your member page and your ledger records.
+              Shows in every class you are in.
             </p>
           </div>
 
@@ -136,7 +136,7 @@ export function AccountScreen({ user }: { user: AppUser }) {
             <div className="card stack" style={{ gap: 8 }}>
               <div className="bold">Get the Android app</div>
               <p className="small muted" style={{ margin: 0 }}>
-                ClassHub for Android is this same app on your phone, with notifications for announcements, due dates and other class updates.
+                Get notifications on your phone.
               </p>
               <a className="btn outline" href={ANDROID_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">
                 Download for Android
@@ -225,7 +225,6 @@ function NameCard({ user, busy, onSave }: { user: AppUser; busy: boolean; onSave
   return (
     <form className="card stack" style={{ gap: 8 }} onSubmit={submit} noValidate>
       <div className="bold">Your name</div>
-      <p className="small muted" style={{ margin: 0 }}>This is how your classmates and officers see you in every class.</p>
       <Field label="First name">
         <input value={first} autoComplete="given-name" onChange={(e) => setFirst(e.target.value.slice(0, NameRules.MAX_PART_LENGTH))} />
       </Field>
@@ -368,7 +367,6 @@ function NotificationsCard({ uid, notice }: { uid: string; notice: (message: str
       )}
       {state === 'on' && (
         <>
-          <p className="small muted" style={{ margin: 0 }}>On for this device. Choose what you want to hear about.</p>
           {NOTICE_KINDS.map((kind) => (
             <label key={kind} className="row" style={{ gap: 10 }}>
               <input type="checkbox" checked={!muted.includes(kind)} onChange={() => toggle(kind)} />

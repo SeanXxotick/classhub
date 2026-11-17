@@ -65,18 +65,51 @@ test('claims, statement, announcements and the timetable', async ({ browser }) =
   // Attendance: the Mayor marks themselves absent, and sees it under My attendance.
   await page.getByRole('button', { name: 'Take attendance' }).click();
   const sheet = page.getByRole('dialog', { name: 'Take attendance' });
-  await sheet.getByLabel('Attendance of Nina Castro').selectOption('ABSENT');
+  await expect(sheet.getByRole('radio', { name: /Operations Research Not taken yet/ })).toBeVisible();
+  await sheet.getByRole('radiogroup', { name: 'Attendance of Nina Castro' }).getByRole('radio', { name: 'Absent' }).click();
   await sheet.getByRole('button', { name: 'Save' }).click();
+  // Saving asks first, with who is absent.
+  const confirmSave = page.getByRole('dialog', { name: 'Save attendance?' });
+  await expect(confirmSave.getByText('Castro, Nina')).toBeVisible();
+  await confirmSave.getByRole('button', { name: 'Save' }).click();
   await expectNotice(page, 'Attendance saved: 0 present, 0 late, 1 absent, 0 excused.');
   await expect(page.getByText('Out of 1 meeting')).toBeVisible();
   await expect(page.getByText('1 absent').first()).toBeVisible();
+  await expect(page.getByText('Attendance taken')).toBeVisible();
+
+  // Opened again, the meeting shows as taken; replacing it lists only the change, and Back keeps it as it was.
+  await page.getByRole('button', { name: 'Take attendance' }).click();
+  await expect(sheet.getByText(/Taken on .* by Nina Castro./)).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'No changes' })).toBeDisabled();
+  await sheet.getByRole('radiogroup', { name: 'Attendance of Nina Castro' }).getByRole('radio', { name: 'Late' }).click();
+  await sheet.getByRole('button', { name: 'Update' }).click();
+  const confirmReplace = page.getByRole('dialog', { name: 'Replace saved attendance?' });
+  await expect(confirmReplace.getByText('1 change')).toBeVisible();
+  await expect(confirmReplace.getByText('Castro, Nina')).toBeVisible();
+  await confirmReplace.getByRole('button', { name: 'Back' }).click();
+  await sheet.getByRole('button', { name: 'Cancel' }).click();
 
   await page.getByRole('button', { name: 'No classes' }).click();
   const mark = page.getByRole('dialog', { name: 'No classes' });
-  await mark.getByLabel('Which classes').selectOption({ label: 'Operations Research' });
-  await mark.getByLabel('Reason (optional)').fill('Holiday');
-  await mark.getByRole('button', { name: 'Save' }).click();
-  await expectNotice(page, 'Marked as no classes.');
+  // Today is the only day this week with a class; picking it lists that class, unticked, with a warning
+  // because its attendance was taken above. Next stays off until a class is ticked.
+  await mark.getByRole('button', { name: /: 1 class$/ }).click();
+  const orClass = mark.getByRole('checkbox', { name: /Operations Research/ });
+  await expect(orClass).toHaveAttribute('aria-checked', 'false');
+  await expect(mark.getByRole('button', { name: 'Next' })).toBeDisabled();
+  await orClass.click();
+  await expect(orClass).toHaveAttribute('aria-checked', 'true');
+  await expect(mark.getByText('Attendance was already taken for this class')).toBeVisible();
+  await mark.getByRole('button', { name: 'Holiday' }).click();
+  await mark.getByRole('button', { name: 'Next' }).click();
+  const confirmMark = page.getByRole('dialog', { name: 'Mark 1 class as no classes?' });
+  await expect(confirmMark.getByText('1 of these already has attendance. It stays saved and still counts.')).toBeVisible();
+  await confirmMark.getByRole('button', { name: 'Mark no classes' }).click();
+  await expectNotice(page, 'Marked 1 class as no classes.');
+  await expect(page.getByText('1 class · Whole day')).toBeVisible();
+  // Remove asks first; Cancel keeps it.
+  await page.getByRole('button', { name: 'Remove' }).click();
+  await page.getByRole('dialog', { name: 'Classes are back on?' }).getByRole('button', { name: 'Cancel' }).click();
 
   await openTab(page, 'Home');
   await expect(page.getByText('No classes: Holiday')).toBeVisible();

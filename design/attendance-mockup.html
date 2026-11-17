@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Take attendance mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/*
+ * Design mockup for "Take attendance" (not app code). Same tokens as mockup-v2.html.
+ * Shows: the week strip, meetings with their status, the "already taken" banner, and the
+ * confirmation before saving (new sheet) or replacing (only the changes are listed).
+ * Names are made up.
+ */
+:root {
+  --ch-brand: #0f766e;
+  --ch-bg: #f6f8fb; --ch-surface: #ffffff; --ch-surface-2: #eef1f6;
+  --ch-text: #1a1c1e; --ch-text-muted: #596478; --ch-border: #d5dbe5; --ch-border-strong: #8892a5;
+  --ch-scrim: rgba(15, 20, 28, 0.45); --ch-on-solid: #ffffff;
+  --ch-success: #146c34; --ch-warning: #a35207; --ch-danger: #b91c1c; --ch-info: #0369a1;
+  --ch-tint: 13%;
+  --ch-success-soft: color-mix(in srgb, var(--ch-success) var(--ch-tint), var(--ch-surface));
+  --ch-warning-soft: color-mix(in srgb, var(--ch-warning) var(--ch-tint), var(--ch-surface));
+  --ch-danger-soft: color-mix(in srgb, var(--ch-danger) var(--ch-tint), var(--ch-surface));
+  --ch-info-soft: color-mix(in srgb, var(--ch-info) var(--ch-tint), var(--ch-surface));
+  --ch-brand-soft: color-mix(in srgb, var(--ch-brand) var(--ch-tint), var(--ch-surface));
+  --ch-hover: color-mix(in srgb, var(--ch-text) 5%, transparent);
+  --radius: 14px; --radius-sm: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ch-brand: #2dd4bf;
+    --ch-bg: #0f141c; --ch-surface: #161d27; --ch-surface-2: #222b37;
+    --ch-text: #e6e9ef; --ch-text-muted: #a7b1c2; --ch-border: #344052; --ch-border-strong: #66748a;
+    --ch-scrim: rgba(0, 0, 0, 0.6); --ch-on-solid: #0f141c;
+    --ch-success: #4ade80; --ch-warning: #fbbf24; --ch-danger: #f87171; --ch-info: #38bdf8;
+  }
+}
+:root[data-theme='dark'] {
+  --ch-brand: #2dd4bf;
+  --ch-bg: #0f141c; --ch-surface: #161d27; --ch-surface-2: #222b37;
+  --ch-text: #e6e9ef; --ch-text-muted: #a7b1c2; --ch-border: #344052; --ch-border-strong: #66748a;
+  --ch-scrim: rgba(0, 0, 0, 0.6); --ch-on-solid: #0f141c;
+  --ch-success: #4ade80; --ch-warning: #fbbf24; --ch-danger: #f87171; --ch-info: #38bdf8;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ch-bg); color: var(--ch-text); font: 15px/1.45 Roboto, system-ui, sans-serif; }
+button { font: inherit; color: inherit; }
+.page { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+.page-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.page-head h1 { font-size: 20px; margin: 0; flex: 1; }
+.muted { color: var(--ch-text-muted); }
+.small { font-size: 13px; }
+.semibold { font-weight: 600; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.label { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-text-muted); margin: 0 0 8px; }
+.note { font-size: 13px; color: var(--ch-text-muted); margin: 8px 0 0; }
+
+.btn { border: 0; border-radius: 999px; min-height: 40px; padding: 0 18px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.btn.solid { background: var(--ch-brand); color: var(--ch-on-solid); }
+.btn.solid:disabled { opacity: .45; cursor: default; }
+.btn.outline { background: none; border: 1px solid var(--ch-border-strong); }
+.btn.text { background: none; color: var(--ch-brand); }
+.btn.small { min-height: 34px; padding: 0 14px; font-size: 14px; }
+
+/* ---- The dialog, shown in place so it can be reviewed ---- */
+.dialog { background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: 22px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,.12); }
+.dialog h2 { margin: 0 0 14px; font-size: 20px; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+/* Week strip */
+.week-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.week-nav .arrow { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--ch-border); background: none; cursor: pointer; }
+.week-nav .arrow:disabled { opacity: .35; cursor: default; }
+.week { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.day { border: 1px solid var(--ch-border); background: var(--ch-surface); border-radius: var(--radius-sm); padding: 8px 2px 7px; text-align: center; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.day:hover:not(:disabled) { background: var(--ch-hover); }
+.day .dow { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--ch-text-muted); }
+.day .num { font-size: 17px; font-weight: 600; }
+.day .dots { display: flex; gap: 3px; height: 14px; align-items: center; }
+.dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--ch-border-strong); }
+.dot.on { background: var(--ch-success); border-color: var(--ch-success); }
+.day .nc { font-size: 10px; font-weight: 700; color: var(--ch-text-muted); }
+.day.done { border-color: var(--ch-success); background: var(--ch-success-soft); }
+.day.cancelled { background: var(--ch-surface-2); }
+.day.cancelled .num { color: var(--ch-text-muted); text-decoration: line-through; }
+.day:disabled { opacity: .4; cursor: default; }
+.day.selected { outline: 2.5px solid var(--ch-brand); outline-offset: 1px; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--ch-text-muted); align-items: center; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.other-date { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--ch-text-muted); }
+.other-date input { font: inherit; color: inherit; background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: 8px; padding: 4px 8px; }
+
+/* Meetings */
+.meetings { border: 1px solid var(--ch-border); border-radius: var(--radius); overflow: hidden; margin-top: 16px; }
+.meeting { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; cursor: pointer; border-bottom: 1px solid var(--ch-border); }
+.meeting:last-child { border-bottom: 0; }
+.meeting:hover { background: var(--ch-hover); }
+.meeting.taken { background: var(--ch-success-soft); }
+.meeting.off { background: var(--ch-surface-2); cursor: default; }
+.radio { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--ch-border-strong); flex: none; margin-top: 2px; display: grid; place-items: center; }
+.meeting.selected .radio { border-color: var(--ch-brand); }
+.meeting.selected .radio::after { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--ch-brand); }
+.meeting .time { font-variant-numeric: tabular-nums; font-weight: 600; }
+.meeting .status { font-size: 13px; margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+.meeting .status.ok { color: var(--ch-success); font-weight: 600; }
+.course-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+
+.banner { border-radius: var(--radius-sm); padding: 10px 12px; margin-top: 14px; font-size: 14px; display: flex; gap: 10px; align-items: flex-start; }
+.banner.taken { background: var(--ch-success-soft); border: 1px solid color-mix(in srgb, var(--ch-success) 40%, transparent); }
+.banner.new { background: var(--ch-surface-2); color: var(--ch-text-muted); }
+.banner.warn { background: var(--ch-warning-soft); border: 1px solid color-mix(in srgb, var(--ch-warning) 40%, transparent); }
+
+/* Students */
+.students { margin-top: 14px; display: flex; flex-direction: column; }
+.student { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--ch-border); }
+.student:last-child { border-bottom: 0; }
+.student .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.seg { display: inline-flex; border: 1px solid var(--ch-border); border-radius: 999px; overflow: hidden; flex: none; }
+.seg button { border: 0; background: none; padding: 5px 9px; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--ch-text-muted); }
+.seg button + button { border-left: 1px solid var(--ch-border); }
+.seg button.on[data-m='PRESENT'] { background: var(--ch-success-soft); color: var(--ch-success); }
+.seg button.on[data-m='LATE'] { background: var(--ch-warning-soft); color: var(--ch-warning); }
+.seg button.on[data-m='ABSENT'] { background: var(--ch-danger-soft); color: var(--ch-danger); }
+.seg button.on[data-m='EXCUSED'] { background: var(--ch-info-soft); color: var(--ch-info); }
+.counts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.chip { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 9px; }
+.chip.p { background: var(--ch-success-soft); color: var(--ch-success); }
+.chip.l { background: var(--ch-warning-soft); color: var(--ch-warning); }
+.chip.a { background: var(--ch-danger-soft); color: var(--ch-danger); }
+.chip.e { background: var(--ch-info-soft); color: var(--ch-info); }
+
+/* Confirm dialog */
+.scrim { position: fixed; inset: 0; background: var(--ch-scrim); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+.scrim.open { display: flex; }
+.scrim .dialog { width: min(440px, 100%); max-height: calc(100vh - 32px); overflow: auto; }
+.sum-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--ch-border); font-size: 14px; }
+.sum-row:last-of-type { border-bottom: 0; }
+.change { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--ch-border); font-size: 14px; }
+.change:last-child { border-bottom: 0; }
+.arrow-to { color: var(--ch-text-muted); margin: 0 4px; }
+
+/* Timetable preview */
+.card { background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: var(--radius); }
+.tt-row { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--ch-border); }
+.tt-row:last-child { border-bottom: 0; }
+.tile { width: 54px; height: 46px; border-radius: 10px; color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 13px; flex: none; text-align: center; line-height: 1.1; }
+.tt-row .grow { flex: 1; min-width: 0; }
+.taken-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--ch-success); background: var(--ch-success-soft); border-radius: 999px; padding: 3px 9px; }
+.todo-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--ch-brand); border: 1px solid var(--ch-brand); border-radius: 999px; padding: 2px 9px; background: none; cursor: pointer; }
+.section { margin-top: 26px; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ch-text); color: var(--ch-bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; display: none; z-index: 20; max-width: calc(100% - 32px); }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="page-head">
+    <h1>Take attendance: design mockup</h1>
+    <button class="btn outline small" id="theme">Dark mode</button>
+    <button class="btn outline small" id="reset">Reset</button>
+  </div>
+
+  <div class="layout">
+    <!-- ======================= The dialog ======================= -->
+    <div>
+      <p class="label">1 · The Take attendance dialog</p>
+      <div class="dialog" role="dialog" aria-label="Take attendance">
+        <h2>Take attendance</h2>
+
+        <div class="week-nav">
+          <button class="arrow" id="prevWeek" aria-label="Earlier week">‹</button>
+          <span class="semibold" id="weekLabel"></span>
+          <button class="arrow" id="nextWeek" aria-label="Later week">›</button>
+        </div>
+        <div class="week" id="week"></div>
+        <div class="legend">
+          <span><i class="dot on"></i> Taken</span>
+          <span><i class="dot"></i> Not taken yet</span>
+          <span><b>NC</b> No classes</span>
+        </div>
+        <label class="other-date">Another date <input type="date" id="otherDate" /></label>
+
+        <div class="meetings" id="meetings"></div>
+        <div id="banner"></div>
+        <div class="counts" id="counts"></div>
+        <div class="students" id="students"></div>
+
+        <div class="dialog-actions">
+          <button class="btn text">Cancel</button>
+          <button class="btn solid" id="save">Save</button>
+        </div>
+      </div>
+      <p class="note">Try it: pick days and meetings, change marks, then Save or Update. Tue Nov 17, 8:00 AM is already taken; Thu is marked No classes; Fri and Sat have not come yet.</p>
+    </div>
+
+    <!-- ======================= Timetable preview ======================= -->
+    <div>
+      <p class="label">2 · Today in the Schedule tab (officers who take attendance)</p>
+      <div class="card" id="today"></div>
+      <p class="note">A green "Attendance taken" chip on meetings that have it. A meeting that has started or ended without it shows "Take attendance", which opens the dialog on that meeting. Students do not see either chip.</p>
+
+      <div class="section">
+        <p class="label">3 · What the confirmation shows</p>
+        <p class="note" style="margin-top:0">Saving a new sheet lists who is late, absent and excused, and how many are present. Replacing a saved sheet lists only what changed, and Update stays off until something changes.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Confirmation -->
+<div class="scrim" id="confirm">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <h2 id="confirmTitle"></h2>
+    <div class="small muted" id="confirmSub"></div>
+    <div id="confirmBody" style="margin-top:12px"></div>
+    <div class="dialog-actions">
+      <button class="btn text" id="back">Back</button>
+      <button class="btn solid" id="confirmSave"></button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+// ------------------------------------------------------------------ Made-up data
+const COURSES = {
+  or: { name: 'Operations Research', color: '#2563EB' },
+  se: { name: 'Software Engineering', color: '#7C3AED' },
+  aa: { name: 'Abstract Algebra', color: '#0E7490' },
+};
+// Weekly meetings: 1 = Monday.
+const MEETINGS = [
+  { id: 'm1', course: 'or', day: 1, start: 8 * 60 },
+  { id: 'm2', course: 'se', day: 1, start: 13 * 60 },
+  { id: 'm3', course: 'or', day: 2, start: 8 * 60 },
+  { id: 'm4', course: 'aa', day: 2, start: 13 * 60 },
+  { id: 'm5', course: 'se', day: 3, start: 10 * 60 },
+  { id: 'm6', course: 'aa', day: 3, start: 15 * 60 },
+  { id: 'm7', course: 'or', day: 4, start: 8 * 60 },
+  { id: 'm8', course: 'se', day: 5, start: 13 * 60 },
+];
+const STUDENTS = ['Aquino, Bea', 'Bautista, Marco', 'Castillo, Jenny', 'Cruz, Ana', 'Dizon, Paolo', 'Garcia, Lea', 'Mendoza, Rafael', 'Navarro, Kim', 'Ramos, Joy', 'Reyes, Ben', 'Santos, Carlo', 'Villanueva, Mika'];
+const TODAY = '2026-11-17';
+const NO_CLASSES = { '2026-11-19': 'Founding anniversary' };
+const SHEETS = {}; // "date|meetingId" -> { marks, at, by }
+
+function seed() {
+  for (const k of Object.keys(SHEETS)) delete SHEETS[k];
+  SHEETS['2026-11-16|m1'] = { marks: { 'Cruz, Ana': 'LATE' }, at: 'Nov 16, 8:09 AM', by: 'Dela Cruz' };
+  SHEETS['2026-11-16|m2'] = { marks: { 'Santos, Carlo': 'ABSENT' }, at: 'Nov 16, 1:15 PM', by: 'Dela Cruz' };
+  SHEETS['2026-11-17|m3'] = { marks: { 'Cruz, Ana': 'LATE', 'Reyes, Ben': 'LATE', 'Santos, Carlo': 'ABSENT' }, at: 'Nov 17, 8:12 AM', by: 'Dela Cruz' };
+  SHEETS['2026-11-10|m3'] = { marks: {}, at: 'Nov 10, 8:05 AM', by: 'Dela Cruz' };
+  SHEETS['2026-11-10|m4'] = { marks: { 'Ramos, Joy': 'EXCUSED' }, at: 'Nov 10, 1:20 PM', by: 'Dela Cruz' };
+}
+
+// ------------------------------------------------------------------ Dates
+const parse = (k) => new Date(Date.UTC(+k.slice(0, 4), +k.slice(5, 7) - 1, +k.slice(8, 10)));
+const key = (d) => d.toISOString().slice(0, 10);
+const addDays = (k, n) => { const d = parse(k); d.setUTCDate(d.getUTCDate() + n); return key(d); };
+const weekday = (k) => parse(k).getUTCDay();
+const mondayOf = (k) => addDays(k, -((weekday(k) + 6) % 7));
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const nice = (k) => `${DOW[weekday(k)]}, ${MONTHS[parse(k).getUTCMonth()]} ${parse(k).getUTCDate()}`;
+const clock = (m) => { const h = Math.floor(m / 60), mm = m % 60; return `${h % 12 || 12}:${String(mm).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
+
+// ------------------------------------------------------------------ State
+let weekStart, dateKey, meetingId, marks;
+const meetingsOn = (k) => MEETINGS.filter((m) => m.day === weekday(k)).sort((a, b) => a.start - b.start);
+const sheetOf = (k, id) => SHEETS[`${k}|${id}`];
+
+function pickDate(k) {
+  dateKey = k;
+  weekStart = mondayOf(k);
+  const list = meetingsOn(k);
+  // Opens on the first meeting not yet taken; all taken: the first one.
+  meetingId = (list.find((m) => !sheetOf(k, m.id)) ?? list[0])?.id ?? null;
+  loadMarks();
+}
+function loadMarks() {
+  const s = meetingId && sheetOf(dateKey, meetingId);
+  marks = Object.fromEntries(STUDENTS.map((n) => [n, s?.marks[n] ?? 'PRESENT']));
+}
+
+// ------------------------------------------------------------------ Drawing
+const $ = (id) => document.getElementById(id);
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function render() {
+  const end = addDays(weekStart, 5);
+  $('weekLabel').textContent = `${MONTHS[parse(weekStart).getUTCMonth()]} ${parse(weekStart).getUTCDate()} – ${MONTHS[parse(end).getUTCMonth()]} ${parse(end).getUTCDate()}`;
+  $('nextWeek').disabled = addDays(weekStart, 7) > TODAY;
+  $('otherDate').value = dateKey;
+  $('otherDate').max = TODAY;
+
+  // Week strip
+  $('week').innerHTML = [0, 1, 2, 3, 4, 5].map((i) => {
+    const k = addDays(weekStart, i);
+    const list = meetingsOn(k);
+    const future = k > TODAY;
+    const nc = NO_CLASSES[k];
+    const taken = list.filter((m) => sheetOf(k, m.id)).length;
+    const done = list.length > 0 && taken === list.length;
+    const cls = ['day', done && 'done', nc && 'cancelled', k === dateKey && 'selected'].filter(Boolean).join(' ');
+    const dots = nc ? '<span class="nc">NC</span>' : list.map((m) => `<i class="dot${sheetOf(k, m.id) ? ' on' : ''}"></i>`).join('');
+    const label = `${nice(k)}: ${nc ? 'no classes' : list.length === 0 ? 'no classes in the timetable' : `${taken} of ${list.length} taken`}`;
+    return `<button class="${cls}" data-day="${k}" ${future ? 'disabled' : ''} aria-label="${esc(label)}" aria-pressed="${k === dateKey}">
+      <span class="dow">${DOW[weekday(k)]}</span><span class="num">${parse(k).getUTCDate()}</span><span class="dots">${dots}</span></button>`;
+  }).join('');
+
+  // Meetings of the day
+  const list = meetingsOn(dateKey);
+  const nc = NO_CLASSES[dateKey];
+  $('meetings').innerHTML = list.length === 0
+    ? `<div class="meeting off"><span class="muted">The timetable has no classes on ${nice(dateKey)}.</span></div>`
+    : list.map((m) => {
+      const s = sheetOf(dateKey, m.id);
+      const c = COURSES[m.course];
+      const counts = s ? summaryText(s.marks) : '';
+      const status = s
+        ? `<div class="status ok">✓ Taken ${esc(s.at.split(', ').pop())} by ${esc(s.by)}${counts ? ` · ${counts}` : ''}</div>`
+        : nc ? `<div class="status">No classes: ${esc(nc)}</div>` : `<div class="status muted">Not taken yet</div>`;
+      return `<div class="meeting${s ? ' taken' : ''}${m.id === meetingId ? ' selected' : ''}" data-meeting="${m.id}" role="radio" aria-checked="${m.id === meetingId}" tabindex="0">
+        <span class="radio"></span>
+        <div><div><span class="time">${clock(m.start)}</span>&nbsp; <i class="course-dot" style="background:${c.color}"></i>${esc(c.name)}</div>${status}</div></div>`;
+    }).join('');
+
+  // Banner
+  const s = meetingId && sheetOf(dateKey, meetingId);
+  $('banner').innerHTML = !meetingId ? ''
+    : s ? `<div class="banner taken"><span>✓</span><div><b>Taken on ${esc(s.at)} by ${esc(s.by)}.</b><br><span class="small">Saving replaces it. You will see what changed before it is saved.</span></div></div>`
+    : nc ? `<div class="banner warn"><span>!</span><div>This day is marked "No classes": ${esc(nc)}. Take attendance only if the class still met.</div></div>`
+    : `<div class="banner new">Everyone starts as present. Change only those who were late, absent or excused.</div>`;
+
+  // Students
+  $('students').innerHTML = !meetingId ? '' : STUDENTS.map((n) => `<div class="student"><span class="name">${esc(n)}</span><span class="seg" role="radiogroup" aria-label="Attendance of ${esc(n)}">${
+    [['PRESENT', 'Present'], ['LATE', 'Late'], ['ABSENT', 'Absent'], ['EXCUSED', 'Excused']].map(([v, l]) =>
+      `<button data-student="${esc(n)}" data-m="${v}" class="${marks[n] === v ? 'on' : ''}" role="radio" aria-checked="${marks[n] === v}">${l}</button>`).join('')
+  }</span></div>`).join('');
+
+  // Counts and button
+  const t = tally(marks);
+  $('counts').innerHTML = !meetingId ? '' : `<span class="chip p">${t.PRESENT} present</span><span class="chip l">${t.LATE} late</span><span class="chip a">${t.ABSENT} absent</span><span class="chip e">${t.EXCUSED} excused</span>`;
+  const changed = s ? changes(s.marks).length > 0 : true;
+  $('save').textContent = s ? (changed ? 'Update' : 'No changes') : 'Save';
+  $('save').disabled = !meetingId || !changed;
+
+  renderToday();
+}
+
+function tally(m) {
+  const t = { PRESENT: 0, LATE: 0, ABSENT: 0, EXCUSED: 0 };
+  for (const n of STUDENTS) t[m[n] ?? 'PRESENT']++;
+  return t;
+}
+function summaryText(m) {
+  const t = tally(m);
+  return [t.LATE && `${t.LATE} late`, t.ABSENT && `${t.ABSENT} absent`, t.EXCUSED && `${t.EXCUSED} excused`].filter(Boolean).join(', ') || 'all present';
+}
+const LABEL = { PRESENT: 'Present', LATE: 'Late', ABSENT: 'Absent', EXCUSED: 'Excused' };
+function changes(saved) {
+  return STUDENTS.filter((n) => (saved[n] ?? 'PRESENT') !== marks[n]).map((n) => ({ n, from: saved[n] ?? 'PRESENT', to: marks[n] }));
+}
+
+function renderToday() {
+  const list = meetingsOn(TODAY);
+  const nowMinutes = 14 * 60; // 2:00 PM in this mockup
+  $('today').innerHTML = `<div class="tt-row" style="padding:10px 14px"><span class="semibold">Today · ${nice(TODAY)}</span></div>` + list.map((m) => {
+    const c = COURSES[m.course];
+    const s = sheetOf(TODAY, m.id);
+    const started = m.start <= nowMinutes;
+    const chip = s ? '<span class="taken-chip">✓ Attendance taken</span>'
+      : started ? `<button class="todo-chip" data-open="${m.id}">Take attendance</button>` : '';
+    return `<div class="tt-row"><div class="tile" style="background:${c.color}">${clock(m.start).replace(' ', '<br>')}</div>
+      <div class="grow"><div class="semibold">${esc(c.name)}</div><div class="small muted">Room 304</div></div>${chip}</div>`;
+  }).join('');
+}
+
+// ------------------------------------------------------------------ Confirmation
+function openConfirm() {
+  const s = sheetOf(dateKey, meetingId);
+  const m = MEETINGS.find((x) => x.id === meetingId);
+  $('confirmSub').textContent = `${COURSES[m.course].name} · ${nice(dateKey)} · ${clock(m.start)}${s ? ` · Saved ${s.at} by ${s.by}` : ''}`;
+  if (s) {
+    $('confirmTitle').textContent = 'Replace saved attendance?';
+    $('confirmSave').textContent = 'Replace';
+    const list = changes(s.marks);
+    $('confirmBody').innerHTML = `<div class="semibold small" style="margin-bottom:4px">${list.length} change${list.length === 1 ? '' : 's'}</div>` +
+      list.map((c) => `<div class="change"><span>${esc(c.n)}</span><span>${LABEL[c.from]}<span class="arrow-to">→</span><b>${LABEL[c.to]}</b></span></div>`).join('');
+  } else {
+    $('confirmTitle').textContent = 'Save attendance?';
+    $('confirmSave').textContent = 'Save';
+    const by = (v) => STUDENTS.filter((n) => marks[n] === v);
+    const row = (label, names) => `<div class="sum-row"><span class="muted">${label} (${names.length})</span><span>${names.length ? names.map(esc).join('; ') : '<span class="muted">None</span>'}</span></div>`;
+    $('confirmBody').innerHTML = row('Late', by('LATE')) + row('Absent', by('ABSENT')) + row('Excused', by('EXCUSED')) +
+      `<div class="sum-row"><span class="muted">Present</span><span>${by('PRESENT').length} ${by('PRESENT').length === STUDENTS.length ? '(everyone)' : 'others'}</span></div>`;
+  }
+  $('confirm').classList.add('open');
+  $('confirmSave').focus();
+}
+function closeConfirm() { $('confirm').classList.remove('open'); }
+function toast(text) { const t = $('toast'); t.textContent = text; t.style.display = 'block'; clearTimeout(toast.timer); toast.timer = setTimeout(() => (t.style.display = 'none'), 2800); }
+
+// ------------------------------------------------------------------ Events
+document.addEventListener('click', (e) => {
+  const day = e.target.closest('[data-day]');
+  if (day && !day.disabled) return pickDate(day.dataset.day), render();
+  const meeting = e.target.closest('[data-meeting]');
+  if (meeting) return (meetingId = meeting.dataset.meeting), loadMarks(), render();
+  const mark = e.target.closest('[data-student]');
+  if (mark) return (marks[mark.dataset.student] = mark.dataset.m), render();
+  const open = e.target.closest('[data-open]');
+  if (open) return pickDate(TODAY), (meetingId = open.dataset.open), loadMarks(), render(), toast('Opened on that meeting.');
+});
+$('prevWeek').onclick = () => { weekStart = addDays(weekStart, -7); render(); };
+$('nextWeek').onclick = () => { weekStart = addDays(weekStart, 7); render(); };
+$('otherDate').onchange = (e) => { if (e.target.value && e.target.value <= TODAY) pickDate(e.target.value), render(); };
+$('save').onclick = openConfirm;
+$('back').onclick = closeConfirm;
+$('confirm').onclick = (e) => e.target === e.currentTarget && closeConfirm();
+document.addEventListener('keydown', (e) => e.key === 'Escape' && closeConfirm());
+$('confirmSave').onclick = () => {
+  const replacing = !!sheetOf(dateKey, meetingId);
+  const t = tally(marks);
+  SHEETS[`${dateKey}|${meetingId}`] = { marks: { ...marks }, at: `${MONTHS[parse(TODAY).getUTCMonth()]} ${parse(TODAY).getUTCDate()}, 2:03 PM`, by: 'You' };
+  closeConfirm();
+  render();
+  toast(`${replacing ? 'Attendance replaced' : 'Attendance saved'}: ${t.PRESENT} present, ${t.LATE} late, ${t.ABSENT} absent, ${t.EXCUSED} excused.`);
+};
+$('reset').onclick = () => { seed(); pickDate(TODAY); render(); };
+$('theme').onclick = () => {
+  const dark = document.documentElement.dataset.theme !== 'dark' && !(document.documentElement.dataset.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  $('theme').textContent = dark ? 'Light mode' : 'Dark mode';
+};
+
+seed();
+pickDate(TODAY);
+render();
+</script>
+</body>
+</html>
