@@ -306,7 +306,11 @@ export function MyBalanceCard({ records, balanceCentavos, myUid }: { records: Le
  */
 export function LedgerSummaryCard({ state }: { state: ClassState }) {
   return state.can('RECORDS_MANAGE') ? (
-    <FundSummaryCard records={state.records} />
+    <>
+      <FundSummaryCard records={state.records} />
+      {/* Treasurers see what they wrote, as the class sees it. */}
+      <HowToPayCard state={state} />
+    </>
   ) : (
     <>
       <MyBalanceCard records={state.records} balanceCentavos={state.balanceOf(state.myUid)} myUid={state.myUid} />
@@ -319,13 +323,19 @@ export function LedgerSummaryCard({ state }: { state: ClassState }) {
           </div>
         </div>
       )}
-      {state.room?.paymentInfo.trim() && (
-        <div className="card">
-          <div className="small semibold muted">How to pay</div>
-          <p style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{state.room.paymentInfo}</p>
-        </div>
-      )}
+      <HowToPayCard state={state} />
     </>
+  );
+}
+
+/** The payment instructions set in Ledger settings. Nothing when none are set. */
+function HowToPayCard({ state }: { state: ClassState }) {
+  if (!state.room?.paymentInfo.trim()) return null;
+  return (
+    <div className="card">
+      <div className="small semibold muted">How to pay</div>
+      <p style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{state.room.paymentInfo}</p>
+    </div>
   );
 }
 
