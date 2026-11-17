@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { checkFile, classUsage, FILE_ACCEPT, filesEnabled, sizeText, uploadFile, type Usage } from '../../data/files';
+import { checkFile, classUsage, deleteFile, FILE_ACCEPT, filesEnabled, sizeText, uploadFile, type Usage } from '../../data/files';
 import { CONTENT_KINDS, newContentItem, type ClassRoom, type ContentFile, type ContentItem, type ContentKind, type Course } from '../../data/models';
 import { CONTENT_SORTS, ContentRules, type ContentFormat, type ContentSort } from '../../domain/contentRules';
 import { ContentIcons, IconLibrary } from '../../domain/iconStyles';
@@ -394,6 +394,23 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
   const [usage, setUsage] = useState<Usage | null>(null);
   const picker = useRef<HTMLInputElement>(null);
   const canUpload = filesEnabled || !!existing?.file;
+  // A file uploaded in this form but not saved yet. It is deleted when another file replaces it, or when the
+  // form is left without saving, so it does not use up the class's storage. (If the app is closed instead,
+  // the files Worker's daily clean-up removes it.)
+  const unsaved = useRef<string | null>(null);
+  const left = useRef(false);
+  const discard = (key: string | null | undefined) => {
+    if (key) void deleteFile(state.classId, key).catch(() => undefined);
+  };
+  useEffect(() => {
+    left.current = false;
+    return () => {
+      left.current = true;
+      discard(unsaved.current);
+      unsaved.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (source === 'FILE' && filesEnabled && !usage) classUsage(state.classId).then(setUsage, () => undefined);
   }, [source, state.classId, usage]);
@@ -406,8 +423,14 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
     setSending(chosen.name);
     try {
       const done = await uploadFile(state.classId, chosen, setProgress);
+      // Left the form while it was uploading: nothing will save it.
+      if (left.current) return discard(done.key);
+      // The upload it replaces is deleted now, so it no longer counts.
+      const replaced = unsaved.current && file?.key === unsaved.current ? file.sizeBytes : 0;
+      discard(unsaved.current);
+      unsaved.current = done.key;
       setFile({ key: done.key, name: done.name, sizeBytes: done.sizeBytes, mimeType: done.mimeType });
-      setUsage({ usedBytes: done.usedBytes, limitBytes: done.limitBytes });
+      setUsage({ usedBytes: done.usedBytes - replaced, limitBytes: done.limitBytes });
       // A new upload is named after its file; an uploaded item being edited keeps its (maybe renamed) title.
       if (!existing?.file) setTitle(done.name.replace(/\.[A-Za-z0-9]+$/, '').trim().slice(0, ContentRules.MAX_TITLE) || done.name.slice(0, ContentRules.MAX_TITLE));
     } catch (e) {
@@ -443,7 +466,14 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
         createdByUid: existing?.createdByUid ?? '',
         createdAtMillis: existing?.createdAtMillis ?? 0,
       }),
-      back,
+      () => {
+        // Saved: drop the uploads this item no longer uses (an unsaved one, or the file it replaced).
+        const kept = asFile ? file?.key : undefined;
+        if (unsaved.current !== kept) discard(unsaved.current);
+        if (existing?.file && existing.file.key !== kept) discard(existing.file.key);
+        unsaved.current = null;
+        back();
+      },
     );
   }
 
