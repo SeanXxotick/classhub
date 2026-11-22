@@ -322,7 +322,7 @@ test.describe.serial('a class from start to finish', () => {
     await openTab(page, 'Home');
     await page.getByRole('button', { name: 'Class settings' }).click();
     await page.getByLabel('Class name').fill('Test Class Renamed');
-    await page.getByRole('radio', { name: '#2563EB' }).first().click();
+    await page.getByRole('radio', { name: '#DB2777' }).first().click();
     await page.getByRole('switch', { name: /^Contents/ }).uncheck();
     await page.getByRole('button', { name: 'Save settings' }).click();
     await expectNotice(page, 'Class settings saved.');
@@ -347,15 +347,15 @@ test.describe.serial('a class from start to finish', () => {
     const { page } = stu;
     await page.goto(classUrl);
     await page.getByRole('button', { name: 'My settings for this class' }).click();
-    await page.getByRole('radio', { name: '#2563EB' }).click();
-    await expect(page.locator('.class-frame')).toHaveAttribute('style', /#2563EB/i);
+    await page.getByRole('radio', { name: '#7C3AED' }).click();
+    await expect(page.locator('.class-frame')).toHaveAttribute('style', /#7C3AED/i);
     await page.getByRole('group', { name: 'Ledger shows' }).getByRole('button', { name: 'Mine' }).click();
     await page.getByRole('group', { name: 'Open this class on' }).getByRole('button', { name: 'Ledger' }).click();
     await page.goto(classUrl);
     await expect(page.getByRole('tab', { name: 'Mine' })).toHaveAttribute('aria-selected', 'true');
     await page.getByRole('button', { name: 'My settings for this class' }).click();
     await page.getByRole('button', { name: 'Use class color' }).click();
-    await expect(page.locator('.class-frame')).not.toHaveAttribute('style', /#2563EB/i);
+    await expect(page.locator('.class-frame')).not.toHaveAttribute('style', /#7C3AED/i);
     await page.getByRole('group', { name: 'Open this class on' }).getByRole('button', { name: 'Home' }).click();
   });
 
