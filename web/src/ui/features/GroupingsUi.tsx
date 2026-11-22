@@ -783,7 +783,7 @@ function GroupSlotCard({
             {slot.maxSize > 0 ? `${count}/${slot.maxSize}` : `${count}`}
             {full ? ' · Full' : ''}
           </span>
-          {!expanded && canSelfEdit && !isMyGroup && !full && (
+          {!expanded && canSelfEdit && !isMyGroup && !full && !hasMyGroup && (
             myPending ? (
               <button type="button" className="btn outline small" disabled={busy} onClick={onCancelRequest}>
                 Pending
@@ -794,7 +794,7 @@ function GroupSlotCard({
               </button>
             ) : (
               <button type="button" className="btn solid small" disabled={busy} onClick={onJoin}>
-                {hasMyGroup ? 'Switch' : 'Join'}
+                Join
               </button>
             )
           )}
