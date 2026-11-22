@@ -9,6 +9,7 @@ import { AddClassDialog, ClassesScreen, CreateClassScreen, JoinClassScreen, Shar
 import { ClassRoute } from './classroom/ClassScreen';
 import { Avatar, Loading, hexColor, useBack } from './common';
 import { Logo } from './Logo';
+import { myAccent, useSettingsVersion } from './settings';
 import { UpdateBanner } from './UpdateBanner';
 
 /** Lets the Android APK's Back button close dialogs/menus or navigate back before minimizing. */
@@ -90,6 +91,7 @@ function PasswordRoute({ user }: { user: AppUser }) {
 /** The wide-screen sidebar: My classes (pinned first), Add a class, Account and the Android app. Hidden on phones. */
 function Sidebar({ user }: { user: AppUser }) {
   const { classes } = useMyClasses(user.uid);
+  useSettingsVersion();
   const classIds = useMemo(() => classes?.map((c) => c.classId) ?? [], [classes]);
   const photos = useClassPhotos(classIds);
   const accents = useClassAccents(classIds);
@@ -113,7 +115,7 @@ function Sidebar({ user }: { user: AppUser }) {
       ) : (
         classes.map((m) => (
           <NavLink key={m.classId} to={`/class/${m.classId}`} className={itemClass} title={m.className}>
-            <Avatar photo={photos.get(m.classId)} name={m.className} color={hexColor(accents.get(m.classId), '#0F766E')} size={30} circle={false} />
+            <Avatar photo={photos.get(m.classId)} name={m.className} color={hexColor(myAccent(m.classId) ?? accents.get(m.classId), '#0F766E')} size={30} circle={false} />
             <span className="grow">{m.className}</span>
           </NavLink>
         ))
