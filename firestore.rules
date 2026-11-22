@@ -527,6 +527,8 @@ service cloud.firestore {
           || (d.kind in ['ANNOUNCEMENT_POSTED', 'ANNOUNCEMENT_PINNED', 'COMMENT_REMOVED', 'FORUM_MODERATED',
                          'FORUM_QUESTION_DELETED', 'FORUM_ANSWER_REMOVED', 'POLL_CREATED', 'POLL_CLOSED', 'POLL_DELETED']
             && (officer || 'ANNOUNCEMENTS_MANAGE' in role.permissions))
+          || (d.kind in ['GROUPING_CREATED', 'GROUPING_UPDATED', 'GROUPING_DELETED']
+            && (officer || 'MEMBERS_MANAGE' in role.permissions))
           // A member who leaves on their own: only in the batch that deletes their own member entry.
           || (d.kind == 'MEMBER_LEFT' && !existsAfter(memberPath(c, uid())))
         )
@@ -1279,6 +1281,46 @@ service cloud.firestore {
         allow delete: if (isMember(classId) && resource.data.uid == uid())
           || can(classId, 'ANNOUNCEMENTS_MANAGE')
           || isOwnerClosing(classId);
+      }
+
+      // ---- Project & Lab Groupings (in Members). Officers with MEMBERS_MANAGE create/edit/lock/delete;
+      // members may self-join/leave and add/remove guest teammates in their own group while selfJoin is on and unlocked.
+      match /groupings/{groupingId} {
+        allow read: if isMember(classId);
+        allow create: if can(classId, 'MEMBERS_MANAGE') && isOpen(classId)
+          && hasFields(request.resource.data, ['title', 'courseId', 'note', 'selfJoin', 'locked', 'groups', 'createdByUid', 'createdAtMillis', 'updatedAtMillis'])
+          && isFilled(request.resource.data.title, 120)
+          && isText(request.resource.data.courseId, 128)
+          && isText(request.resource.data.note, 300)
+          && request.resource.data.selfJoin is bool
+          && request.resource.data.locked is bool
+          && request.resource.data.groups is list
+          && request.resource.data.groups.size() >= 1
+          && request.resource.data.groups.size() <= 50
+          && request.resource.data.createdByUid == uid()
+          && isRecentMillis(request.resource.data.createdAtMillis)
+          && isRecentMillis(request.resource.data.updatedAtMillis);
+        allow update: if isOpen(classId) && (
+          (can(classId, 'MEMBERS_MANAGE')
+            && changesOnly(['title', 'courseId', 'note', 'selfJoin', 'locked', 'groups', 'updatedAtMillis'])
+            && isFilled(request.resource.data.title, 120)
+            && isText(request.resource.data.courseId, 128)
+            && isText(request.resource.data.note, 300)
+            && request.resource.data.selfJoin is bool
+            && request.resource.data.locked is bool
+            && request.resource.data.groups is list
+            && request.resource.data.groups.size() >= 1
+            && request.resource.data.groups.size() <= 50
+            && isRecentMillis(request.resource.data.updatedAtMillis))
+          || (isMember(classId)
+            && resource.data.selfJoin == true
+            && resource.data.locked == false
+            && changesOnly(['groups', 'updatedAtMillis'])
+            && request.resource.data.groups is list
+            && request.resource.data.groups.size() == resource.data.groups.size()
+            && isRecentMillis(request.resource.data.updatedAtMillis))
+        );
+        allow delete: if can(classId, 'MEMBERS_MANAGE') || isOwnerClosing(classId);
       }
 
       // Each member's up and down votes on announcements and comments: one document per member holding

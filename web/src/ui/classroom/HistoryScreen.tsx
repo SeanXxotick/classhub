@@ -59,6 +59,9 @@ const LOOK: Record<HistoryKind, [IconName, Tone]> = {
   POLL_CREATED: ['list', 'primary'],
   POLL_CLOSED: ['lock', 'warning'],
   POLL_DELETED: ['trash', 'danger'],
+  GROUPING_CREATED: ['members', 'primary'],
+  GROUPING_UPDATED: ['members', 'neutral'],
+  GROUPING_DELETED: ['trash', 'danger'],
 };
 
 type Show = 'ALL' | HistoryGroup;

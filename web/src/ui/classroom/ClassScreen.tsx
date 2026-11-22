@@ -9,6 +9,7 @@ import { forumUnseen } from '../../domain/forumUnseen';
 import { markTabsSeen, useTabsSeen } from '../../data/tabsSeen';
 import { countLabel, SEEN_TABS, unseenCounts, type SeenTab } from '../../domain/tabCounts';
 import { AttendanceCard, ClaimsCard, NewsTab, RemindersCard, StatementCard, TimetableCard, TodayCard } from '../features/FeatureUi';
+import { GroupingsView } from '../features/GroupingsUi';
 import { InviteDialog } from './InviteDialog';
 import { LedgerView } from '../../domain/ledgerView';
 import { ScheduleView } from '../../domain/scheduleView';
@@ -547,32 +548,51 @@ function MembersTab({
   onReject: (request: JoinRequest) => void;
 }) {
   const canManage = state.can('MEMBERS_MANAGE');
+  const [params, setParams] = useSearchParams();
+  const inGroups = params.get('view') === 'groups';
+  const setView = (view: 'members' | 'groups') =>
+    setParams(view === 'groups' ? { tab: 'MEMBERS', view: 'groups' } : { tab: 'MEMBERS' }, { replace: true });
+
   return (
-    <>
-      {canManage && state.joinRequests.length > 0 && (
-        <div className="card flush" style={{ marginBottom: 12 }}>
-          <div className="small semibold muted" style={{ padding: '0 16px 6px' }}>
-            Waiting for approval ({state.joinRequests.length})
-          </div>
-          {state.joinRequests.map((r) => (
-            <div key={r.uid} className="list-row">
-              <Avatar name={r.name} color="#6B768A" />
-              <span className="grow ellipsis-box">
-                <span className="title ellipsis">{r.name}</span>
-                <span className="sub ellipsis">Asked to join with the invite code</span>
-              </span>
-              <button type="button" className="btn text" onClick={() => onReject(r)}>
-                Reject
-              </button>
-              <button type="button" className="btn solid" onClick={() => onApprove(r)}>
-                Approve
-              </button>
+    <div className="stack">
+      <div className="ch-segmented ch-full news-switch" role="group" aria-label="Members">
+        <button type="button" className={!inGroups ? 'ch-selected' : ''} aria-pressed={!inGroups} onClick={() => setView('members')}>
+          Members ({state.members.length})
+        </button>
+        <button type="button" className={inGroups ? 'ch-selected' : ''} aria-pressed={inGroups} onClick={() => setView('groups')}>
+          Groups
+        </button>
+      </div>
+      {inGroups ? (
+        <GroupingsView state={state} />
+      ) : (
+        <>
+          {canManage && state.joinRequests.length > 0 && (
+            <div className="card flush">
+              <div className="small semibold muted" style={{ padding: '0 16px 6px' }}>
+                Waiting for approval ({state.joinRequests.length})
+              </div>
+              {state.joinRequests.map((r) => (
+                <div key={r.uid} className="list-row">
+                  <Avatar name={r.name} color="#6B768A" />
+                  <span className="grow ellipsis-box">
+                    <span className="title ellipsis">{r.name}</span>
+                    <span className="sub ellipsis">Asked to join with the invite code</span>
+                  </span>
+                  <button type="button" className="btn text" onClick={() => onReject(r)}>
+                    Reject
+                  </button>
+                  <button type="button" className="btn solid" onClick={() => onApprove(r)}>
+                    Approve
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+          <MembersList state={state} canManage={canManage} onOpenMember={onOpenMember} />
+        </>
       )}
-      <MembersList state={state} canManage={canManage} onOpenMember={onOpenMember} />
-    </>
+    </div>
   );
 }
 
