@@ -32,6 +32,8 @@ export interface SharedClassLink {
   name: string;
   tag: string;
   courseId: string;
+  /** The class's default accent color hex (e.g. "#0F766E"). */
+  accentColor?: string;
 }
 
 export interface GroupJoinRequest {

@@ -91,6 +91,7 @@ export interface NewGroupingInput {
   shared?: boolean;
   className?: string;
   sectionTag?: string;
+  accentColor?: string;
 }
 
 /** Creates a local or shared cross-class grouping (MEMBERS_MANAGE) and logs it in History. */
@@ -123,7 +124,12 @@ export async function createGrouping(
       shareCode,
       linkedClassIds: [classId],
       linkedClasses: {
-        [classId]: { name: hostClassName, tag, courseId: input.courseId },
+        [classId]: {
+          name: hostClassName,
+          tag,
+          courseId: input.courseId,
+          ...(input.accentColor ? { accentColor: input.accentColor } : {}),
+        },
       },
       selfJoin: input.selfJoin,
       locked: false,
@@ -185,6 +191,7 @@ export async function linkSharedGrouping(
   rawCode: string,
   sectionTag: string,
   courseId: string,
+  accentColor?: string,
 ): Promise<string> {
   const code = rawCode.trim().toUpperCase().replace(/\s+/g, '');
   if (!code) throw new UserError('NAME_MISSING', 'Enter the grouping share code.');
@@ -216,7 +223,12 @@ export async function linkSharedGrouping(
       const nextIds = [...ids, classId];
       const nextClasses = {
         ...(data.linkedClasses ?? {}),
-        [classId]: { name: cleanName, tag, courseId },
+        [classId]: {
+          name: cleanName,
+          tag,
+          courseId,
+          ...(accentColor ? { accentColor } : {}),
+        },
       };
       tx.update(ref, { linkedClassIds: nextIds, linkedClasses: nextClasses, updatedAtMillis: now });
       tx.set(sharedGroupingLinkRef(db, classId, sharedId), { sharedId, linkedAtMillis: now });

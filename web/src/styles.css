@@ -2704,19 +2704,51 @@ button.helpers-head {
 }
 
 /* Project & Lab Groupings (inside Members tab) */
+.grp-card-toggle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.grp-chev {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--ch-text-muted);
+  font-size: 13px;
+  transition: transform 140ms;
+}
+.grp-chev.open {
+  transform: rotate(180deg);
+}
 .groupings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
-  gap: 12px;
+  gap: 10px;
+  align-items: start;
 }
 .grp-slot {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 12px 14px;
+  padding: 11px 13px;
   border-radius: 14px;
   border: 1px solid var(--ch-border);
   background: var(--ch-bg);
+  min-width: 0;
+  overflow: hidden;
 }
 .grp-slot.mine {
   border-color: var(--ch-primary);
@@ -2727,6 +2759,21 @@ button.helpers-head {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+}
+.grp-slot-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 .grp-mine-tag {
   font-size: 11px;
@@ -2745,29 +2792,49 @@ button.helpers-head {
   border-radius: 999px;
   background: var(--ch-surface-2);
   color: var(--ch-text-muted);
+  white-space: nowrap;
+  flex: none;
 }
 .grp-cap.full {
   background: var(--ch-warning-soft);
   color: var(--ch-warning);
 }
+.grp-req-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--ch-danger-soft);
+  color: var(--ch-danger);
+  white-space: nowrap;
+  flex: none;
+}
 .grp-members {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  min-height: 28px;
+  min-height: 24px;
+  min-width: 0;
   align-items: flex-start;
 }
 .grp-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  flex-wrap: wrap;
+  gap: 4px 6px;
   max-width: 100%;
+  min-width: 0;
   font-size: 13px;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: 14px;
   background: var(--ch-surface);
   border: 1px solid var(--ch-border);
   color: var(--ch-text);
+  overflow-wrap: anywhere;
+}
+.grp-chip-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .grp-chip.me {
   border-color: var(--ch-primary);
@@ -2811,6 +2878,7 @@ button.helpers-head {
   border-radius: 10px;
   background: var(--ch-surface);
   border: 1px solid var(--ch-border);
+  min-width: 0;
 }
 .grp-slot-actions {
   display: flex;
@@ -2818,17 +2886,21 @@ button.helpers-head {
   align-items: center;
   gap: 6px;
   margin-top: auto;
-  padding-top: 4px;
+  padding-top: 2px;
 }
 .grp-ungrouped {
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: 12px;
   background: var(--ch-surface-2);
+  min-width: 0;
 }
 .grp-assignable {
   cursor: pointer;
   font: inherit;
   color: var(--ch-text);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
 }
 .grp-assignable:hover {
   border-color: var(--ch-primary);
@@ -2854,29 +2926,22 @@ button.helpers-head {
   border-radius: 12px;
   background: var(--ch-surface-2);
   border: 1px solid var(--ch-border);
+  min-width: 0;
 }
 .grp-sec-tag {
   font-size: 10.5px;
   font-weight: 800;
   padding: 1px 7px;
   border-radius: 999px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   flex: none;
+  background: color-mix(in srgb, var(--tag-color, var(--ch-primary)) 16%, transparent);
+  color: var(--tag-color, var(--ch-primary-text));
 }
-.grp-sec-tag.c0 {
-  background: color-mix(in srgb, var(--ch-primary) 15%, transparent);
-  color: var(--ch-primary-text);
-}
-.grp-sec-tag.c1 {
-  background: var(--ch-info-soft);
-  color: var(--ch-info);
-}
-.grp-sec-tag.c2 {
-  background: var(--ch-warning-soft);
-  color: var(--ch-warning);
-}
-.grp-sec-tag.c3 {
-  background: var(--ch-success-soft);
-  color: var(--ch-success);
+:root[data-theme='dark'] .grp-sec-tag {
+  background: color-mix(in srgb, var(--tag-color, var(--ch-primary)) 26%, transparent);
+  color: color-mix(in srgb, var(--tag-color, var(--ch-primary)) 70%, #ffffff);
 }
 .grp-code-pill {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -2912,15 +2977,27 @@ button.helpers-head {
 .grp-requests {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   padding: 8px 10px;
   border-radius: 10px;
   background: var(--ch-surface);
   border: 1px solid var(--ch-border);
+  min-width: 0;
 }
 .grp-req-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px 8px;
+  min-width: 0;
+}
+.grp-req-who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  flex: 1 1 140px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

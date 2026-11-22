@@ -2,9 +2,9 @@
  * Project & Lab Groupings (inside the Members tab):
  * Supports single-class and cross-class shared groupings (G1 + G2),
  * per-group capacities, optional group leaders (first to join, passable,
- * leader-only join approval), guest teammates, and plain-text export.
+ * leader-only join approval & guests), collapsible cards/groups, and plain-text export.
  */
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import { db } from '../../data/firebase';
 import { friendlyMessage } from '../../data/errors';
 import { byLastName, listName } from '../../data/models';
@@ -50,7 +50,8 @@ import {
   ungroupedMemberIds,
 } from '../../domain/groupingLogic';
 import { Badge, Button, Card, Notice, SearchInput, Switch } from '../../design';
-import { ConfirmDialog, Dialog, Field } from '../common';
+import { ConfirmDialog, Dialog, Field, hexColor } from '../common';
+import { myAccent } from '../settings';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 import { MoreMenu } from '../MoreMenu';
 import { TagBadge, TagSelect } from './ForumUi';
@@ -61,6 +62,20 @@ function guessSectionTag(className: string): string {
   const m = className.match(/\b(G\d+|[A-Z]\d+)\b/i);
   if (m) return m[1].toUpperCase();
   return className.trim().slice(0, 12) || 'Sec';
+}
+
+/**
+ * Resolves the color for a linked class badge:
+ * uses the student's personal color override (`myAccent`) if they set one for that class,
+ * otherwise falls back to that class's real default `accentColor`.
+ */
+function tagStyleForClass(state: ClassState, grouping: Grouping, classId: string): CSSProperties | undefined {
+  const personal = myAccent(classId);
+  const stored = grouping.linkedClasses?.[classId]?.accentColor;
+  const localDefault = classId === state.classId ? state.room?.accentColor : undefined;
+  const raw = personal ?? stored ?? localDefault;
+  if (!raw) return undefined;
+  return { '--tag-color': hexColor(raw) } as CSSProperties;
 }
 
 function useRun() {
@@ -120,11 +135,12 @@ export function GroupingsView({ state }: { state: ClassState }) {
       {groupings && visible.length === 0 && (
         <Notice tone="info">{tag === '*' ? 'No groupings yet.' : 'No groupings for this course.'}</Notice>
       )}
-      {visible.map((grouping) => (
+      {visible.map((grouping, idx) => (
         <GroupingCard
           key={`${grouping.shared ? 's' : 'l'}-${grouping.id}`}
           state={state}
           grouping={grouping}
+          defaultOpen={idx === 0}
           manage={manage}
           onEdit={() => setEditing(grouping)}
           onToggleLock={() =>
@@ -164,6 +180,7 @@ export function GroupingsView({ state }: { state: ClassState }) {
 function GroupingCard({
   state,
   grouping,
+  defaultOpen,
   manage,
   onEdit,
   onToggleLock,
@@ -172,6 +189,7 @@ function GroupingCard({
 }: {
   state: ClassState;
   grouping: Grouping;
+  defaultOpen: boolean;
   manage: boolean;
   onEdit: () => void;
   onToggleLock: () => void;
@@ -180,6 +198,8 @@ function GroupingCard({
 }) {
   const { actions } = useClass();
   const run = useRun();
+  const [cardOpen, setCardOpen] = useState(defaultOpen);
+  const [openSlots, setOpenSlots] = useState<Record<string, boolean>>({});
   const [showUngrouped, setShowUngrouped] = useState(false);
   const [addingSlot, setAddingSlot] = useState(false);
   const [editingSlot, setEditingSlot] = useState<GroupSlot | null>(null);
@@ -216,6 +236,25 @@ function GroupingCard({
   const mySectionTag = grouping.linkedClasses?.[state.classId]?.tag ?? guessSectionTag(state.room?.name ?? '');
   const myName = state.me ? listName(state.me) : 'Member';
 
+  const isSlotOpen = (slot: GroupSlot) => {
+    if (slot.id in openSlots) return openSlots[slot.id];
+    const isMine = myGroup?.id === slot.id;
+    const leaderUid = effectiveLeaderUid(slot, grouping.hasLeader);
+    const hasPendingForMe =
+      !!grouping.hasLeader &&
+      (slot.joinRequests?.length ?? 0) > 0 &&
+      (manage || (!grouping.locked && leaderUid === state.myUid));
+    return isMine || hasPendingForMe;
+  };
+  const allOpen = grouping.groups.every(isSlotOpen);
+  const toggleSlot = (slot: GroupSlot) =>
+    setOpenSlots((prev) => ({ ...prev, [slot.id]: !isSlotOpen(slot) }));
+  const setAllSlots = (open: boolean) => {
+    const next: Record<string, boolean> = {};
+    for (const s of grouping.groups) next[s.id] = open;
+    setOpenSlots(next);
+  };
+
   const metaForUid = (uid: string): MemberMeta | undefined => {
     if (!grouping.shared) return undefined;
     const m = memberById.get(uid);
@@ -243,7 +282,6 @@ function GroupingCard({
   const linkedList = grouping.shared
     ? (grouping.linkedClassIds ?? []).map((cid, idx) => ({
         classId: cid,
-        idx,
         isHost: cid === grouping.hostClassId,
         ...(grouping.linkedClasses?.[cid] ?? { name: cid, tag: `S${idx + 1}`, courseId: '' }),
       }))
@@ -253,34 +291,43 @@ function GroupingCard({
     <Card>
       <div className="stack" style={{ gap: 12 }}>
         <div className="card-head">
-          <div className="stack" style={{ gap: 6 }}>
-            <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
-              <TagBadge state={state} courseId={grouping.courseId} />
-              {grouping.shared && (
-                <Badge tone="info">{`Shared: ${linkedList.map((c) => c.tag).join(' + ')}`}</Badge>
-              )}
-              {grouping.locked ? (
-                <Badge tone="warning">Locked</Badge>
-              ) : grouping.selfJoin ? (
-                <Badge tone="success">{grouping.hasLeader ? 'Leader approval' : 'Self-join'}</Badge>
-              ) : (
-                <Badge tone="neutral">Officer-assigned</Badge>
-              )}
-              {grouping.hasLeader && <Badge tone="neutral">Leaders on</Badge>}
-              {myGroup && <Badge tone="primary">{`You: ${myGroup.name}`}</Badge>}
+          <button
+            type="button"
+            className="grp-card-toggle"
+            aria-expanded={cardOpen}
+            onClick={() => setCardOpen(!cardOpen)}
+          >
+            <div className="stack" style={{ gap: 6, minWidth: 0, flex: 1 }}>
+              <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
+                <TagBadge state={state} courseId={grouping.courseId} />
+                {grouping.shared && (
+                  <Badge tone="info">{`Shared: ${linkedList.map((c) => c.tag).join(' + ')}`}</Badge>
+                )}
+                {grouping.locked ? (
+                  <Badge tone="warning">Locked</Badge>
+                ) : grouping.selfJoin ? (
+                  <Badge tone="success">{grouping.hasLeader ? 'Leader approval' : 'Self-join'}</Badge>
+                ) : (
+                  <Badge tone="neutral">Officer-assigned</Badge>
+                )}
+                {myGroup && <Badge tone="primary">{`You: ${myGroup.name}`}</Badge>}
+              </div>
+              <div className="bold" style={{ fontSize: 17, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
+                {grouping.title}
+              </div>
+              {grouping.note && <div className="small muted" style={{ overflowWrap: 'anywhere' }}>{grouping.note}</div>}
+              <div className="ch-small ch-muted">
+                {`${grouping.groups.length} group${grouping.groups.length === 1 ? '' : 's'} · ${totalMembers} member${totalMembers === 1 ? '' : 's'}`}
+                {totalGuests > 0 ? ` · ${totalGuests} guest${totalGuests === 1 ? '' : 's'}` : ''}
+              </div>
             </div>
-            <div className="bold" style={{ fontSize: 17, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
-              {grouping.title}
-            </div>
-            {grouping.note && <div className="small muted">{grouping.note}</div>}
-            <div className="ch-small ch-muted">
-              {`${grouping.groups.length} group${grouping.groups.length === 1 ? '' : 's'} · ${totalMembers} member${totalMembers === 1 ? '' : 's'}`}
-              {totalGuests > 0 ? ` · ${totalGuests} guest${totalGuests === 1 ? '' : 's'}` : ''}
-            </div>
-          </div>
-          <div className="ch-row ch-gap-1" style={{ alignItems: 'center' }}>
+            <span className={'grp-chev' + (cardOpen ? ' open' : '')} aria-hidden>
+              ▾
+            </span>
+          </button>
+          <div className="ch-row ch-gap-1" style={{ alignItems: 'center', flex: 'none' }}>
             <button type="button" className="btn outline small" onClick={() => void copyList()}>
-              Copy list
+              Copy
             </button>
             <MoreMenu
               label={`More for "${grouping.title}"`}
@@ -307,149 +354,171 @@ function GroupingCard({
           </div>
         </div>
 
-        {grouping.shared && (
-          <div className="grp-linked-strip">
-            <div className="ch-row ch-wrap ch-gap-1" style={{ alignItems: 'center' }}>
-              <span className="tiny muted">Linked:</span>
-              {linkedList.map((c) => (
-                <span key={c.classId} className={`grp-sec-tag c${c.idx % 4}`}>
-                  {c.name} ({c.tag}){c.isHost ? ' · Host' : ''}
-                </span>
-              ))}
-            </div>
-            {manage && grouping.shareCode && (
-              <button type="button" className="grp-code-pill" onClick={() => setSharingOpen(true)}>
-                {grouping.shareCode}
-              </button>
-            )}
-          </div>
-        )}
-
-        {ungroupedMembers.length > 0 && (
-          <div className="grp-ungrouped">
-            <div className="ch-row ch-wrap ch-gap-2" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <button
-                type="button"
-                className="btn text small"
-                style={{ padding: '2px 0', minHeight: 28 }}
-                onClick={() => setShowUngrouped(!showUngrouped)}
-              >
-                {grouping.shared
-                  ? `Ungrouped in ${mySectionTag} (${ungroupedMembers.length}) ${showUngrouped ? '▴' : '▾'}`
-                  : `Ungrouped (${ungroupedMembers.length}) ${showUngrouped ? '▴' : '▾'}`}
-              </button>
-              {manage && (
-                <button
-                  type="button"
-                  className="btn outline small"
-                  disabled={run.busy}
-                  onClick={() =>
-                    run(
-                      'Assigned ungrouped members.',
-                      async () => {
-                        const n = await autoAssignUngrouped(
-                          db,
-                          state.classId,
-                          grouping.id,
-                          ungroupedIds,
-                          grouping.shared,
-                          metaForUid,
-                        );
-                        if (n === 0) throw new Error('All groups are already full.');
-                      },
-                    )
-                  }
-                >
-                  Auto-assign
-                </button>
-              )}
-            </div>
-            {showUngrouped && (
-              <div className="poll-chips" style={{ marginTop: 6 }}>
-                {ungroupedMembers.map((m) =>
-                  manage ? (
-                    <button
-                      key={m.id}
-                      type="button"
-                      className="poll-name-chip grp-assignable"
-                      onClick={() => setAssigningMemberUid(m.id)}
+        {cardOpen && (
+          <>
+            {grouping.shared && (
+              <div className="grp-linked-strip">
+                <div className="ch-row ch-wrap ch-gap-1" style={{ alignItems: 'center', minWidth: 0 }}>
+                  <span className="tiny muted">Linked:</span>
+                  {linkedList.map((c) => (
+                    <span
+                      key={c.classId}
+                      className="grp-sec-tag"
+                      style={tagStyleForClass(state, grouping, c.classId)}
                     >
-                      {listName(m)} +
-                    </button>
-                  ) : (
-                    <span key={m.id} className="poll-name-chip">
-                      {listName(m)}
+                      {c.name} ({c.tag}){c.isHost ? ' · Host' : ''}
                     </span>
-                  ),
+                  ))}
+                </div>
+                {manage && grouping.shareCode && (
+                  <button type="button" className="grp-code-pill" onClick={() => setSharingOpen(true)}>
+                    {grouping.shareCode}
+                  </button>
                 )}
               </div>
             )}
-          </div>
-        )}
 
-        <div className="groupings-grid">
-          {grouping.groups.map((slot) => (
-            <GroupSlotCard
-              key={slot.id}
-              state={state}
-              grouping={grouping}
-              slot={slot}
-              memberById={memberById}
-              linkedIds={grouping.linkedClassIds ?? []}
-              isMyGroup={myGroup?.id === slot.id}
-              hasMyGroup={!!myGroup}
-              canSelfEdit={canSelfEdit}
-              manage={manage}
-              busy={run.busy}
-              onJoin={() =>
-                run(`Joined ${slot.name}.`, () =>
-                  joinGroup(db, state.classId, grouping.id, state.myUid, slot.id, false, grouping.shared, metaForUid(state.myUid)),
-                )
-              }
-              onRequestJoin={() =>
-                run(`Requested to join ${slot.name}.`, () =>
-                  requestJoinGroup(db, state.classId, grouping.id, slot.id, state.myUid, myName, mySectionTag, grouping.shared),
-                )
-              }
-              onCancelRequest={() =>
-                run('Request cancelled.', () =>
-                  cancelJoinRequest(db, state.classId, grouping.id, slot.id, state.myUid, grouping.shared),
-                )
-              }
-              onApproveRequest={(uid, name) =>
-                run(`Approved ${name}.`, () =>
-                  approveJoinRequest(db, state.classId, grouping.id, slot.id, state.myUid, uid, manage, grouping.shared),
-                )
-              }
-              onRejectRequest={(uid, name) =>
-                run(`Rejected ${name}.`, () =>
-                  rejectJoinRequest(db, state.classId, grouping.id, slot.id, state.myUid, uid, manage, grouping.shared),
-                )
-              }
-              onLeave={() =>
-                run(`Left ${slot.name}.`, () => leaveGroup(db, state.classId, grouping.id, state.myUid, false, grouping.shared))
-              }
-              onRemoveMember={(uid) =>
-                run('Removed from group.', () => leaveGroup(db, state.classId, grouping.id, uid, true, grouping.shared))
-              }
-              onAddGuest={(name, tag, onDone) =>
-                run(
-                  `Added ${name.trim()} to ${slot.name}.`,
-                  () => addGuestTeammate(db, state.classId, grouping.id, slot.id, state.myUid, name, tag, manage, grouping.shared),
-                  onDone,
-                )
-              }
-              onRemoveGuest={(guestId) =>
-                run('Removed guest.', () =>
-                  removeGuestTeammate(db, state.classId, grouping.id, slot.id, guestId, state.myUid, manage, grouping.shared),
-                )
-              }
-              onPassLeader={() => setPassingSlot(slot)}
-              onEditSlot={() => setEditingSlot(slot)}
-              onAssign={() => setAssigningSlot(slot)}
-            />
-          ))}
-        </div>
+            {ungroupedMembers.length > 0 && (
+              <div className="grp-ungrouped">
+                <div className="ch-row ch-wrap ch-gap-2" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn text small"
+                    style={{ padding: '2px 0', minHeight: 28 }}
+                    onClick={() => setShowUngrouped(!showUngrouped)}
+                  >
+                    {grouping.shared
+                      ? `Ungrouped in ${mySectionTag} (${ungroupedMembers.length}) ${showUngrouped ? '▴' : '▾'}`
+                      : `Ungrouped (${ungroupedMembers.length}) ${showUngrouped ? '▴' : '▾'}`}
+                  </button>
+                  {manage && (
+                    <button
+                      type="button"
+                      className="btn outline small"
+                      disabled={run.busy}
+                      onClick={() =>
+                        run(
+                          'Assigned ungrouped members.',
+                          async () => {
+                            const n = await autoAssignUngrouped(
+                              db,
+                              state.classId,
+                              grouping.id,
+                              ungroupedIds,
+                              grouping.shared,
+                              metaForUid,
+                            );
+                            if (n === 0) throw new Error('All groups are already full.');
+                          },
+                        )
+                      }
+                    >
+                      Auto-assign
+                    </button>
+                  )}
+                </div>
+                {showUngrouped && (
+                  <div className="poll-chips" style={{ marginTop: 6 }}>
+                    {ungroupedMembers.map((m) =>
+                      manage ? (
+                        <button
+                          key={m.id}
+                          type="button"
+                          className="poll-name-chip grp-assignable"
+                          onClick={() => setAssigningMemberUid(m.id)}
+                        >
+                          {listName(m)} +
+                        </button>
+                      ) : (
+                        <span key={m.id} className="poll-name-chip">
+                          {listName(m)}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {grouping.groups.length > 1 && (
+              <div className="ch-row" style={{ justifyContent: 'flex-end', marginTop: -4 }}>
+                <button
+                  type="button"
+                  className="btn text small"
+                  style={{ padding: '2px 4px', minHeight: 24 }}
+                  onClick={() => setAllSlots(!allOpen)}
+                >
+                  {allOpen ? 'Collapse all' : 'Expand all'}
+                </button>
+              </div>
+            )}
+
+            <div className="groupings-grid">
+              {grouping.groups.map((slot) => (
+                <GroupSlotCard
+                  key={slot.id}
+                  state={state}
+                  grouping={grouping}
+                  slot={slot}
+                  expanded={isSlotOpen(slot)}
+                  onToggleExpanded={() => toggleSlot(slot)}
+                  memberById={memberById}
+                  isMyGroup={myGroup?.id === slot.id}
+                  hasMyGroup={!!myGroup}
+                  canSelfEdit={canSelfEdit}
+                  manage={manage}
+                  busy={run.busy}
+                  onJoin={() =>
+                    run(`Joined ${slot.name}.`, () =>
+                      joinGroup(db, state.classId, grouping.id, state.myUid, slot.id, false, grouping.shared, metaForUid(state.myUid)),
+                    )
+                  }
+                  onRequestJoin={() =>
+                    run(`Requested to join ${slot.name}.`, () =>
+                      requestJoinGroup(db, state.classId, grouping.id, slot.id, state.myUid, myName, mySectionTag, grouping.shared),
+                    )
+                  }
+                  onCancelRequest={() =>
+                    run('Request cancelled.', () =>
+                      cancelJoinRequest(db, state.classId, grouping.id, slot.id, state.myUid, grouping.shared),
+                    )
+                  }
+                  onApproveRequest={(uid, name) =>
+                    run(`Approved ${name}.`, () =>
+                      approveJoinRequest(db, state.classId, grouping.id, slot.id, state.myUid, uid, manage, grouping.shared),
+                    )
+                  }
+                  onRejectRequest={(uid, name) =>
+                    run(`Rejected ${name}.`, () =>
+                      rejectJoinRequest(db, state.classId, grouping.id, slot.id, state.myUid, uid, manage, grouping.shared),
+                    )
+                  }
+                  onLeave={() =>
+                    run(`Left ${slot.name}.`, () => leaveGroup(db, state.classId, grouping.id, state.myUid, false, grouping.shared))
+                  }
+                  onRemoveMember={(uid) =>
+                    run('Removed from group.', () => leaveGroup(db, state.classId, grouping.id, uid, true, grouping.shared))
+                  }
+                  onAddGuest={(name, tag, onDone) =>
+                    run(
+                      `Added ${name.trim()} to ${slot.name}.`,
+                      () => addGuestTeammate(db, state.classId, grouping.id, slot.id, state.myUid, name, tag, manage, grouping.shared),
+                      onDone,
+                    )
+                  }
+                  onRemoveGuest={(guestId) =>
+                    run('Removed guest.', () =>
+                      removeGuestTeammate(db, state.classId, grouping.id, slot.id, guestId, state.myUid, manage, grouping.shared),
+                    )
+                  }
+                  onPassLeader={() => setPassingSlot(slot)}
+                  onEditSlot={() => setEditingSlot(slot)}
+                  onAssign={() => setAssigningSlot(slot)}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {sharingOpen && grouping.shared && (
@@ -499,8 +568,9 @@ function GroupSlotCard({
   state,
   grouping,
   slot,
+  expanded,
+  onToggleExpanded,
   memberById,
-  linkedIds,
   isMyGroup,
   hasMyGroup,
   canSelfEdit,
@@ -522,8 +592,9 @@ function GroupSlotCard({
   state: ClassState;
   grouping: Grouping;
   slot: GroupSlot;
+  expanded: boolean;
+  onToggleExpanded: () => void;
   memberById: Map<string, ClassState['members'][number]>;
-  linkedIds: string[];
   isMyGroup: boolean;
   hasMyGroup: boolean;
   canSelfEdit: boolean;
@@ -585,16 +656,39 @@ function GroupSlotCard({
   return (
     <div className={'grp-slot' + (isMyGroup ? ' mine' : '')}>
       <div className="grp-slot-head">
-        <div className="ch-row ch-gap-2" style={{ alignItems: 'center', minWidth: 0 }}>
+        <button
+          type="button"
+          className="grp-slot-trigger"
+          aria-expanded={expanded}
+          onClick={onToggleExpanded}
+        >
           <span className="bold ellipsis">{slot.name}</span>
           {isMyGroup && <span className="grp-mine-tag">You</span>}
-        </div>
+          {canDecideRequests && pendingReqs.length > 0 && !expanded && (
+            <span className="grp-req-pill">{`${pendingReqs.length} req`}</span>
+          )}
+        </button>
         <div className="ch-row ch-gap-1" style={{ alignItems: 'center', flex: 'none' }}>
           <span className={'grp-cap' + (full ? ' full' : '')}>
             {slot.maxSize > 0 ? `${count}/${slot.maxSize}` : `${count}`}
             {full ? ' · Full' : ''}
           </span>
-          {manage && (
+          {!expanded && canSelfEdit && !isMyGroup && !full && (
+            myPending ? (
+              <button type="button" className="btn outline small" disabled={busy} onClick={onCancelRequest}>
+                Pending
+              </button>
+            ) : needsApproval ? (
+              <button type="button" className="btn solid small" disabled={busy} onClick={onRequestJoin}>
+                Request
+              </button>
+            ) : (
+              <button type="button" className="btn solid small" disabled={busy} onClick={onJoin}>
+                {hasMyGroup ? 'Switch' : 'Join'}
+              </button>
+            )
+          )}
+          {expanded && manage && (
             <button
               type="button"
               className="btn text small"
@@ -605,201 +699,216 @@ function GroupSlotCard({
               Edit
             </button>
           )}
+          <button
+            type="button"
+            className={'grp-chev' + (expanded ? ' open' : '')}
+            style={{ border: 0, background: 'none', cursor: 'pointer' }}
+            aria-label={expanded ? `Collapse ${slot.name}` : `Expand ${slot.name}`}
+            onClick={onToggleExpanded}
+          >
+            ▾
+          </button>
         </div>
       </div>
 
-      <div className="grp-members">
-        {sortedUids.length === 0 && slot.guests.length === 0 && (
-          <span className="small muted">No members yet.</span>
-        )}
-        {sortedUids.map((uid) => {
-          const label = nameOf(uid);
-          const isMe = uid === state.myUid;
-          const isLeader = !!leaderUid && uid === leaderUid;
-          const meta = slot.memberMeta?.[uid];
-          const secIdx = meta ? Math.max(0, linkedIds.indexOf(meta.classId)) : 0;
-          return (
-            <span key={uid} className={'grp-chip' + (isMe ? ' me' : '')}>
-              <span className="ellipsis">{isMe ? `${label} (you)` : label}</span>
-              {isLeader && <span className="grp-leader-tag">★ Leader</span>}
-              {grouping.shared && meta?.tag && (
-                <span className={`grp-sec-tag c${secIdx % 4}`}>{meta.tag}</span>
-              )}
-              {manage && (
-                <button
-                  type="button"
-                  className="grp-chip-x"
-                  disabled={busy}
-                  aria-label={`Remove ${label} from ${slot.name}`}
-                  onClick={() => onRemoveMember(uid)}
-                >
-                  ×
-                </button>
-              )}
-            </span>
-          );
-        })}
-        {slot.guests.map((g) => (
-          <span key={g.id} className="grp-chip guest">
-            <span className="ellipsis">{g.name}</span>
-            {g.tag && <span className="grp-guest-tag">{g.tag}</span>}
-            {canManageGuests && (
-              <button
-                type="button"
-                className="grp-chip-x"
-                disabled={busy}
-                aria-label={`Remove guest ${g.name} from ${slot.name}`}
-                onClick={() => onRemoveGuest(g.id)}
-              >
-                ×
-              </button>
+      {expanded && (
+        <>
+          <div className="grp-members">
+            {sortedUids.length === 0 && slot.guests.length === 0 && (
+              <span className="small muted">No members yet.</span>
             )}
-          </span>
-        ))}
-      </div>
-
-      {canDecideRequests && pendingReqs.length > 0 && (
-        <div className="grp-requests">
-          <span className="tiny bold muted">{`Join requests (${pendingReqs.length})`}</span>
-          {pendingReqs.map((r) => {
-            const secIdx = Math.max(0, linkedIds.indexOf(r.classId));
-            return (
-              <div key={r.uid} className="grp-req-row">
-                <span className="ch-row ch-gap-1 ellipsis-box" style={{ alignItems: 'center' }}>
-                  <span className="small semibold ellipsis">{r.name}</span>
-                  {grouping.shared && r.tag && <span className={`grp-sec-tag c${secIdx % 4}`}>{r.tag}</span>}
-                </span>
-                <span className="ch-row ch-gap-1" style={{ flex: 'none' }}>
-                  <button
-                    type="button"
-                    className="btn text small"
-                    disabled={busy}
-                    onClick={() => onRejectRequest(r.uid, r.name)}
-                  >
-                    Reject
-                  </button>
-                  <button
-                    type="button"
-                    className="btn solid small"
-                    disabled={busy || (full && !manage)}
-                    onClick={() => onApproveRequest(r.uid, r.name)}
-                  >
-                    Approve
-                  </button>
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {addingGuest && (
-        <div className="grp-guest-form">
-          <input
-            className="input"
-            value={guestName}
-            maxLength={GUEST_NAME_MAX}
-            placeholder="Teammate name"
-            autoFocus
-            onChange={(e) => setGuestName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                submitGuest();
-              }
-            }}
-          />
-          <div className="ch-row ch-wrap ch-gap-1" style={{ alignItems: 'center' }}>
-            <span className="tiny muted">Tag:</span>
-            {GUEST_TAG_PRESETS.map((preset) => {
-              const selected = !customTag && guestTag === preset;
+            {sortedUids.map((uid) => {
+              const label = nameOf(uid);
+              const isMe = uid === state.myUid;
+              const isLeader = !!leaderUid && uid === leaderUid;
+              const meta = slot.memberMeta?.[uid];
               return (
-                <button
-                  key={preset || 'none'}
-                  type="button"
-                  className={'chip' + (selected ? ' selected' : '')}
-                  style={{ minHeight: 28, padding: '2px 10px', fontSize: 12 }}
-                  onClick={() => {
-                    setCustomTag(false);
-                    setGuestTag(preset);
-                  }}
-                >
-                  {preset || 'None'}
-                </button>
+                <span key={uid} className={'grp-chip' + (isMe ? ' me' : '')}>
+                  <span className="grp-chip-name">{isMe ? `${label} (you)` : label}</span>
+                  {isLeader && <span className="grp-leader-tag">★ Leader</span>}
+                  {grouping.shared && meta?.tag && (
+                    <span className="grp-sec-tag" style={tagStyleForClass(state, grouping, meta.classId)}>
+                      {meta.tag}
+                    </span>
+                  )}
+                  {manage && (
+                    <button
+                      type="button"
+                      className="grp-chip-x"
+                      disabled={busy}
+                      aria-label={`Remove ${label} from ${slot.name}`}
+                      onClick={() => onRemoveMember(uid)}
+                    >
+                      ×
+                    </button>
+                  )}
+                </span>
               );
             })}
-            <button
-              type="button"
-              className={'chip' + (customTag ? ' selected' : '')}
-              style={{ minHeight: 28, padding: '2px 10px', fontSize: 12 }}
-              onClick={() => {
-                setCustomTag(true);
-                if (GUEST_TAG_PRESETS.includes(guestTag as (typeof GUEST_TAG_PRESETS)[number])) setGuestTag('');
-              }}
-            >
-              Custom
-            </button>
+            {slot.guests.map((g) => (
+              <span key={g.id} className="grp-chip guest">
+                <span className="grp-chip-name">{g.name}</span>
+                {g.tag && <span className="grp-guest-tag">{g.tag}</span>}
+                {canManageGuests && (
+                  <button
+                    type="button"
+                    className="grp-chip-x"
+                    disabled={busy}
+                    aria-label={`Remove guest ${g.name} from ${slot.name}`}
+                    onClick={() => onRemoveGuest(g.id)}
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
+            ))}
           </div>
-          {customTag && (
-            <input
-              className="input"
-              value={guestTag}
-              maxLength={GUEST_TAG_MAX}
-              placeholder="Custom tag"
-              onChange={(e) => setGuestTag(e.target.value)}
-            />
-          )}
-          <div className="ch-row ch-gap-2" style={{ justifyContent: 'flex-end' }}>
-            <button type="button" className="btn text small" disabled={busy} onClick={() => setAddingGuest(false)}>
-              Cancel
-            </button>
-            <button type="button" className="btn solid small" disabled={busy || !guestName.trim()} onClick={submitGuest}>
-              Add
-            </button>
-          </div>
-        </div>
-      )}
 
-      <div className="grp-slot-actions">
-        {canSelfEdit && !isMyGroup && !full && (
-          myPending ? (
-            <button type="button" className="btn outline small" disabled={busy} onClick={onCancelRequest}>
-              Requested · Cancel
-            </button>
-          ) : needsApproval ? (
-            <button type="button" className="btn solid small" disabled={busy} onClick={onRequestJoin}>
-              Request to join
-            </button>
-          ) : (
-            <button type="button" className="btn solid small" disabled={busy} onClick={onJoin}>
-              {hasMyGroup ? 'Switch here' : 'Join'}
-            </button>
-          )
-        )}
-        {canSelfEdit && isMyGroup && (
-          <button type="button" className="btn text small" disabled={busy} onClick={onLeave}>
-            Leave
-          </button>
-        )}
-        {canPassLeader && (
-          <button type="button" className="btn outline small" disabled={busy} onClick={onPassLeader}>
-            {amLeader ? 'Pass leader' : 'Set leader'}
-          </button>
-        )}
-        {canManageGuests && (!full || manage) && !addingGuest && (
-          <button type="button" className="btn outline small" disabled={busy} onClick={() => setAddingGuest(true)}>
-            + Guest
-          </button>
-        )}
-        {manage && (
-          <button type="button" className="btn outline small" disabled={busy} onClick={onAssign}>
-            + Assign
-          </button>
-        )}
-        {!canSelfEdit && !manage && grouping.locked && isMyGroup && (
-          <span className="tiny muted">Locked</span>
-        )}
-      </div>
+          {canDecideRequests && pendingReqs.length > 0 && (
+            <div className="grp-requests">
+              <span className="tiny bold muted">{`Join requests (${pendingReqs.length})`}</span>
+              {pendingReqs.map((r) => (
+                <div key={r.uid} className="grp-req-row">
+                  <span className="grp-req-who">
+                    <span className="small semibold">{r.name}</span>
+                    {grouping.shared && r.tag && (
+                      <span className="grp-sec-tag" style={tagStyleForClass(state, grouping, r.classId)}>
+                        {r.tag}
+                      </span>
+                    )}
+                  </span>
+                  <span className="ch-row ch-gap-1" style={{ flex: 'none' }}>
+                    <button
+                      type="button"
+                      className="btn text small"
+                      disabled={busy}
+                      onClick={() => onRejectRequest(r.uid, r.name)}
+                    >
+                      Reject
+                    </button>
+                    <button
+                      type="button"
+                      className="btn solid small"
+                      disabled={busy || (full && !manage)}
+                      onClick={() => onApproveRequest(r.uid, r.name)}
+                    >
+                      Approve
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {addingGuest && (
+            <div className="grp-guest-form">
+              <input
+                className="input"
+                value={guestName}
+                maxLength={GUEST_NAME_MAX}
+                placeholder="Teammate name"
+                autoFocus
+                onChange={(e) => setGuestName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitGuest();
+                  }
+                }}
+              />
+              <div className="ch-row ch-wrap ch-gap-1" style={{ alignItems: 'center' }}>
+                <span className="tiny muted">Tag:</span>
+                {GUEST_TAG_PRESETS.map((preset) => {
+                  const selected = !customTag && guestTag === preset;
+                  return (
+                    <button
+                      key={preset || 'none'}
+                      type="button"
+                      className={'chip' + (selected ? ' selected' : '')}
+                      style={{ minHeight: 28, padding: '2px 10px', fontSize: 12 }}
+                      onClick={() => {
+                        setCustomTag(false);
+                        setGuestTag(preset);
+                      }}
+                    >
+                      {preset || 'None'}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  className={'chip' + (customTag ? ' selected' : '')}
+                  style={{ minHeight: 28, padding: '2px 10px', fontSize: 12 }}
+                  onClick={() => {
+                    setCustomTag(true);
+                    if (GUEST_TAG_PRESETS.includes(guestTag as (typeof GUEST_TAG_PRESETS)[number])) setGuestTag('');
+                  }}
+                >
+                  Custom
+                </button>
+              </div>
+              {customTag && (
+                <input
+                  className="input"
+                  value={guestTag}
+                  maxLength={GUEST_TAG_MAX}
+                  placeholder="Custom tag"
+                  onChange={(e) => setGuestTag(e.target.value)}
+                />
+              )}
+              <div className="ch-row ch-gap-2" style={{ justifyContent: 'flex-end' }}>
+                <button type="button" className="btn text small" disabled={busy} onClick={() => setAddingGuest(false)}>
+                  Cancel
+                </button>
+                <button type="button" className="btn solid small" disabled={busy || !guestName.trim()} onClick={submitGuest}>
+                  Add
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="grp-slot-actions">
+            {canSelfEdit && !isMyGroup && !full && (
+              myPending ? (
+                <button type="button" className="btn outline small" disabled={busy} onClick={onCancelRequest}>
+                  Requested · Cancel
+                </button>
+              ) : needsApproval ? (
+                <button type="button" className="btn solid small" disabled={busy} onClick={onRequestJoin}>
+                  Request to join
+                </button>
+              ) : (
+                <button type="button" className="btn solid small" disabled={busy} onClick={onJoin}>
+                  {hasMyGroup ? 'Switch here' : 'Join'}
+                </button>
+              )
+            )}
+            {canSelfEdit && isMyGroup && (
+              <button type="button" className="btn text small" disabled={busy} onClick={onLeave}>
+                Leave
+              </button>
+            )}
+            {canPassLeader && (
+              <button type="button" className="btn outline small" disabled={busy} onClick={onPassLeader}>
+                {amLeader ? 'Pass leader' : 'Set leader'}
+              </button>
+            )}
+            {canManageGuests && (!full || manage) && !addingGuest && (
+              <button type="button" className="btn outline small" disabled={busy} onClick={() => setAddingGuest(true)}>
+                + Guest
+              </button>
+            )}
+            {manage && (
+              <button type="button" className="btn outline small" disabled={busy} onClick={onAssign}>
+                + Assign
+              </button>
+            )}
+            {!canSelfEdit && !manage && grouping.locked && isMyGroup && (
+              <span className="tiny muted">Locked</span>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -849,6 +958,7 @@ function NewGroupingDialog({ state, onClose }: { state: ClassState; onClose: () 
           shared,
           className: state.room?.name ?? '',
           sectionTag,
+          accentColor: state.room?.accentColor ?? '',
         }),
       onClose,
     );
@@ -994,6 +1104,7 @@ function LinkSharedGroupingDialog({ state, onClose }: { state: ClassState; onClo
                     code,
                     sectionTag,
                     courseId,
+                    state.room?.accentColor ?? '',
                   ),
                 onClose,
               )
@@ -1046,7 +1157,6 @@ function ShareLinkedDialog({
   const isHost = grouping.hostClassId === state.classId;
   const linked = (grouping.linkedClassIds ?? []).map((cid, idx) => ({
     classId: cid,
-    idx,
     isHost: cid === grouping.hostClassId,
     ...(grouping.linkedClasses?.[cid] ?? { name: cid, tag: `S${idx + 1}`, courseId: '' }),
   }));
@@ -1084,9 +1194,11 @@ function ShareLinkedDialog({
         <div className="stack" style={{ gap: 6 }}>
           {linked.map((c) => (
             <div key={c.classId} className="row" style={{ justifyContent: 'space-between', padding: '8px 10px', borderRadius: 10, background: 'var(--ch-surface-2)' }}>
-              <span className="ch-row ch-gap-2" style={{ alignItems: 'center' }}>
-                <span className="bold small">{c.name}</span>
-                <span className={`grp-sec-tag c${c.idx % 4}`}>{c.tag}</span>
+              <span className="ch-row ch-gap-2" style={{ alignItems: 'center', minWidth: 0 }}>
+                <span className="bold small ellipsis">{c.name}</span>
+                <span className="grp-sec-tag" style={tagStyleForClass(state, grouping, c.classId)}>
+                  {c.tag}
+                </span>
               </span>
               {c.isHost ? (
                 <span className="tiny muted">Host</span>
@@ -1162,8 +1274,8 @@ function PassLeaderDialog({
                 )
               }
             >
-              <span className="grow bold">{name}</span>
-              <span className="small semibold" style={{ color: 'var(--primary)' }}>
+              <span className="grow bold" style={{ overflowWrap: 'anywhere' }}>{name}</span>
+              <span className="small semibold" style={{ color: 'var(--primary)', flex: 'none' }}>
                 Make leader
               </span>
             </button>
@@ -1398,9 +1510,7 @@ function AssignToSlotDialog({
               >
                 <span className="grow ellipsis-box">
                   <span className="title ellipsis">{listName(m)}</span>
-                  <span className="sub ellipsis">
-                    {current ? `In ${current.name}` : 'Ungrouped'}
-                  </span>
+                  <span className="sub ellipsis">{current ? `In ${current.name}` : 'Ungrouped'}</span>
                 </span>
                 <span className="small semibold" style={{ color: 'var(--primary)' }}>
                   Add
