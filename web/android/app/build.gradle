@@ -14,8 +14,8 @@ android {
         applicationId "com.seanxxotick.classhub"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 11
-        versionName "2.0.4"
+        versionCode 12
+        versionName "2.0.5"
         // The APK is named after the version, e.g. ClassHub-2.0.1-release.apk.
         base.archivesName = "ClassHub-${versionName}"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"

@@ -13,15 +13,10 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
-        <!-- Android 15 and newer draw apps behind the status and navigation bars, and the WebView does not
-             report those bars to the page, so the top bar and the add buttons were cut off (Galaxy A53, 2.0.3).
-             This keeps the old layout. It works while targetSdkVersion is 35; at 36 the insets must be handled. -->
-        <item name="android:windowOptOutEdgeToEdgeEnforcement" tools:targetApi="35">true</item>
     </style>
 
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
-        <item name="android:windowOptOutEdgeToEdgeEnforcement" tools:targetApi="35">true</item>
     </style>
 </resources>

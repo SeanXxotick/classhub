@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { syncSystemBars } from '../data/native';
 
 /*
  * Settings kept in this browser only, like the Android app's per-phone AppSettings: the theme,
@@ -68,6 +69,7 @@ export function applyTheme() {
   // Always set explicitly: tokens.css only ignores the OS dark preference when data-theme is "light".
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0f141c' : '#0F766E');
+  syncSystemBars(dark);
 }
 
 darkQuery?.addEventListener('change', applyTheme);

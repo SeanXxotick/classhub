@@ -29,12 +29,13 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
 
-            <!-- Invite links open in the app. -->
+            <!-- Invite links open in the app (both web app and landing site hosts). -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="classhub-web.web.app" android:pathPrefix="/join" />
+                <data android:scheme="https" android:host="classhub-975eb.web.app" android:pathPrefix="/join" />
             </intent-filter>
 
         </activity>

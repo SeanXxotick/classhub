@@ -11,6 +11,7 @@ import * as openings from '../../data/openingBalances';
 import { useCharges, useFundSummary, useJoinRequests, useLedgerUpkeep, usePendingOpeningBalances, useVisibleRecords } from '../../data/hooks';
 import * as dataRepo from '../../data/classDataRepo';
 import { deleteFile } from '../../data/files';
+import { tapHaptic } from '../../data/native';
 import { queueNotice } from '../../data/notify';
 import * as photoRepo from '../../data/photoRepo';
 import {
@@ -257,6 +258,7 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
       setBusy(true);
       block()
         .then(() => {
+          tapHaptic('confirm');
           if (success) notice(success);
           onDone?.();
         })

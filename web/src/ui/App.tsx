@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import * as authRepo from '../data/authRepo';
 import type { AppUser } from '../data/models';
 import { useAvatar, useClassAccents, useClassPhotos } from '../data/photoRepo';
@@ -11,17 +11,53 @@ import { Avatar, Loading, hexColor, useBack } from './common';
 import { Logo } from './Logo';
 import { UpdateBanner } from './UpdateBanner';
 
+/** Lets the Android APK's Back button close dialogs/menus or navigate back before minimizing. */
+function AndroidBackHandler() {
+  const navigate = useNavigate();
+  const { pathname, search } = useLocation();
+  useEffect(() => {
+    const win = window as unknown as { __classhubBack?: () => 'handled' | 'exit' };
+    win.__classhubBack = () => {
+      // 1. Close any open modal dialog or menu first (all listen to Escape).
+      if (document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]')) {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        return 'handled';
+      }
+      // 2. Already on the root screen: let Android minimize the app.
+      if (pathname === '/' && !search) return 'exit';
+      // 3. Go back in React Router history when there is a previous entry, else return to My classes.
+      const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+      if (idx > 0) navigate(-1);
+      else navigate('/', { replace: true });
+      return 'handled';
+    };
+    return () => {
+      delete win.__classhubBack;
+    };
+  }, [navigate, pathname, search]);
+  return null;
+}
+
 /** Signed out: sign in or create an account. A temporary password must be changed first. Then the app. */
 export function App() {
   const session = authRepo.useSession();
-  if (session.state === 'loading') return <Loading />;
-  // The address is kept, so an invite link opened while signed out still lands on Join after signing in.
-  if (session.state === 'signedOut') return <AuthScreen />;
-  const user = session.user;
-  if (user.mustChangePassword) {
-    return <ChangePasswordScreen name={user.displayName} email={user.email} forced onDone={() => {}} onLeave={() => void authRepo.signOut()} />;
-  }
-  return <SignedIn user={user} />;
+  const body =
+    session.state === 'loading' ? (
+      <Loading />
+    ) : session.state === 'signedOut' ? (
+      // The address is kept, so an invite link opened while signed out still lands on Join after signing in.
+      <AuthScreen />
+    ) : session.user.mustChangePassword ? (
+      <ChangePasswordScreen name={session.user.displayName} email={session.user.email} forced onDone={() => {}} onLeave={() => void authRepo.signOut()} />
+    ) : (
+      <SignedIn user={session.user} />
+    );
+  return (
+    <>
+      <AndroidBackHandler />
+      {body}
+    </>
+  );
 }
 
 function SignedIn({ user }: { user: AppUser }) {

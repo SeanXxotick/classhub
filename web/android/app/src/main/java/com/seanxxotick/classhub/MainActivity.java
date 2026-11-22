@@ -4,9 +4,15 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.View;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
+
+import androidx.activity.OnBackPressedCallback;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebViewClient;
@@ -15,16 +21,18 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
-/** The shell around the hosted web app. It also hands shared links and invite links to the web app. */
+/** The shell around the hosted web app. It also hands shared links, invite links, and back presses to the web app. */
 public class MainActivity extends BridgeActivity {
     private static final String PREFS = "classhub";
     private static final String LOADED_ONCE = "loadedOnce";
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        // Sharing and saving files for the web app (2.0.2). Registered before the bridge starts.
+        // Sharing, saving files, system bar sync, and haptics for the web app. Registered before the bridge starts.
         registerPlugin(ClassHubNativePlugin.class);
         super.onCreate(savedInstanceState);
+        applySystemBarInsets();
+        wireBackButton();
         watchFirstLoad();
         open(getIntent());
     }
@@ -33,6 +41,49 @@ public class MainActivity extends BridgeActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         open(intent);
+    }
+
+    /**
+     * Pads the root view for status bar, navigation bar, and soft keyboard insets so content is never drawn
+     * under system bars on Android 15/16+ edge-to-edge screens.
+     */
+    private void applySystemBarInsets() {
+        View content = findViewById(android.R.id.content);
+        if (content == null) return;
+        ViewCompat.setOnApplyWindowInsetsListener(content, (view, windowInsets) -> {
+            Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.ime());
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            return WindowInsetsCompat.CONSUMED;
+        });
+    }
+
+    /**
+     * Lets the web app handle Back first (close an open dialog/menu, or navigate back in React Router).
+     * Minimizes the app instead of killing the activity when already on the root screen, so reopening is instant.
+     */
+    private void wireBackButton() {
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+                if (webView == null) {
+                    moveTaskToBack(true);
+                    return;
+                }
+                webView.evaluateJavascript(
+                    "(function(){ return typeof window.__classhubBack === 'function' ? window.__classhubBack() : 'fallback'; })()",
+                    value -> {
+                        if ("\"handled\"".equals(value)) return;
+                        if ("\"exit\"".equals(value)) {
+                            moveTaskToBack(true);
+                            return;
+                        }
+                        if (webView.canGoBack()) webView.goBack();
+                        else moveTaskToBack(true);
+                    }
+                );
+            }
+        });
     }
 
     /**
