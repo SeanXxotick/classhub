@@ -28,12 +28,19 @@ export interface MemberMeta {
   tag: string;
 }
 
+export interface SharedRosterEntry {
+  uid: string;
+  name: string;
+}
+
 export interface SharedClassLink {
   name: string;
   tag: string;
   courseId: string;
   /** The class's default accent color hex (e.g. "#0F766E"). */
   accentColor?: string;
+  /** Snapshot of eligible members of this class, so partner classes can see who is still ungrouped. */
+  roster?: SharedRosterEntry[];
 }
 
 export interface GroupJoinRequest {

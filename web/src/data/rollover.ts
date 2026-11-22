@@ -101,27 +101,7 @@ export async function rolloverClass(db: Firestore, ownerUid: string, source: Rol
   first.set(doc(db, 'classes', classId, 'rollover', 'source'), { fromClassId: source.room.id });
   await first.commit();
 
-  // 2. Copy all other members (keeping their role and sortName; courses start fresh).
   const others = source.members.filter((m) => m.id !== ownerUid);
-  for (let i = 0; i < others.length; i += BATCH_LIMIT) {
-    const batch = writeBatch(db);
-    for (const m of others.slice(i, i + BATCH_LIMIT)) {
-      const roleId = validRoleIds.has(m.roleId) ? m.roleId : defaultRoleId;
-      const entry: Record<string, unknown> = {
-        uid: m.id,
-        name: m.name.trim().slice(0, 90) || 'Member',
-        roleId,
-        joinedAtMillis: now,
-        excludedCourseIds: [],
-        approvedByUid: ownerUid,
-      };
-      if (m.sortName) entry.sortName = m.sortName.slice(0, 100);
-      batch.set(memberRef(db, classId, m.id), entry);
-    }
-    await batch.commit();
-  }
-
-  // 3. Carry over non-zero closing balances as OPENING records + write fund summary.
   const openingRecords = input.carryBalances
     ? source.members
         .map((m) => ({ m, balance: source.balances.get(m.id) ?? 0 }))
@@ -136,17 +116,83 @@ export async function rolloverClass(db: Firestore, ownerUid: string, source: Rol
         )
     : [];
 
-  for (let i = 0; i < openingRecords.length; i += BATCH_LIMIT) {
-    const batch = writeBatch(db);
-    for (const rec of openingRecords.slice(i, i + BATCH_LIMIT)) {
-      batch.set(recordRef(db, classId, `opening-${rec.memberId}`), withoutId(rec));
-    }
-    await batch.commit();
-  }
+  const copiedMemberIds: string[] = [];
+  const copiedRecordIds: string[] = [];
+  let summaryWritten = false;
 
-  const summaryBatch = writeBatch(db);
-  summaryBatch.set(summaryRef(db, classId), { ...Ledger.summarize(openingRecords), updatedAtMillis: nowMillis() });
-  await summaryBatch.commit().catch(() => undefined);
+  try {
+    // 2. Copy all other members (keeping their role and sortName; courses start fresh).
+    for (let i = 0; i < others.length; i += BATCH_LIMIT) {
+      const slice = others.slice(i, i + BATCH_LIMIT);
+      const batch = writeBatch(db);
+      for (const m of slice) {
+        const roleId = validRoleIds.has(m.roleId) ? m.roleId : defaultRoleId;
+        const entry: Record<string, unknown> = {
+          uid: m.id,
+          name: m.name.trim().slice(0, 90) || 'Member',
+          roleId,
+          joinedAtMillis: now,
+          excludedCourseIds: [],
+          approvedByUid: ownerUid,
+        };
+        if (m.sortName) entry.sortName = m.sortName.slice(0, 100);
+        batch.set(memberRef(db, classId, m.id), entry);
+      }
+      await batch.commit();
+      for (const m of slice) copiedMemberIds.push(m.id);
+    }
+
+    // 3. Carry over non-zero closing balances as OPENING records + write fund summary.
+    const summaryData = { ...Ledger.summarize(openingRecords), updatedAtMillis: nowMillis() };
+    if (openingRecords.length === 0) {
+      const summaryBatch = writeBatch(db);
+      summaryBatch.set(summaryRef(db, classId), summaryData);
+      await summaryBatch.commit();
+      summaryWritten = true;
+    } else {
+      for (let i = 0; i < openingRecords.length; i += BATCH_LIMIT) {
+        const slice = openingRecords.slice(i, i + BATCH_LIMIT);
+        const isLast = i + BATCH_LIMIT >= openingRecords.length;
+        const batch = writeBatch(db);
+        for (const rec of slice) {
+          batch.set(recordRef(db, classId, `opening-${rec.memberId}`), withoutId(rec));
+        }
+        if (isLast) batch.set(summaryRef(db, classId), summaryData);
+        await batch.commit();
+        for (const rec of slice) copiedRecordIds.push(`opening-${rec.memberId}`);
+        if (isLast) summaryWritten = true;
+      }
+    }
+  } catch (err) {
+    // Best-effort rollback so a mid-rollover failure never leaves a half-made class behind.
+    try {
+      const closeBatch = writeBatch(db);
+      closeBatch.update(classRef(db, classId), { deletingAtMillis: nowMillis() });
+      closeBatch.delete(inviteRef(db, code));
+      await closeBatch.commit();
+
+      const cleanupRefs = [
+        doc(db, 'classes', classId, 'rollover', 'source'),
+        ...(summaryWritten ? [summaryRef(db, classId)] : []),
+        ...copiedRecordIds.map((rid) => recordRef(db, classId, rid)),
+        ...copiedMemberIds.map((uid) => memberRef(db, classId, uid)),
+      ];
+      for (let i = 0; i < cleanupRefs.length; i += BATCH_LIMIT) {
+        const b = writeBatch(db);
+        for (const r of cleanupRefs.slice(i, i + BATCH_LIMIT)) b.delete(r);
+        await b.commit();
+      }
+
+      const finalBatch = writeBatch(db);
+      for (const role of roles) finalBatch.delete(roleRef(db, classId, role.id));
+      finalBatch.delete(memberRef(db, classId, ownerUid));
+      finalBatch.delete(classRef(db, classId));
+      await finalBatch.commit();
+    } catch {
+      // Ignore cleanup errors and surface the original failure.
+    }
+    throw err;
+  }
 
   return {
     classId,

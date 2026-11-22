@@ -4,7 +4,7 @@
  * per-group capacities, optional group leaders (first to join, passable,
  * leader-only join approval & guests), collapsible cards/groups, and plain-text export.
  */
-import { useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { db } from '../../data/firebase';
 import { friendlyMessage } from '../../data/errors';
 import { byLastName, listName } from '../../data/models';
@@ -34,12 +34,14 @@ import {
   setGroupLeader,
   setGroupingHasLeader,
   setGroupingLocked,
+  syncSharedRoster,
   unlinkSharedGrouping,
   updateGroupingMeta,
   useGroupings,
   type GroupSlot,
   type Grouping,
   type MemberMeta,
+  type SharedRosterEntry,
 } from '../../data/groupings';
 import {
   effectiveLeaderUid,
@@ -205,8 +207,14 @@ function GroupingCard({
   const [editingSlot, setEditingSlot] = useState<GroupSlot | null>(null);
   const [assigningSlot, setAssigningSlot] = useState<GroupSlot | null>(null);
   const [passingSlot, setPassingSlot] = useState<GroupSlot | null>(null);
-  const [assigningMemberUid, setAssigningMemberUid] = useState<string | null>(null);
+  const [assigningMember, setAssigningMember] = useState<{ uid: string; name: string; classId: string; tag: string } | null>(null);
   const [sharingOpen, setSharingOpen] = useState(false);
+  const [confirmUnlinkSelf, setConfirmUnlinkSelf] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<
+    | { kind: 'member'; uid: string; name: string; slotName: string }
+    | { kind: 'guest'; slotId: string; guestId: string; name: string; slotName: string }
+    | null
+  >(null);
 
   const memberById = useMemo(() => new Map(state.members.map((m) => [m.id, m])), [state.members]);
   const eligibleMembers = useMemo(
@@ -218,14 +226,58 @@ function GroupingCard({
       ),
     [state.members, grouping.courseId],
   );
+  const mySectionTag = grouping.linkedClasses?.[state.classId]?.tag ?? guessSectionTag(state.room?.name ?? '');
+  const localRoster: SharedRosterEntry[] = useMemo(
+    () => eligibleMembers.map((m) => ({ uid: m.id, name: listName(m) })),
+    [eligibleMembers],
+  );
+
+  // Keep this class's roster snapshot synced on shared groupings so partner classes see ungrouped students.
+  const storedRosterSig = useMemo(() => {
+    const r = grouping.linkedClasses?.[state.classId]?.roster;
+    return r ? r.map((x) => `${x.uid}:${x.name}`).join('|') : '';
+  }, [grouping.linkedClasses, state.classId]);
+  const localRosterSig = useMemo(
+    () => localRoster.map((x) => `${x.uid}:${x.name}`).join('|'),
+    [localRoster],
+  );
+  useEffect(() => {
+    if (!manage || !grouping.shared || !grouping.linkedClasses?.[state.classId]) return;
+    if (storedRosterSig === localRosterSig) return;
+    void syncSharedRoster(db, state.classId, grouping, localRoster).catch(() => undefined);
+  }, [manage, grouping.shared, grouping.id, state.classId, storedRosterSig, localRosterSig]);
+
+  const combinedEligible = useMemo(() => {
+    const seen = new Set<string>();
+    const list: { uid: string; name: string; classId: string; tag: string }[] = [];
+    for (const m of eligibleMembers) {
+      seen.add(m.id);
+      list.push({ uid: m.id, name: listName(m), classId: state.classId, tag: mySectionTag });
+    }
+    if (grouping.shared) {
+      for (const cid of grouping.linkedClassIds ?? []) {
+        if (cid === state.classId) continue;
+        const link = grouping.linkedClasses?.[cid];
+        for (const r of link?.roster ?? []) {
+          if (seen.has(r.uid)) continue;
+          seen.add(r.uid);
+          list.push({ uid: r.uid, name: r.name, classId: cid, tag: link?.tag ?? '' });
+        }
+      }
+    }
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [eligibleMembers, state.classId, mySectionTag, grouping.shared, grouping.linkedClassIds, grouping.linkedClasses]);
+
   const ungroupedIds = useMemo(
-    () => ungroupedMemberIds(grouping.groups, eligibleMembers.map((m) => m.id)),
-    [grouping.groups, eligibleMembers],
+    () => ungroupedMemberIds(grouping.groups, combinedEligible.map((e) => e.uid)),
+    [grouping.groups, combinedEligible],
   );
-  const ungroupedMembers = useMemo(
-    () => ungroupedIds.map((id) => memberById.get(id)).filter((m): m is NonNullable<typeof m> => !!m),
-    [ungroupedIds, memberById],
+  const ungroupedSet = useMemo(() => new Set(ungroupedIds), [ungroupedIds]);
+  const ungroupedEntries = useMemo(
+    () => combinedEligible.filter((e) => ungroupedSet.has(e.uid)),
+    [combinedEligible, ungroupedSet],
   );
+  const eligibleByUid = useMemo(() => new Map(combinedEligible.map((e) => [e.uid, e])), [combinedEligible]);
 
   const myGroup = findMemberGroup(grouping.groups, state.myUid);
   const canSelfEdit = grouping.selfJoin && !grouping.locked;
@@ -233,7 +285,6 @@ function GroupingCard({
   const totalGuests = grouping.groups.reduce((sum, g) => sum + g.guests.length, 0);
   const courseName = grouping.courseId ? state.courses.find((c) => c.id === grouping.courseId)?.name ?? '' : '';
   const isHost = !grouping.shared || grouping.hostClassId === state.classId;
-  const mySectionTag = grouping.linkedClasses?.[state.classId]?.tag ?? guessSectionTag(state.room?.name ?? '');
   const myName = state.me ? listName(state.me) : 'Member';
 
   const isSlotOpen = (slot: GroupSlot) => {
@@ -257,6 +308,8 @@ function GroupingCard({
 
   const metaForUid = (uid: string): MemberMeta | undefined => {
     if (!grouping.shared) return undefined;
+    const entry = eligibleByUid.get(uid);
+    if (entry) return { name: entry.name, classId: entry.classId, tag: entry.tag };
     const m = memberById.get(uid);
     return {
       name: m ? listName(m) : myName,
@@ -344,10 +397,7 @@ function GroupingCard({
                   label: 'Unlink from this class',
                   icon: 'logout',
                   danger: true,
-                  onClick: () =>
-                    run('Unlinked grouping.', () =>
-                      unlinkSharedGrouping(db, state.myUid, state.classId, grouping, state.classId),
-                    ),
+                  onClick: () => setConfirmUnlinkSelf(true),
                 },
               ]}
             />
@@ -378,7 +428,7 @@ function GroupingCard({
               </div>
             )}
 
-            {ungroupedMembers.length > 0 && (
+            {ungroupedEntries.length > 0 && (
               <div className="grp-ungrouped">
                 <div className="ch-row ch-wrap ch-gap-2" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                   <button
@@ -387,9 +437,7 @@ function GroupingCard({
                     style={{ padding: '2px 0', minHeight: 28 }}
                     onClick={() => setShowUngrouped(!showUngrouped)}
                   >
-                    {grouping.shared
-                      ? `Ungrouped in ${mySectionTag} (${ungroupedMembers.length}) ${showUngrouped ? '▴' : '▾'}`
-                      : `Ungrouped (${ungroupedMembers.length}) ${showUngrouped ? '▴' : '▾'}`}
+                    {`Ungrouped (${ungroupedEntries.length}) ${showUngrouped ? '▴' : '▾'}`}
                   </button>
                   {manage && (
                     <button
@@ -419,19 +467,36 @@ function GroupingCard({
                 </div>
                 {showUngrouped && (
                   <div className="poll-chips" style={{ marginTop: 6 }}>
-                    {ungroupedMembers.map((m) =>
+                    {ungroupedEntries.map((entry) =>
                       manage ? (
                         <button
-                          key={m.id}
+                          key={entry.uid}
                           type="button"
                           className="poll-name-chip grp-assignable"
-                          onClick={() => setAssigningMemberUid(m.id)}
+                          onClick={() => setAssigningMember(entry)}
                         >
-                          {listName(m)} +
+                          <span>{entry.name}</span>
+                          {grouping.shared && entry.tag && (
+                            <>
+                              {' '}
+                              <span className="grp-sec-tag" style={tagStyleForClass(state, grouping, entry.classId)}>
+                                {entry.tag}
+                              </span>
+                            </>
+                          )}
+                          {' +'}
                         </button>
                       ) : (
-                        <span key={m.id} className="poll-name-chip">
-                          {listName(m)}
+                        <span key={entry.uid} className="poll-name-chip">
+                          {entry.name}
+                          {grouping.shared && entry.tag && (
+                            <>
+                              {' '}
+                              <span className="grp-sec-tag" style={tagStyleForClass(state, grouping, entry.classId)}>
+                                {entry.tag}
+                              </span>
+                            </>
+                          )}
                         </span>
                       ),
                     )}
@@ -496,8 +561,8 @@ function GroupingCard({
                   onLeave={() =>
                     run(`Left ${slot.name}.`, () => leaveGroup(db, state.classId, grouping.id, state.myUid, false, grouping.shared))
                   }
-                  onRemoveMember={(uid) =>
-                    run('Removed from group.', () => leaveGroup(db, state.classId, grouping.id, uid, true, grouping.shared))
+                  onRemoveMember={(uid, label) =>
+                    setConfirmRemove({ kind: 'member', uid, name: label, slotName: slot.name })
                   }
                   onAddGuest={(name, tag, onDone) =>
                     run(
@@ -506,10 +571,8 @@ function GroupingCard({
                       onDone,
                     )
                   }
-                  onRemoveGuest={(guestId) =>
-                    run('Removed guest.', () =>
-                      removeGuestTeammate(db, state.classId, grouping.id, slot.id, guestId, state.myUid, manage, grouping.shared),
-                    )
+                  onRemoveGuest={(guestId, guestName) =>
+                    setConfirmRemove({ kind: 'guest', slotId: slot.id, guestId, name: guestName, slotName: slot.name })
                   }
                   onPassLeader={() => setPassingSlot(slot)}
                   onEditSlot={() => setEditingSlot(slot)}
@@ -545,19 +608,73 @@ function GroupingCard({
           state={state}
           grouping={grouping}
           slot={assigningSlot}
-          eligibleMembers={eligibleMembers}
+          combinedEligible={combinedEligible}
           metaForUid={metaForUid}
           onClose={() => setAssigningSlot(null)}
         />
       )}
-      {assigningMemberUid && (
+      {assigningMember && (
         <PickGroupForMemberDialog
           classId={state.classId}
           grouping={grouping}
-          memberName={memberById.get(assigningMemberUid)?.name ?? 'Student'}
-          memberUid={assigningMemberUid}
-          meta={metaForUid(assigningMemberUid)}
-          onClose={() => setAssigningMemberUid(null)}
+          memberName={assigningMember.name}
+          memberUid={assigningMember.uid}
+          meta={metaForUid(assigningMember.uid)}
+          onClose={() => setAssigningMember(null)}
+        />
+      )}
+      {confirmUnlinkSelf && (
+        <ConfirmDialog
+          title={`Unlink "${grouping.title}" from this class?`}
+          text="This class will stop seeing this shared grouping. You can link it again later with its share code."
+          confirm="Unlink"
+          danger
+          onClose={() => setConfirmUnlinkSelf(false)}
+          onConfirm={() =>
+            run(
+              'Unlinked grouping.',
+              () => unlinkSharedGrouping(db, state.myUid, state.classId, grouping, state.classId),
+              () => setConfirmUnlinkSelf(false),
+            )
+          }
+        />
+      )}
+      {confirmRemove && (
+        <ConfirmDialog
+          title={`Remove ${confirmRemove.name} from ${confirmRemove.slotName}?`}
+          text={
+            confirmRemove.kind === 'member'
+              ? 'They will be moved back to Ungrouped.'
+              : 'This guest teammate will be removed from the group.'
+          }
+          confirm="Remove"
+          danger
+          onClose={() => setConfirmRemove(null)}
+          onConfirm={() => {
+            if (confirmRemove.kind === 'member') {
+              run(
+                `Removed ${confirmRemove.name} from ${confirmRemove.slotName}.`,
+                () => leaveGroup(db, state.classId, grouping.id, confirmRemove.uid, true, grouping.shared),
+                () => setConfirmRemove(null),
+              );
+            } else {
+              run(
+                `Removed ${confirmRemove.name}.`,
+                () =>
+                  removeGuestTeammate(
+                    db,
+                    state.classId,
+                    grouping.id,
+                    confirmRemove.slotId,
+                    confirmRemove.guestId,
+                    state.myUid,
+                    manage,
+                    grouping.shared,
+                  ),
+                () => setConfirmRemove(null),
+              );
+            }
+          }}
         />
       )}
     </Card>
@@ -606,9 +723,9 @@ function GroupSlotCard({
   onApproveRequest: (uid: string, name: string) => void;
   onRejectRequest: (uid: string, name: string) => void;
   onLeave: () => void;
-  onRemoveMember: (uid: string) => void;
+  onRemoveMember: (uid: string, name: string) => void;
   onAddGuest: (name: string, tag: string, onDone: () => void) => void;
-  onRemoveGuest: (guestId: string) => void;
+  onRemoveGuest: (guestId: string, name: string) => void;
   onPassLeader: () => void;
   onEditSlot: () => void;
   onAssign: () => void;
@@ -737,7 +854,7 @@ function GroupSlotCard({
                       className="grp-chip-x"
                       disabled={busy}
                       aria-label={`Remove ${label} from ${slot.name}`}
-                      onClick={() => onRemoveMember(uid)}
+                      onClick={() => onRemoveMember(uid, label)}
                     >
                       ×
                     </button>
@@ -755,7 +872,7 @@ function GroupSlotCard({
                     className="grp-chip-x"
                     disabled={busy}
                     aria-label={`Remove guest ${g.name} from ${slot.name}`}
-                    onClick={() => onRemoveGuest(g.id)}
+                    onClick={() => onRemoveGuest(g.id, g.name)}
                   >
                     ×
                   </button>
@@ -959,6 +1076,11 @@ function NewGroupingDialog({ state, onClose }: { state: ClassState; onClose: () 
           className: state.room?.name ?? '',
           sectionTag,
           accentColor: state.room?.accentColor ?? '',
+          roster: shared
+            ? byLastName(
+                courseId ? state.members.filter((m) => !m.excludedCourseIds.includes(courseId)) : state.members,
+              ).map((m) => ({ uid: m.id, name: listName(m) }))
+            : undefined,
         }),
       onClose,
     );
@@ -1105,6 +1227,9 @@ function LinkSharedGroupingDialog({ state, onClose }: { state: ClassState; onClo
                     sectionTag,
                     courseId,
                     state.room?.accentColor ?? '',
+                    byLastName(
+                      courseId ? state.members.filter((m) => !m.excludedCourseIds.includes(courseId)) : state.members,
+                    ).map((m) => ({ uid: m.id, name: listName(m) })),
                   ),
                 onClose,
               )
@@ -1154,6 +1279,7 @@ function ShareLinkedDialog({
 }) {
   const { actions } = useClass();
   const run = useRun();
+  const [unlinking, setUnlinking] = useState<{ classId: string; name: string } | null>(null);
   const isHost = grouping.hostClassId === state.classId;
   const linked = (grouping.linkedClassIds ?? []).map((cid, idx) => ({
     classId: cid,
@@ -1207,11 +1333,7 @@ function ShareLinkedDialog({
                   type="button"
                   className="btn text small danger"
                   disabled={run.busy}
-                  onClick={() =>
-                    run(`Unlinked ${c.name}.`, () =>
-                      unlinkSharedGrouping(db, state.myUid, state.classId, grouping, c.classId),
-                    )
-                  }
+                  onClick={() => setUnlinking({ classId: c.classId, name: c.name })}
                 >
                   Unlink
                 </button>
@@ -1220,6 +1342,22 @@ function ShareLinkedDialog({
           ))}
         </div>
       </div>
+      {unlinking && (
+        <ConfirmDialog
+          title={`Unlink ${unlinking.name}?`}
+          text={`${unlinking.name} will stop seeing this shared grouping.`}
+          confirm="Unlink"
+          danger
+          onClose={() => setUnlinking(null)}
+          onConfirm={() =>
+            run(
+              `Unlinked ${unlinking.name}.`,
+              () => unlinkSharedGrouping(db, state.myUid, state.classId, grouping, unlinking.classId),
+              () => setUnlinking(null),
+            )
+          }
+        />
+      )}
     </Dialog>
   );
 }
@@ -1398,6 +1536,22 @@ function EditSlotDialog({
   const run = useRun();
   const [name, setName] = useState(slot.name);
   const [maxSize, setMaxSize] = useState(slot.maxSize);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  if (confirmDelete) {
+    return (
+      <ConfirmDialog
+        title={`Delete ${slot.name}?`}
+        text="Members in this group will become ungrouped, and its guest teammates will be removed."
+        confirm="Delete"
+        danger
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={() =>
+          run(`Removed ${slot.name}.`, () => deleteGroupSlot(db, classId, grouping.id, slot.id, grouping.shared), onClose)
+        }
+      />
+    );
+  }
 
   return (
     <Dialog
@@ -1411,9 +1565,7 @@ function EditSlotDialog({
               className="btn text danger"
               style={{ marginRight: 'auto' }}
               disabled={run.busy}
-              onClick={() =>
-                run(`Removed ${slot.name}.`, () => deleteGroupSlot(db, classId, grouping.id, slot.id, grouping.shared), onClose)
-              }
+              onClick={() => setConfirmDelete(true)}
             >
               Delete
             </button>
@@ -1450,14 +1602,14 @@ function AssignToSlotDialog({
   state,
   grouping,
   slot,
-  eligibleMembers,
+  combinedEligible,
   metaForUid,
   onClose,
 }: {
   state: ClassState;
   grouping: Grouping;
   slot: GroupSlot;
-  eligibleMembers: ClassState['members'];
+  combinedEligible: { uid: string; name: string; classId: string; tag: string }[];
   metaForUid: (uid: string) => MemberMeta | undefined;
   onClose: () => void;
 }) {
@@ -1466,19 +1618,19 @@ function AssignToSlotDialog({
   const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
 
   const candidates = useMemo(() => {
-    const notHere = eligibleMembers.filter((m) => !slot.memberUids.includes(m.id));
+    const notHere = combinedEligible.filter((m) => !slot.memberUids.includes(m.uid));
     const filtered = words.length
       ? notHere.filter((m) => {
-          const hay = `${m.name} ${listName(m)}`.toLowerCase();
+          const hay = `${m.name} ${m.tag}`.toLowerCase();
           return words.every((w) => hay.includes(w));
         })
       : notHere;
     return [...filtered].sort((a, b) => {
-      const ga = findMemberGroup(grouping.groups, a.id) ? 1 : 0;
-      const gb = findMemberGroup(grouping.groups, b.id) ? 1 : 0;
+      const ga = findMemberGroup(grouping.groups, a.uid) ? 1 : 0;
+      const gb = findMemberGroup(grouping.groups, b.uid) ? 1 : 0;
       return ga - gb;
     });
-  }, [eligibleMembers, slot.memberUids, words, grouping.groups]);
+  }, [combinedEligible, slot.memberUids, words, grouping.groups]);
 
   return (
     <Dialog
@@ -1495,21 +1647,31 @@ function AssignToSlotDialog({
         <div className="scroll-list">
           {candidates.length === 0 && <p className="empty" style={{ padding: 16 }}>No students left.</p>}
           {candidates.map((m) => {
-            const current = findMemberGroup(grouping.groups, m.id);
+            const current = findMemberGroup(grouping.groups, m.uid);
             return (
               <button
-                key={m.id}
+                key={m.uid}
                 type="button"
                 className="list-row"
                 disabled={run.busy}
                 onClick={() =>
                   run(`Assigned ${m.name} to ${slot.name}.`, () =>
-                    joinGroup(db, state.classId, grouping.id, m.id, slot.id, true, grouping.shared, metaForUid(m.id)),
+                    joinGroup(db, state.classId, grouping.id, m.uid, slot.id, true, grouping.shared, metaForUid(m.uid)),
                   )
                 }
               >
                 <span className="grow ellipsis-box">
-                  <span className="title ellipsis">{listName(m)}</span>
+                  <span className="title ellipsis">
+                    {m.name}
+                    {grouping.shared && m.tag && (
+                      <>
+                        {' '}
+                        <span className="grp-sec-tag" style={tagStyleForClass(state, grouping, m.classId)}>
+                          {m.tag}
+                        </span>
+                      </>
+                    )}
+                  </span>
                   <span className="sub ellipsis">{current ? `In ${current.name}` : 'Ungrouped'}</span>
                 </span>
                 <span className="small semibold" style={{ color: 'var(--primary)' }}>

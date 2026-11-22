@@ -48,6 +48,7 @@ import {
   type Grouping,
   type MemberMeta,
   type SharedClassLink,
+  type SharedRosterEntry,
 } from '../domain/groupingLogic';
 import { newId, nowMillis } from './dataEnv';
 import { UserError } from './errors';
@@ -64,7 +65,7 @@ export {
   GUEST_TAG_MAX,
   SHARED_MAX_CLASSES,
 };
-export type { GroupJoinRequest, GroupSlot, Grouping, MemberMeta, SharedClassLink };
+export type { GroupJoinRequest, GroupSlot, Grouping, MemberMeta, SharedClassLink, SharedRosterEntry };
 
 export const groupingsCol = (db: Firestore, classId: string) => collection(db, 'classes', classId, 'groupings');
 export const groupingRef = (db: Firestore, classId: string, groupingId: string) =>
@@ -96,11 +97,20 @@ function targetRef(db: Firestore, classId: string, groupingId: string, shared?: 
 }
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const MAX_CODE_TRIES = 5;
 function makeShareCode(): string {
   let out = 'GRP-';
   const bytes = crypto.getRandomValues(new Uint8Array(8));
   for (const b of bytes) out += CODE_CHARS[b % CODE_CHARS.length];
   return out;
+}
+
+async function unusedShareCode(db: Firestore): Promise<string> {
+  for (let i = 0; i < MAX_CODE_TRIES; i++) {
+    const code = makeShareCode();
+    if (!(await getDoc(groupingInviteRef(db, code))).exists()) return code;
+  }
+  throw new UserError('INVITE_CODE_UNAVAILABLE', 'Could not generate a share code. Try again.');
 }
 
 export interface NewGroupingInput {
@@ -117,6 +127,7 @@ export interface NewGroupingInput {
   className?: string;
   sectionTag?: string;
   accentColor?: string;
+  roster?: SharedRosterEntry[];
 }
 
 /** Creates a local or shared cross-class grouping (MEMBERS_MANAGE) and logs it in History. */
@@ -139,7 +150,7 @@ export async function createGrouping(
   const id = newId();
 
   if (input.shared) {
-    const shareCode = makeShareCode();
+    const shareCode = await unusedShareCode(db);
     const hostClassName = (input.className ?? '').trim().slice(0, 100) || 'Host class';
     const tag = (input.sectionTag ?? '').trim().slice(0, GUEST_TAG_MAX) || hostClassName.slice(0, GUEST_TAG_MAX);
     const sharedDoc = {
@@ -154,6 +165,7 @@ export async function createGrouping(
           tag,
           courseId: input.courseId,
           ...(input.accentColor ? { accentColor: input.accentColor } : {}),
+          ...(input.roster ? { roster: input.roster } : {}),
         },
       },
       selfJoin: input.selfJoin,
@@ -217,6 +229,7 @@ export async function linkSharedGrouping(
   sectionTag: string,
   courseId: string,
   accentColor?: string,
+  roster?: SharedRosterEntry[],
 ): Promise<string> {
   const code = rawCode.trim().toUpperCase().replace(/\s+/g, '');
   if (!code) throw new UserError('NAME_MISSING', 'Enter the grouping share code.');
@@ -238,7 +251,7 @@ export async function linkSharedGrouping(
     new FieldPath('linkedClassIds'),
     arrayUnion(classId),
     new FieldPath('linkedClasses', classId),
-    { name: cleanName, tag, courseId, ...(accentColor ? { accentColor } : {}) },
+    { name: cleanName, tag, courseId, ...(accentColor ? { accentColor } : {}), ...(roster ? { roster } : {}) },
     new FieldPath('linkCode'),
     code,
     new FieldPath('updatedAtMillis'),
@@ -308,7 +321,7 @@ export async function updateGroupingMeta(
   actorUid: string,
   classId: string,
   grouping: Grouping,
-  patch: { title: string; courseId: string; note: string; selfJoin: boolean; hasLeader: boolean },
+  patch: { title: string; courseId: string; note: string; selfJoin: boolean; hasLeader: boolean; roster?: SharedRosterEntry[] },
 ): Promise<void> {
   const title = patch.title.trim().slice(0, GROUPING_TITLE_MAX);
   if (!title) throw new UserError('NAME_MISSING', 'Give this grouping a title first.');
@@ -318,7 +331,14 @@ export async function updateGroupingMeta(
   if (grouping.shared) {
     const curLink = grouping.linkedClasses?.[classId];
     const nextLinkedClasses = curLink
-      ? { ...(grouping.linkedClasses ?? {}), [classId]: { ...curLink, courseId: patch.courseId } }
+      ? {
+          ...(grouping.linkedClasses ?? {}),
+          [classId]: {
+            ...curLink,
+            courseId: patch.courseId,
+            ...(patch.roster ? { roster: patch.roster } : {}),
+          },
+        }
       : grouping.linkedClasses ?? {};
     await explainRefusal(db, classId, () =>
       commitLogged(
@@ -401,6 +421,27 @@ export async function setGroupLeader(
     }
     return passGroupLeadership(g.groups, groupId, newLeaderUid);
   });
+}
+
+/** Refreshes this class's eligible roster snapshot on a shared grouping so partner classes see ungrouped students. */
+export async function syncSharedRoster(
+  db: Firestore,
+  classId: string,
+  grouping: Grouping,
+  roster: SharedRosterEntry[],
+): Promise<void> {
+  if (!grouping.shared) return;
+  const curLink = grouping.linkedClasses?.[classId];
+  if (!curLink) return;
+  const batch = writeBatch(db);
+  batch.update(sharedGroupingRef(db, grouping.id), {
+    linkedClasses: {
+      ...(grouping.linkedClasses ?? {}),
+      [classId]: { ...curLink, roster },
+    },
+    updatedAtMillis: nowMillis(),
+  });
+  await batch.commit();
 }
 
 /** Locks or unlocks a grouping (MEMBERS_MANAGE). */

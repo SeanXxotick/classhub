@@ -156,14 +156,16 @@ export async function castPollVote(db: Firestore, classId: string, poll: Poll, u
   );
 }
 
-/** Closes or reopens a poll (ANNOUNCEMENTS_MANAGE). */
+/** Closes or reopens a poll (ANNOUNCEMENTS_MANAGE). Reopening past a close date clears the close date. */
 export async function setPollClosed(db: Firestore, actorUid: string, classId: string, poll: Poll, closed: boolean): Promise<void> {
+  const clearExpired = !closed && poll.closesAtMillis > 0 && poll.closesAtMillis <= nowMillis();
+  const patch = clearExpired ? { closed: false, closesAtMillis: 0 } : { closed };
   await explainRefusal(db, classId, () =>
     commitLogged(
       db,
       classId,
       { actorUid, kind: 'POLL_CLOSED', text: `${closed ? 'Closed' : 'Reopened'} the poll "${poll.question}"` },
-      (b) => b.update(doc(pollsCol(db, classId), poll.id), { closed }),
+      (b) => b.update(doc(pollsCol(db, classId), poll.id), patch),
     ),
   );
 }

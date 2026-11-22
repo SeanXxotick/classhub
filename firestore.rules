@@ -1500,8 +1500,9 @@ service cloud.firestore {
           && request.resource.data.createdByUid == uid()
           && isRecentMillis(request.resource.data.createdAtMillis);
         allow update: if (can(classId, 'ANNOUNCEMENTS_MANAGE') && isOpen(classId)
-            && changesOnly(['closed'])
-            && request.resource.data.closed is bool)
+            && changesOnly(['closed', 'closesAtMillis'])
+            && request.resource.data.closed is bool
+            && request.resource.data.closesAtMillis is int)
           || (isMember(classId) && isOpen(classId)
             && resource.data.get('anonymous', false) == true
             && changesOnly(['tally', 'voters'])

@@ -81,9 +81,13 @@ export function PollsView({ state, polls, votes }: { state: ClassState; polls: P
           poll={poll}
           votes={votes.filter((v) => v.pollId === poll.id)}
           manage={manage}
-          onToggleClosed={() =>
-            run(poll.closed ? 'Poll reopened.' : 'Poll closed.', () => setPollClosed(db, state.myUid, state.classId, poll, !poll.closed))
-          }
+          onToggleClosed={() => {
+            const currentlyOpen = isPollOpen(poll, Date.now());
+            run(
+              currentlyOpen ? 'Poll closed.' : 'Poll reopened.',
+              () => setPollClosed(db, state.myUid, state.classId, poll, currentlyOpen),
+            );
+          }}
           onDelete={() => setDeleting(poll)}
         />
       ))}
@@ -181,7 +185,7 @@ function PollCard({
             label={`More for "${poll.question}"`}
             title={poll.question}
             items={[
-              manage && { label: poll.closed ? 'Reopen poll' : 'Close poll', icon: 'lock', onClick: onToggleClosed },
+              manage && { label: open ? 'Close poll' : 'Reopen poll', icon: 'lock', onClick: onToggleClosed },
               manage && { label: 'Delete', icon: 'trash', danger: true, onClick: onDelete },
             ]}
           />

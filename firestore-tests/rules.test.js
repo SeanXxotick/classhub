@@ -2303,6 +2303,19 @@ async function main() {
     await assertSucceeds(setDoc(doc(db('ben'), 'classes/grp/pollVotes/open_ben'), { ...ballot('ben', [0]), pollId: 'open' }));
   });
 
+  await test('Polls: an officer can reopen an expired poll by clearing closesAtMillis; a member cannot', async () => {
+    await admin((s) =>
+      setDoc(doc(s, 'classes/grp/polls/expired'), {
+        question: 'Late?', options: ['Yes', 'No'], courseId: '', multi: false, maxChoices: 1, anonymous: false,
+        closesAtMillis: now() - 60000, closed: false, tally: {}, voters: 0, createdByUid: 'gmayor', createdAtMillis: now(),
+      }),
+    );
+    await assertFails(setDoc(doc(db('ann'), 'classes/grp/pollVotes/expired_ann'), { ...ballot('ann', [0]), pollId: 'expired' }));
+    await assertFails(updateDoc(doc(db('ann'), 'classes/grp/polls/expired'), { closed: false, closesAtMillis: 0 }));
+    await assertSucceeds(updateDoc(doc(db('gmayor'), 'classes/grp/polls/expired'), { closed: false, closesAtMillis: 0 }));
+    await assertSucceeds(setDoc(doc(db('ann'), 'classes/grp/pollVotes/expired_ann'), { ...ballot('ann', [0]), pollId: 'expired' }));
+  });
+
   // ---- Semester rollover
   await seedClass('oldsem', 'OOOOOO', 'rmayor', ['dan']);
   await seedClass('elsewhere', 'EEEEEE', 'xmayor', ['eve']);
