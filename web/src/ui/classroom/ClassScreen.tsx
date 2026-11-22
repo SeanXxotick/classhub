@@ -16,7 +16,7 @@ import { ScheduleView } from '../../domain/scheduleView';
 import type { DayKey } from '../../domain/dates';
 import { Avatar, ConfirmDialog, Icon, Loading, RoleChip, TopBar, hexColor } from '../common';
 import { SearchInput } from '../../design';
-import { myAccent, setPinned, startTab, useSettingsVersion } from '../settings';
+import { myAccent, setPinned, setViewAsMember, startTab, useSettingsVersion } from '../settings';
 import { ContentFormScreen, ContentsTab } from '../contents/ContentsUi';
 import { AddRecordChooser, balanceText, EntryRow, LedgerSummaryCard, LedgerTab, myBalanceValue } from '../ledger/LedgerUi';
 import { ChargeStudentsScreen, RecordRoute } from '../ledger/RecordForms';
@@ -182,6 +182,14 @@ function ClassScreen() {
         }
       />
       <div className="page">
+        {state.previewAsMember && (
+          <div className="preview-member-bar" role="status">
+            <span className="small semibold">Viewing as a regular member</span>
+            <button type="button" className="btn outline small" onClick={() => setViewAsMember(state.classId, false)}>
+              Exit preview
+            </button>
+          </div>
+        )}
         {room && !state.loading && (
           <nav className="tabs wide-only" aria-label="Class sections">
             {tabs.map((t) => (

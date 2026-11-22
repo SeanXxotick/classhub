@@ -3011,3 +3011,16 @@ button.helpers-head {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.preview-member-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: var(--ch-warning-soft);
+  color: var(--ch-warning);
+  border: 1px solid color-mix(in srgb, var(--ch-warning) 30%, transparent);
+}

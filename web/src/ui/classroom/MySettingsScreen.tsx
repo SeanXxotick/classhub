@@ -17,6 +17,7 @@ import {
   setMyAccent,
   setPinned,
   setStartTab,
+  setViewAsMember,
   startTab,
   useSettingsVersion,
 } from '../settings';
@@ -133,6 +134,14 @@ export function MySettingsScreen() {
         <div className="card">
           <Switch label="Pin to the top" sub={`Show ${room.name} first in My classes.`} checked={pinnedClasses().has(state.classId)} onChange={(on) => setPinned(state.classId, on)} />
           {forumOn && <Switch label="Leave me out of Top helpers" checked={leftOut} onChange={toggleLeftOut} />}
+          {state.isOfficer && (
+            <Switch
+              label="View as member"
+              sub="Temporarily hide officer tools on this device to preview the student view."
+              checked={state.previewAsMember}
+              onChange={(on) => setViewAsMember(state.classId, on)}
+            />
+          )}
         </div>
 
         {shortcuts.length > 0 && (

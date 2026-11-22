@@ -120,3 +120,28 @@ export function ledgerStartsOnMine(classId: string): boolean {
 export function setLedgerStartsOnMine(classId: string, mine: boolean) {
   write(ledgerKey(classId), mine ? 'MINE' : null);
 }
+
+const previewKey = (classId: string) => `classhub.previewMember.${classId}`;
+
+/** Officer-only client-side preview: hides officer controls for this session without changing any role. */
+export function viewAsMember(classId: string): boolean {
+  if (memory.has(previewKey(classId))) return memory.get(previewKey(classId)) === '1';
+  try {
+    return sessionStorage.getItem(previewKey(classId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setViewAsMember(classId: string, on: boolean) {
+  const key = previewKey(classId);
+  try {
+    if (on) sessionStorage.setItem(key, '1');
+    else sessionStorage.removeItem(key);
+  } catch {
+    // Storage blocked; kept in memory for this page load.
+  }
+  memory.set(key, on ? '1' : null);
+  version++;
+  listeners.forEach((l) => l());
+}

@@ -48,6 +48,7 @@ import { ScheduleLogic } from '../../domain/scheduleLogic';
 import { ContentRules } from '../../domain/contentRules';
 import { ContentIcons, ScheduleIcons } from '../../domain/iconStyles';
 import { useNotice } from '../common';
+import { useSettingsVersion, viewAsMember } from '../settings';
 
 /** Everything the class screens show, kept live from Firestore (the Android ClassUiState). */
 export interface ClassState {
@@ -83,6 +84,10 @@ export interface ClassState {
   /** The class is gone, or this user is no longer in it. */
   removed: boolean;
   myRole: Role | null;
+  /** True when the user's real role has any officer permission (even while previewing as a member). */
+  isOfficer: boolean;
+  /** True when an officer has turned on the client-side "View as member" preview. */
+  previewAsMember: boolean;
   balanceOf: (memberId: string) => number;
   roleOf: (member: Member | null | undefined) => Role | null;
   can: (permission: Permission) => boolean;
@@ -187,6 +192,7 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
   const memberIds = useMemo(() => (members.data ?? []).map((m) => m.id), [members.data]);
 
   const avatars = photoRepo.useAvatars(memberIds);
+  const settingsVer = useSettingsVersion();
 
   const state = useMemo<ClassState>(() => {
     const coreErrors = [room.error, me.error, roles.error, members.error, courses.error, records.error, contents.error, schedule.error].filter(Boolean);
@@ -205,7 +211,14 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
     const mine = progressList.find((p) => p.id === uid);
     const balances = Ledger.memberBalances(memberList, recordList);
     const roleOf = (m: Member | null | undefined) => (m ? roleList.find((r) => r.id === m.roleId) ?? null : null);
-    const myRole = roleOf(meValue);
+    const realRole = roleOf(meValue);
+    const isOfficer = !!realRole && (realRole.locked || realRole.permissions.length > 0);
+    const previewAsMember = isOfficer && viewAsMember(classId);
+    const myRole = previewAsMember
+      ? roleList.find((r) => r.id === roomValue?.defaultRoleId && !r.locked && r.permissions.length === 0) ?? null
+      : realRole;
+    const can = (p: Permission) => !previewAsMember && roleCan(realRole, p);
+    const effectiveSeeAll = previewAsMember ? roomValue?.balanceVisibility === 'EVERYONE' : seeAll;
     const error = otherError ? friendlyMessage(otherError) : null;
     // A student sees nothing of a course they do not take. Officers who manage a tab still see all of it.
     const skipped = new Set(meValue?.excludedCourseIds ?? []);
@@ -221,14 +234,14 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
       roles: roleList,
       members: memberList,
       courses: [...(courses.data ?? [])].sort((a, b) => compareStrings(a.name.toLowerCase(), b.name.toLowerCase())),
-      records: recordList,
-      seeAll,
+      records: effectiveSeeAll ? recordList : recordList.filter((r) => r.memberId === uid || r.type === 'EXPENSE'),
+      seeAll: effectiveSeeAll,
       summary: summary.data ?? null,
       charges: charges.data ?? [],
-      joinRequests: joinRequests.data ?? [],
-      pendingOpenings: pendingOpenings.data ?? [],
-      contents: roleCan(myRole, 'CONTENTS_MANAGE') ? allContents : allContents.filter((i) => takes(i.courseId)),
-      schedule: roleCan(myRole, 'SCHEDULE_MANAGE') ? allSchedule : allSchedule.filter((i) => takes(i.courseId)),
+      joinRequests: can('MEMBERS_MANAGE') ? joinRequests.data ?? [] : [],
+      pendingOpenings: can('RECORDS_MANAGE') ? pendingOpenings.data ?? [] : [],
+      contents: can('CONTENTS_MANAGE') ? allContents : allContents.filter((i) => takes(i.courseId)),
+      schedule: can('SCHEDULE_MANAGE') ? allSchedule : allSchedule.filter((i) => takes(i.courseId)),
       myDone: new Set(Object.keys(mine?.done ?? {})),
       progress: progressList,
       avatars,
@@ -237,12 +250,14 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
       balances,
       removed: !loading && !error && (roomValue === null || meValue === null || denied),
       myRole,
+      isOfficer,
+      previewAsMember,
       balanceOf: (id) => balances.get(id) ?? 0,
       roleOf,
-      can: (p) => roleCan(myRole, p),
+      can,
       takes,
     };
-  }, [classId, uid, room, me, roles, members, courses, records, seeAll, summary, charges, joinRequests, pendingOpenings, contents, schedule, progress, avatars, classPhoto]);
+  }, [classId, uid, room, me, roles, members, courses, records, seeAll, summary, charges, joinRequests, pendingOpenings, contents, schedule, progress, avatars, classPhoto, settingsVer]);
 
   const notice = useNotice();
   const [busy, setBusy] = useState(false);
