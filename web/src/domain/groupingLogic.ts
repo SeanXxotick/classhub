@@ -103,6 +103,14 @@ export const newGrouping = (g: Partial<Grouping>): Grouping => ({
   ...g,
 });
 
+/** A linked class as "Name (Tag)", leaving the tag out when the name already shows it ("BSIT 3A-G1", "BSIT 3A (G1)"). */
+export function classTagLabel(name: string, tag: string): string {
+  const t = tag.trim();
+  if (!t) return name;
+  const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^A-Za-z0-9])${escaped}($|[^A-Za-z0-9])`, 'i').test(name) ? name : `${name} (${t})`;
+}
+
 /** Active leader UID for a group when `hasLeader` is enabled (defaults to the first member). */
 export function effectiveLeaderUid(group: GroupSlot, hasLeader?: boolean): string {
   if (!hasLeader) return '';

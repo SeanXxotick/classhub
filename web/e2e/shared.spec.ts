@@ -104,8 +104,8 @@ test.describe.serial('shared groupings and shared polls across two classes', () 
     await link.getByRole('button', { name: 'Link' }).click();
     await expectNotice(p, 'Shared grouping linked.');
     const partnerCard = await openSlot(p, 'Thesis Groups', 'Group 1');
-    await expect(partnerCard.getByText('BSM CS 3A-G1 (G1) · Host')).toBeVisible();
-    await expect(partnerCard.getByText('BSM CS 3A (G2) (G2)')).toBeVisible();
+    await expect(partnerCard.getByText('BSM CS 3A-G1 · Host')).toBeVisible();
+    await expect(partnerCard.getByText('BSM CS 3A (G2)', { exact: true })).toBeVisible();
     await shot(p, '03-partner-linked-card');
   });
 

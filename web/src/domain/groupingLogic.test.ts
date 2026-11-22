@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addGuestToGroup,
+  classTagLabel,
   approveGroupJoinRequest,
   autoAssignMembers,
   buildInitialGroups,
@@ -135,5 +136,16 @@ describe('groupingLogic', () => {
     groups = removeGroupJoinRequest(groups, 'g2', 'u3');
     expect(groups[1].joinRequests).toEqual([]);
     expect(groups[1].memberUids).toEqual([]);
+  });
+});
+
+describe('classTagLabel', () => {
+  it('adds the section tag only when the class name does not already show it', () => {
+    expect(classTagLabel('BSIT 3A', 'G1')).toBe('BSIT 3A (G1)');
+    expect(classTagLabel('BSM CS 3A (G2)', 'G2')).toBe('BSM CS 3A (G2)');
+    expect(classTagLabel('BSM CS 3A-G1', 'g1')).toBe('BSM CS 3A-G1');
+    expect(classTagLabel('BSIT 3G1X', 'G1')).toBe('BSIT 3G1X (G1)');
+    expect(classTagLabel('BSIT 3A', ' ')).toBe('BSIT 3A');
+    expect(classTagLabel('Lab (A+)', 'A+')).toBe('Lab (A+)');
   });
 });

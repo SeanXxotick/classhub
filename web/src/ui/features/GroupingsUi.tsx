@@ -53,6 +53,7 @@ import {
   groupSize,
   isGroupFull,
   ungroupedMemberIds,
+  classTagLabel,
 } from '../../domain/groupingLogic';
 import { Button, Card, Notice, SearchInput, Switch } from '../../design';
 import { ConfirmDialog, Dialog, Field, hexColor } from '../common';
@@ -481,7 +482,7 @@ function GroupingCard({
                       className="grp-sec-tag"
                       style={tagStyleForClass(state, grouping, c.classId)}
                     >
-                      {c.name} ({c.tag}){c.isHost ? ' · Host' : ''}
+                      {classTagLabel(c.name, c.tag)}{c.isHost ? ' · Host' : ''}
                     </span>
                   ))}
                 </div>
