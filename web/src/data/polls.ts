@@ -4,7 +4,7 @@
  * Supports both single-class polls (classes/{classId}/polls/{id}) and cross-class shared polls
  * (/sharedPolls/{id}, linked to trusted partner classes via classes/{classId}/sharedPollLinks/{id}).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   FieldPath,
   collection,
@@ -550,6 +550,7 @@ export function useSharedPolls(db: Firestore, classId: string, uid: string, enab
     };
   }, [db, classId, uid, enabled, loadVotes]);
 
-  const votes = Object.values(votesByPoll).flat();
+  // The same array until a vote changes, so screens that memoize on it do not recount every poll each render.
+  const votes = useMemo(() => Object.values(votesByPoll).flat(), [votesByPoll]);
   return { polls, votes };
 }
