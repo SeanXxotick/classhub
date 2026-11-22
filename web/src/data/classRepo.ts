@@ -262,12 +262,10 @@ export async function addCourse(classId: string, name: string, log?: LogNote): P
   await commitLogged(db, classId, log, (b) => b.set(doc(coursesOf(classId)), { id: '', name: name.trim() }));
 }
 
-export function renameCourse(classId: string, courseId: string, name: string, log?: LogNote): Promise<void> {
-  return commitLogged(db, classId, log, (b) => b.update(doc(coursesOf(classId), courseId), { name: name.trim() }));
-}
-
-export function setCourseColor(classId: string, courseId: string, color: string, log?: LogNote): Promise<void> {
-  return commitLogged(db, classId, log, (b) => b.update(doc(coursesOf(classId), courseId), { color }));
+/** Saves a course's new name and/or color in one write. */
+export function updateCourse(classId: string, courseId: string, changes: { name?: string; color?: string }, log?: LogNote): Promise<void> {
+  const fields = { ...(changes.name !== undefined && { name: changes.name.trim() }), ...(changes.color !== undefined && { color: changes.color }) };
+  return commitLogged(db, classId, log, (b) => b.update(doc(coursesOf(classId), courseId), fields));
 }
 
 /**

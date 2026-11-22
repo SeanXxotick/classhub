@@ -107,8 +107,8 @@ export interface ClassActions {
   saveRole: (role: Role, onDone?: Done) => void;
   deleteRole: (role: Role, onDone?: Done) => void;
   addCourse: (name: string, onDone?: Done) => void;
-  renameCourse: (course: Course, name: string, onDone?: Done) => void;
-  setCourseColor: (course: Course, color: string, onDone?: Done) => void;
+  /** Renames a course and/or changes its color, in one write. */
+  editCourse: (course: Course, changes: { name?: string; color?: string }, onDone?: Done) => void;
   deleteCourse: (course: Course, onDone?: Done) => void;
   approveRequest: (request: JoinRequest) => void;
   rejectRequest: (request: JoinRequest) => void;
@@ -388,20 +388,19 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         runAction(`Added ${name.trim()}.`, onDone, () => classRepo.addCourse(classId, name, { actorUid: uid, kind: 'COURSE_ADDED', text: `Added the course ${name.trim()}` }));
       },
 
-      renameCourse(course, name, onDone) {
+      editCourse(course, changes, onDone) {
         const c = st();
         if (!c.can('CLASS_SETTINGS')) return deny('You do not have permission to edit courses.');
-        if (!CourseRules.isNameValid(name, c.courses, course.id)) return deny(`Use a course name of up to ${CourseRules.MAX_NAME} characters that is not already listed.`);
-        runAction(`Renamed to ${name.trim()}.`, onDone, () =>
-          classRepo.renameCourse(classId, course.id, name, { actorUid: uid, kind: 'COURSE_EDITED', text: `Renamed the course ${course.name} to ${name.trim()}` }),
-        );
-      },
-
-      setCourseColor(course, color, onDone) {
-        if (!st().can('CLASS_SETTINGS')) return deny('You do not have permission to edit courses.');
-        if (!/^#[0-9a-fA-F]{6}$/.test(color)) return deny('Choose one of the colors.');
-        runAction(`Color of ${course.name} changed.`, onDone, () =>
-          classRepo.setCourseColor(classId, course.id, color, { actorUid: uid, kind: 'COURSE_EDITED', text: `Changed the color of ${course.name}` }),
+        const { name, color } = changes;
+        if (name !== undefined && !CourseRules.isNameValid(name, c.courses, course.id)) {
+          return deny(`Use a course name of up to ${CourseRules.MAX_NAME} characters that is not already listed.`);
+        }
+        if (color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(color)) return deny('Choose one of the colors.');
+        if (name === undefined && color === undefined) return onDone?.();
+        const parts = [name !== undefined && `renamed ${course.name} to ${name.trim()}`, color !== undefined && (name !== undefined ? 'changed its color' : `changed the color of ${course.name}`)].filter(Boolean);
+        const text = parts.join(' and ');
+        runAction(name !== undefined ? `Saved ${name.trim()}.` : `Color of ${course.name} changed.`, onDone, () =>
+          classRepo.updateCourse(classId, course.id, changes, { actorUid: uid, kind: 'COURSE_EDITED', text: text.charAt(0).toUpperCase() + text.slice(1) }),
         );
       },
 

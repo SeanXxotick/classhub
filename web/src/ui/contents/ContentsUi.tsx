@@ -95,6 +95,8 @@ function RowMenu({ item, onEdit, onNotice }: { item: ContentItem; onEdit: (() =>
       () => onNotice('The link could not be copied.'),
     );
   };
+  // An uploaded file has no link to copy, so without Edit there is nothing to show.
+  if (item.file && !onEdit) return null;
   return (
     <div className="menu-anchor" ref={ref}>
       <button type="button" className="icon-btn" aria-label={`More for "${item.title}"`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>

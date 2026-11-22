@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { db } from '../../data/firebase';
 import { friendlyMessage } from '../../data/errors';
 import {
@@ -67,14 +67,27 @@ import { forumUnseen } from '../../domain/forumUnseen';
 import { ForumView, TagBadge, TagSelect } from './ForumUi';
 import { MoreMenu } from '../MoreMenu';
 
-/** Runs a write and shows the result in the snackbar. */
+/**
+ * Runs a write and shows the result in the snackbar. A second tap while a write is still saving is ignored,
+ * so a slow connection cannot send a claim, comment or mark twice; `run.busy` greys out the button meanwhile.
+ */
 function useRun() {
   const { actions } = useClass();
-  return (success: string, work: () => Promise<unknown>, onDone?: () => void) => {
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const run = (success: string, work: () => Promise<unknown>, onDone?: () => void) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
     work()
       .then(() => (actions.showNotice(success), onDone?.()))
-      .catch((e) => actions.showNotice(friendlyMessage(e)));
+      .catch((e) => actions.showNotice(friendlyMessage(e)))
+      .finally(() => {
+        inFlight.current = false;
+        setBusy(false);
+      });
   };
+  return Object.assign(run, { busy });
 }
 
 /** "2026-11-16" -> "Mon, Nov 16". */
@@ -214,7 +227,7 @@ function ClaimDialog({ state, onClose }: { state: ClassState; onClose: () => voi
           </button>
           <button
             className="btn solid"
-            disabled={amount === null}
+            disabled={amount === null || run.busy}
             onClick={() =>
               amount !== null &&
               run('Claim sent. It is waiting for the treasurer.', () =>
@@ -754,7 +767,7 @@ function Thread({ state, post, votes, memberIds }: { state: ClassState; post: An
             <textarea value={text} rows={2} maxLength={500} onChange={(e) => setText(e.target.value)} />
           </Field>
           <div className="ch-row">
-            <Button size="small" disabled={!text.trim()} onClick={() => run('Comment posted.', () => addComment(db, me, state.classId, post, '', text, post.createdByUid), () => setText(''))}>
+            <Button size="small" disabled={!text.trim() || run.busy} onClick={() => run('Comment posted.', () => addComment(db, me, state.classId, post, '', text, post.createdByUid), () => setText(''))}>
               Post comment
             </Button>
           </div>
@@ -785,7 +798,7 @@ function Thread({ state, post, votes, memberIds }: { state: ClassState; post: An
                     <div className="ch-row ch-gap-2">
                       <Button
                         size="small"
-                        disabled={!replyText.trim()}
+                        disabled={!replyText.trim() || run.busy}
                         onClick={() =>
                           run('Reply posted.', () => addComment(db, me, state.classId, post, top.id, replyText, replying.to.uid), () => {
                             setReplyTo(null);
@@ -1447,7 +1460,7 @@ function NoClassDialog({ state, meetings, onClose }: { state: ClassState; meetin
             <button className="btn text" onClick={() => setConfirming(false)}>
               Back
             </button>
-            <button className="btn solid danger" onClick={save}>
+            <button className="btn solid danger" disabled={run.busy} onClick={save}>
               Mark no classes
             </button>
           </>

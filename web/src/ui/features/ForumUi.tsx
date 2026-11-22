@@ -2,7 +2,7 @@
  * The Forum in the News tab (docs/PLAN-FORUM.md): questions with a tag, answers with one level of replies,
  * a best answer picked by the asker or a News officer, and the month's top helpers.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { db } from '../../data/firebase';
 import { friendlyMessage } from '../../data/errors';
 import {
@@ -42,16 +42,29 @@ const FILTERS: { value: Filter; label: string }[] = [
 ];
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+/** Runs a write once at a time (a double tap does not post twice); `run.busy` greys out the button meanwhile. */
 function useRun() {
   const { actions } = useClass();
-  return (done: string, write: () => Promise<unknown>, after?: () => void) =>
-    write().then(
-      () => {
-        if (done) actions.showNotice(done);
-        after?.();
-      },
-      (e) => actions.showNotice(friendlyMessage(e)),
-    );
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const run = (done: string, write: () => Promise<unknown>, after?: () => void) => {
+    if (inFlight.current) return Promise.resolve();
+    inFlight.current = true;
+    setBusy(true);
+    return write()
+      .then(
+        () => {
+          if (done) actions.showNotice(done);
+          after?.();
+        },
+        (e) => actions.showNotice(friendlyMessage(e)),
+      )
+      .finally(() => {
+        inFlight.current = false;
+        setBusy(false);
+      });
+  };
+  return Object.assign(run, { busy });
 }
 
 /** Who wrote a post: named in it, or (anonymous) in an author record this viewer can read. '' when unknown. */
@@ -366,7 +379,7 @@ function QuestionPage({ state, q, authors, onBack, onPromote }: {
                       <div className="ch-row ch-gap-2">
                         <Button
                           size="small"
-                          disabled={!replyText.trim()}
+                          disabled={!replyText.trim() || run.busy}
                           onClick={() =>
                             run('Reply posted.', () => addAnswer(db, me, state.classId, q, top, replyText, anonymous), () => {
                               setReplyTo('');
@@ -395,7 +408,7 @@ function QuestionPage({ state, q, authors, onBack, onPromote }: {
               <textarea value={text} rows={3} maxLength={ANSWER_MAX} onChange={(e) => setText(e.target.value)} />
             </Field>
             <div className="ch-row">
-              <Button size="small" disabled={!text.trim()} onClick={() => run('Answer posted.', () => addAnswer(db, me, state.classId, q, null, text, anonymous), () => setText(''))}>
+              <Button size="small" disabled={!text.trim() || run.busy} onClick={() => run('Answer posted.', () => addAnswer(db, me, state.classId, q, null, text, anonymous), () => setText(''))}>
                 Post answer
               </Button>
             </div>
@@ -474,7 +487,7 @@ function AskDialog({ state, question, onClose, onAsked }: { state: ClassState; q
           <button className="btn text" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn solid" disabled={!title.trim()} onClick={save}>
+          <button className="btn solid" disabled={!title.trim() || run.busy} onClick={save}>
             {question ? 'Save' : 'Ask'}
           </button>
         </>
@@ -546,7 +559,10 @@ function TopHelpers({ state, questions, seen, rail }: { state: ClassState; quest
   const leftOut = useMemo(() => new Set(seen.filter((s) => s.hideFromBoard).map((s) => s.id)), [seen]);
   const since = manilaMonthStart(Date.now());
   const month = topHelpers(questions, state.members, leftOut, since);
-  const shownList = range === 'MONTH' ? month : topHelpers(questions, state.members, leftOut, 0);
+  const allTime = topHelpers(questions, state.members, leftOut, 0);
+  const shownList = range === 'MONTH' ? month : allTime;
+  // Anyone ever picked, counting those who left themselves out (so they can still come back on the list).
+  const anyHelper = useMemo(() => topHelpers(questions, state.members, new Set(), 0).length > 0, [questions, state.members]);
   const iAmOut = leftOut.has(state.myUid);
   const nameOf = (uid: string) => state.members.find((m) => m.id === uid)?.name ?? '';
 
@@ -560,8 +576,15 @@ function TopHelpers({ state, questions, seen, rail }: { state: ClassState; quest
       </div>
     ));
 
-  if (month.length === 0) return null;
+  // Hidden only when nobody has ever had a best answer. Early in a month the block stays, so All time and the
+  // "Leave me out" switch are still reachable.
+  if (!anyHelper) return null;
   const top = month.slice(0, 3);
+  const openAll = () => {
+    setRange(month.length > 0 ? 'MONTH' : 'ALL');
+    setAll(true);
+  };
+  const quietMonth = <span className="ch-small ch-muted">{`No best answers yet in ${monthName}.`}</span>;
   const head = (
     <>
       <span className="helpers-trophy"><Icon name="trophy" size={18} /></span>
@@ -571,8 +594,8 @@ function TopHelpers({ state, questions, seen, rail }: { state: ClassState; quest
   );
   const panel = (
     <>
-      {rows(top)}
-      <button type="button" className="btn text helpers-all" onClick={() => setAll(true)}>
+      {top.length > 0 ? rows(top) : quietMonth}
+      <button type="button" className="btn text helpers-all" onClick={openAll}>
         See all
       </button>
     </>
@@ -593,6 +616,7 @@ function TopHelpers({ state, questions, seen, rail }: { state: ClassState; quest
             ) : (
               <>
                 <span className="helpers-trophy"><Icon name="trophy" size={18} /></span>
+                {top.length === 0 && <span className="grow">{quietMonth}</span>}
                 <span className="helpers-medals" aria-label={top.map((h, i) => `${i + 1}. ${nameOf(h.uid)}, ${plural(h.points, 'best answer')}`).join('; ')}>
                   {top.map((h, i) => (
                     <span className="helpers-medal" key={h.uid}>

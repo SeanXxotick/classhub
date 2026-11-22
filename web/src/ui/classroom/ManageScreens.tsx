@@ -285,7 +285,7 @@ export function RolesScreen() {
                     {summary} · {holders} member{s(holders)}
                   </span>
                 </span>
-                <span className="muted">{role.locked ? (role.id === myRoleId ? 'Color ›' : 'Locked') : '›'}</span>
+                <span className="muted">{role.locked ? (role.id === myRoleId ? 'Color ›' : 'Locked') : role.id === myRoleId ? 'Your role' : '›'}</span>
               </>
             );
             return role.locked && role.id === myRoleId ? (
@@ -301,7 +301,8 @@ export function RolesScreen() {
               >
                 {content}
               </button>
-            ) : role.locked ? (
+            ) : role.locked || role.id === myRoleId ? (
+              // Nobody edits the role they hold (the rules refuse it), so it is not a link.
               <div key={role.id} className="list-row">
                 {content}
               </div>
@@ -370,6 +371,8 @@ export function RoleEditorScreen() {
         <NoAccess what="edit this role, or it was deleted" />
       ) : existing && !RoleRules.canEdit(existing) ? (
         <NoAccess what={`edit the ${existing.name} role`} />
+      ) : existing && existing.id === state.members.find((m) => m.id === state.myUid)?.roleId ? (
+        <p className="empty">{`You hold the ${existing.name} role, so you cannot edit it. Ask the Mayor.`}</p>
       ) : (
         <RoleEditorContent key={existing?.id ?? 'new'} existing={existing} />
       )}
@@ -545,11 +548,7 @@ function CourseDialog({ course, onClose }: { course: Course; onClose: () => void
   const renamed = rename.trim() !== course.name;
   const recolored = color !== (course.color ?? '');
   const canSave = !!rename.trim() && (renamed || recolored);
-  const save = () => {
-    if (renamed) actions.renameCourse(course, rename);
-    if (recolored) actions.setCourseColor(course, color);
-    onClose();
-  };
+  const save = () => actions.editCourse(course, { ...(renamed && { name: rename }), ...(recolored && { color }) }, onClose);
   return (
     <Dialog
       title="Edit course"

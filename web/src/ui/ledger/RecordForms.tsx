@@ -219,9 +219,10 @@ export function ChargeStudentsScreen() {
   const [pickingCourse, setPickingCourse] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const eligibleIds = useMemo(() => new Set(ChargePlanner.eligible(state.members, courseId).map((m) => m.id)), [state.members, courseId]);
-  // The checklist starts from who takes the course and resets when the course changes.
+  // The checklist starts from who takes the course and resets only when the course changes. A member who joins
+  // while it is open shows unticked once the treasurer has changed the list; one who leaves drops out on their own.
   const [selection, setSelection] = useState<{ key: string; ids: Set<string> } | null>(null);
-  const selectionKey = `${courseId}:${state.members.length}`;
+  const selectionKey = courseId;
   const selected = selection?.key === selectionKey ? selection.ids : eligibleIds;
   const setSelected = (ids: Set<string>) => setSelection({ key: selectionKey, ids });
 
