@@ -29,7 +29,7 @@ import {
 } from '../common';
 import { balanceText, EntryRow } from '../ledger/LedgerUi';
 import { kindLabel as scheduleKindLabel } from '../schedule/ScheduleUi';
-import { setPinned } from '../settings';
+import { myAccent, setPinned } from '../settings';
 import { db } from '../../data/firebase';
 import { friendlyMessage } from '../../data/errors';
 import { setLockedRoleColor } from '../../data/membership';
@@ -686,6 +686,7 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
         </Field>
         <span className="small semibold muted">Accent color</span>
         <ColorPicker label="Accent color" choices={ACCENT_CHOICES} selected={accent} onSelect={setAccent} custom />
+        {myAccent(state.classId) && <span className="small muted">You use your own color on this device, set in My settings.</span>}
       </div>
 
       <div className="card">

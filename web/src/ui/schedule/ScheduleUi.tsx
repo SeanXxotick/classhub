@@ -5,7 +5,7 @@ import { ScheduleIcons } from '../../domain/iconStyles';
 import { ScheduleLogic } from '../../domain/scheduleLogic';
 import { SCHEDULE_FILTERS, ScheduleForms, ScheduleView, type ScheduleFilter } from '../../domain/scheduleView';
 import { dayOf, monthLong, monthShort, noonMillis, parseDay, plusDays, today, weekday, weekdayLong, weekdayShort, type DayKey } from '../../domain/dates';
-import { ConfirmDialog, DateField, DetailLine, Dialog, Field, PickerField, Spinner, StyledIcon, hexColor, useBack, CourseDot, NEUTRAL_ICON } from '../common';
+import { ConfirmDialog, DateField, DetailLine, Dialog, Field, LinkifiedText, PickerField, Spinner, StyledIcon, hexColor, useBack, CourseDot, NEUTRAL_ICON } from '../common';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 import { NoAccess, SubPage } from '../classroom/SubPage';
 import { Tag } from '../ledger/LedgerUi';
@@ -177,13 +177,22 @@ export function ScheduleTab({
   const todayKey = today();
   const [anchor, setAnchor] = useState<DayKey>(selectedDay ?? todayKey);
   const [filter, setFilter] = useState<ScheduleFilter>('UPCOMING');
+  const [courseFilter, setCourseFilter] = useState('*');
   const [openedId, setOpenedId] = useState<string | null>(null);
   const [showMonth, setShowMonth] = useState(false);
 
+  const visibleCourses = useMemo(
+    () => state.courses.filter((c) => state.can('SCHEDULE_MANAGE') || state.takes(c.id)),
+    [state],
+  );
+  const byCourse = useMemo(
+    () => (courseFilter === '*' ? state.schedule : state.schedule.filter((i) => (courseFilter === '' ? !i.courseId : i.courseId === courseFilter))),
+    [state.schedule, courseFilter],
+  );
   const week = ScheduleView.weekOf(anchor);
-  const dotsByDay = useMemo(() => courseDotsByDay(state.schedule, state.myDone, state.courses), [state.schedule, state.myDone, state.courses]);
-  const shown = selectedDay ? ScheduleView.onDay(state.schedule, selectedDay) : ScheduleView.filter(state.schedule, filter, now, state.myDone);
-  const overdueCount = ScheduleView.filter(state.schedule, 'OVERDUE', now, state.myDone).length;
+  const dotsByDay = useMemo(() => courseDotsByDay(byCourse, state.myDone, state.courses), [byCourse, state.myDone, state.courses]);
+  const shown = selectedDay ? ScheduleView.onDay(byCourse, selectedDay) : ScheduleView.filter(byCourse, filter, now, state.myDone);
+  const overdueCount = ScheduleView.filter(byCourse, 'OVERDUE', now, state.myDone).length;
   const first = parseDay(week[0]);
   const last = parseDay(week[6]);
   let lastHeader = '';
@@ -254,6 +263,19 @@ export function ScheduleTab({
                 {f.id === 'OVERDUE' && overdueCount > 0 ? `${f.label} (${overdueCount})` : f.label}
               </button>
             ))}
+          </div>
+        )}
+        {visibleCourses.length > 0 && state.schedule.length > 0 && (
+          <div className="forum-search">
+            <select className="input forum-tag-select" aria-label="Filter by course" value={courseFilter} onChange={(e) => setCourseFilter(e.target.value)}>
+              <option value="*">All courses</option>
+              <option value="">Whole class</option>
+              {visibleCourses.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
         )}
         <div className="card flush">
@@ -495,7 +517,7 @@ function ScheduleDetailsDialog({
         <DetailLine label="Type" value={kindLabel(item.kind)} width={76} />
         <DetailLine label="Course" value={course ?? 'Whole class'} width={76} />
         <DetailLine label="Due" value={`${weekdayLong(weekday(due))}, ${monthLong(dueParts.month)} ${dueParts.day}, ${dueParts.year}`} width={76} />
-        {item.note.trim() && <DetailLine label="Note" value={item.note} width={76} />}
+        {item.note.trim() && <DetailLine label="Note" value={<LinkifiedText text={item.note} />} width={76} />}
 
         {cancelled ? (
           <p className="semibold" style={{ color: GREY, margin: 0 }}>This was cancelled for the whole class.</p>

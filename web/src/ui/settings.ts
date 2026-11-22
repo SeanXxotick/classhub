@@ -98,3 +98,25 @@ export function startTab(classId: string): string | null {
 export function setStartTab(classId: string, tab: string) {
   write(tabKey(classId), tab);
 }
+
+const accentKey = (classId: string) => `classhub.accent.${classId}`;
+const ledgerKey = (classId: string) => `classhub.ledger.${classId}`;
+
+/** This device's own accent color for a class, or null to use the class color. */
+export function myAccent(classId: string): string | null {
+  const hex = get(accentKey(classId));
+  return hex && /^#[0-9a-f]{6}$/i.test(hex) ? hex : null;
+}
+
+export function setMyAccent(classId: string, hex: string | null) {
+  write(accentKey(classId), hex);
+}
+
+/** Whether the Ledger tab opens on the member's own records. */
+export function ledgerStartsOnMine(classId: string): boolean {
+  return get(ledgerKey(classId)) === 'MINE';
+}
+
+export function setLedgerStartsOnMine(classId: string, mine: boolean) {
+  write(ledgerKey(classId), mine ? 'MINE' : null);
+}

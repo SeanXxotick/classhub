@@ -5,7 +5,9 @@ import { LEDGER_FILTERS, LedgerView, type ChargeBatch, type LedgerEntry, type Le
 import { formatMoney } from '../../domain/money';
 import { dayOf, monthShort, parseDay, plusDays, today, weekday, weekdayShort } from '../../domain/dates';
 import { Avatar, CourseDot, DetailLine, Dialog, Field, hexColor } from '../common';
+import { SearchInput } from '../../design';
 import type { ClassState } from '../classroom/ClassContext';
+import { ledgerStartsOnMine } from '../settings';
 
 // ---------------------------------------------------------------- Labels, colors and dates
 
@@ -411,9 +413,22 @@ export function LedgerTab({
   onUndoCharge: (batch: ChargeBatch, reason: string) => void;
   onRecordPayout: (batchId: string) => void;
 }) {
-  const [filter, setFilter] = useState<LedgerFilter>('ALL');
+  const [filter, setFilter] = useState<LedgerFilter>(() => (ledgerStartsOnMine(state.classId) ? 'MINE' : 'ALL'));
+  const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<LedgerEntry | null>(null);
-  const entries = useMemo(() => LedgerView.filter(state.records, filter, state.myUid), [state.records, filter, state.myUid]);
+  const filteredEntries = useMemo(() => LedgerView.filter(state.records, filter, state.myUid), [state.records, filter, state.myUid]);
+  const entries = useMemo(() => {
+    const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return filteredEntries;
+    const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? '';
+    return filteredEntries.filter((e) => {
+      const hay =
+        e.kind === 'batch'
+          ? `${e.note} ${courseName(e.courseId)} ${e.records.map((r) => r.memberName).join(' ')}`.toLowerCase()
+          : `${e.record.memberName} ${e.record.note} ${e.record.paidTo} ${courseName(e.record.courseId)} ${recordLabel(e.record.type)}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+  }, [filteredEntries, search, state.courses]);
   let lastHeader = '';
 
   return (
@@ -438,6 +453,9 @@ export function LedgerTab({
           {state.can('RECORDS_MANAGE') && <LedgerSettingsCard key={`${state.room?.balanceVisibility}|${state.room?.paymentInfo}`} state={state} onSave={onSaveSettings} />}
         </div>
         <div className="stack">
+          {state.records.length > 0 && (
+            <SearchInput aria-label="Search ledger" placeholder="Search by student, note or course" value={search} onChange={(e) => setSearch(e.target.value)} />
+          )}
           <div className="chips" role="tablist" aria-label="Filter records">
             {LEDGER_FILTERS.map((f) => (
               <button key={f.id} type="button" role="tab" aria-selected={f.id === filter} className={'chip' + (f.id === filter ? ' selected' : '')} onClick={() => setFilter(f.id)}>
@@ -448,7 +466,11 @@ export function LedgerTab({
           <div className="card flush">
             {entries.length === 0 && (
               <p className="empty">
-                {state.records.length === 0 ? 'No records yet. Officers with the ledger permission can add one with the + button.' : 'Nothing here for this filter.'}
+                {state.records.length === 0
+                  ? 'No records yet. Officers with the ledger permission can add one with the + button.'
+                  : search.trim()
+                    ? 'Nothing matches your search.'
+                    : 'Nothing here for this filter.'}
               </p>
             )}
             {entries.map((entry) => {

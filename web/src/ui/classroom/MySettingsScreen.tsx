@@ -1,67 +1,165 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { db } from '../../data/firebase';
+import { friendlyMessage } from '../../data/errors';
+import { useSeen } from '../../data/features';
+import { setHideFromBoard } from '../../data/forum';
 import type { ClassRoom, Member } from '../../data/models';
 import { MemberRules } from '../../domain/classRules';
 import { formatMoney } from '../../domain/money';
-import { Dialog, Switch } from '../common';
-import { pinnedClasses, setPinned, setStartTab, startTab, useSettingsVersion } from '../settings';
+import { Card, FilterChips, ListRow, SegmentedControl, TypeIcon, type IconName } from '../../design';
+import { ACCENT_CHOICES, Avatar, ColorPicker, CourseDot, Dialog, RoleChip, Switch, hexColor } from '../common';
+import {
+  ledgerStartsOnMine,
+  myAccent,
+  pinnedClasses,
+  setLedgerStartsOnMine,
+  setMyAccent,
+  setPinned,
+  setStartTab,
+  startTab,
+  useSettingsVersion,
+} from '../settings';
 import { useClass } from './ClassContext';
 import { CLASS_TABS, tabShownIn } from './classTabs';
+import { InviteDialog } from './InviteDialog';
 import { SubPage } from './SubPage';
 
 /**
- * A member's own settings for one class: which tab it opens on and whether it is pinned in
- * My classes (saved in this browser only; nobody else sees them). Leaving the class is here too.
- * The Android reminder switches are left out: the web app does not send reminders.
+ * A member's own settings for one class: who they are in it, which tab it opens on, the Ledger's first filter,
+ * their own accent color, pinning and the Top helpers opt-out. All but the opt-out stay in this browser.
+ * Officers also get shortcuts to the class's manage screens. Leaving the class is at the bottom.
  */
 export function MySettingsScreen() {
   const { state, actions } = useClass();
   const navigate = useNavigate();
   const [leaving, setLeaving] = useState(false);
+  const [inviting, setInviting] = useState(false);
   useSettingsVersion();
   const room = state.room;
+  const base = `/class/${state.classId}`;
+  const forumOn = room?.announcementsEnabled !== false;
+  const seen = useSeen(db, state.classId, forumOn).data ?? [];
+  const leftOut = seen.find((s) => s.id === state.myUid)?.hideFromBoard ?? false;
+
+  if (!room) return <SubPage title="My settings">{null}</SubPage>;
+
+  const tabs = CLASS_TABS.filter((t) => tabShownIn(t.id, room));
+  const current = tabs.find((t) => t.id === startTab(state.classId))?.id ?? 'HOME';
+  const taken = state.courses.filter((c) => state.takes(c.id));
+  const own = myAccent(state.classId);
+  const roleName = state.myRole?.name ?? 'Member';
+
+  const shortcuts: { icon: IconName; label: string; go: () => void }[] = [];
+  if (state.can('CLASS_SETTINGS')) shortcuts.push({ icon: 'sliders', label: 'Class settings', go: () => navigate(`${base}/settings`) });
+  if (state.can('CLASS_SETTINGS')) shortcuts.push({ icon: 'book', label: `Courses (${state.courses.length})`, go: () => navigate(`${base}/courses`) });
+  if (state.can('ROLES_MANAGE')) shortcuts.push({ icon: 'shield', label: `Roles (${state.roles.length})`, go: () => navigate(`${base}/roles`) });
+  if (state.can('CLASS_SETTINGS')) shortcuts.push({ icon: 'clock', label: 'History log', go: () => navigate(`${base}/history`) });
+  if (state.can('MEMBERS_MANAGE')) shortcuts.push({ icon: 'key', label: 'Invite code', go: () => setInviting(true) });
+
+  const toggleLeftOut = async (v: boolean) => {
+    try {
+      await setHideFromBoard(db, state.classId, state.myUid, v);
+      actions.showNotice(v ? 'You are left out of Top helpers.' : 'You are back on Top helpers.');
+    } catch (e) {
+      actions.showNotice(friendlyMessage(e));
+    }
+  };
 
   return (
     <SubPage title="My settings">
-      {room && (
-        <div className="stack">
-          <p className="small muted" style={{ margin: 0 }}>
-            Only you see these, on this device.
-          </p>
-
-          <div className="card">
-            <div className="bold" style={{ marginBottom: 4 }}>Open this class on</div>
-            <div role="radiogroup" aria-label="Open this class on">
-              {(() => {
-                const tabs = CLASS_TABS.filter((t) => tabShownIn(t.id, room));
-                const current = tabs.find((t) => t.id === startTab(state.classId))?.id ?? 'HOME';
-                return tabs.map((tab) => (
-                  <label key={tab.id} className="radio-row">
-                    <input type="radio" name="start-tab" checked={tab.id === current} onChange={() => setStartTab(state.classId, tab.id)} />
-                    {tab.label}
-                  </label>
-                ));
-              })()}
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="bold">My classes list</div>
-            <Switch
-              label="Pin to the top"
-              sub={`Show ${room.name} first in My classes.`}
-              checked={pinnedClasses().has(state.classId)}
-              onChange={(on) => setPinned(state.classId, on)}
+      <div className="stack">
+        <Card flush>
+          <ListRow
+            leading={<Avatar photo={state.avatars.get(state.myUid)} name={state.me?.name ?? 'You'} color="var(--accent, #0F766E)" size={44} />}
+            title={room.name}
+            subtitle={<RoleChip name={roleName} color={state.myRole?.colorHex ?? '#6B768A'} />}
+            trailing={
+              room.ledgerEnabled !== false ? (
+                <button type="button" className="btn text" onClick={() => navigate(`${base}?tab=LEDGER`)}>
+                  My statement
+                </button>
+              ) : undefined
+            }
+          />
+          {state.courses.length > 0 && (
+            <ListRow
+              leading={<TypeIcon icon="book" tone="primary" />}
+              title="My courses"
+              subtitle={taken.length === state.courses.length ? `All ${state.courses.length}` : `${taken.length} of ${state.courses.length}`}
+              chevron
+              onClick={() => navigate(`${base}/mine/courses`)}
             />
-          </div>
+          )}
+        </Card>
 
-          <button className="btn outline danger block" disabled={actions.busy} onClick={() => setLeaving(true)}>
-            Leave class
-          </button>
+        <div className="card stack">
+          <div className="bold">Open this class on</div>
+          <FilterChips label="Open this class on" value={current} onChange={(tab) => setStartTab(state.classId, tab)} options={tabs.map((t) => ({ value: t.id, label: t.label }))} />
+          {room.ledgerEnabled !== false && (
+            <div className="row">
+              <span className="grow">Ledger shows</span>
+              <SegmentedControl
+                label="Ledger shows"
+                value={ledgerStartsOnMine(state.classId) ? 'MINE' : 'ALL'}
+                onChange={(v) => setLedgerStartsOnMine(state.classId, v === 'MINE')}
+                options={[
+                  { value: 'ALL', label: 'All' },
+                  { value: 'MINE', label: 'Mine' },
+                ]}
+              />
+            </div>
+          )}
         </div>
+
+        <div className="card stack">
+          <div className="row">
+            <span className="bold grow">Color on this device</span>
+            {own && (
+              <button type="button" className="btn text small" onClick={() => setMyAccent(state.classId, null)}>
+                Use class color
+              </button>
+            )}
+          </div>
+          <ColorPicker
+            label="Color on this device"
+            choices={[...new Set([hexColor(room.accentColor), ...ACCENT_CHOICES].map((h) => h.toUpperCase()))]}
+            selected={hexColor(own ?? room.accentColor)}
+            onSelect={(hex) => setMyAccent(state.classId, hex.toLowerCase() === hexColor(room.accentColor).toLowerCase() ? null : hex)}
+            custom
+          />
+        </div>
+
+        <div className="card">
+          <Switch label="Pin to the top" sub={`Show ${room.name} first in My classes.`} checked={pinnedClasses().has(state.classId)} onChange={(on) => setPinned(state.classId, on)} />
+          {forumOn && <Switch label="Leave me out of Top helpers" checked={leftOut} onChange={toggleLeftOut} />}
+        </div>
+
+        {shortcuts.length > 0 && (
+          <Card flush>
+            <div className="section-label">Manage this class</div>
+            {shortcuts.map((s) => (
+              <ListRow key={s.label} leading={<TypeIcon icon={s.icon} tone="primary" />} title={s.label} chevron onClick={s.go} />
+            ))}
+          </Card>
+        )}
+
+        <button className="btn outline danger block" disabled={actions.busy} onClick={() => setLeaving(true)}>
+          Leave class
+        </button>
+      </div>
+
+      {inviting && (
+        <InviteDialog
+          className={room.name}
+          code={room.inviteCode}
+          roleName={state.roles.find((r) => r.id === room.defaultRoleId)?.name ?? 'Member'}
+          notify={actions.showNotice}
+          onClose={() => setInviting(false)}
+        />
       )}
 
-      {leaving && room && (
+      {leaving && (
         <LeaveDialog
           room={room}
           onDismiss={() => setLeaving(false)}
@@ -69,12 +167,48 @@ export function MySettingsScreen() {
             setLeaving(false);
             actions.leaveClass(newMayorUid, () => {
               setPinned(state.classId, false);
+              setMyAccent(state.classId, null);
               actions.showNotice(`You left ${room.name}.`);
               navigate('/', { replace: true });
             });
           }}
         />
       )}
+    </SubPage>
+  );
+}
+
+/** The courses this member takes and skips. Officers who manage members set these, so it only shows them. */
+export function MyCoursesScreen() {
+  const { state } = useClass();
+  const taken = state.courses.filter((c) => state.takes(c.id));
+  const skipped = state.courses.filter((c) => !state.takes(c.id));
+  return (
+    <SubPage title="My courses">
+      <div className="stack">
+        {state.courses.length === 0 && <p className="empty">This class has no courses yet.</p>}
+        {taken.length > 0 && (
+          <Card flush>
+            <div className="section-label">You take {taken.length}</div>
+            {taken.map((c) => (
+              <ListRow key={c.id} leading={<CourseDot color={c.color || 'var(--accent)'} />} title={c.name} />
+            ))}
+          </Card>
+        )}
+        {skipped.length > 0 && (
+          <Card flush>
+            <div className="section-label">You do not take {skipped.length}</div>
+            {skipped.map((c) => (
+              <ListRow key={c.id} leading={<CourseDot color={c.color || 'var(--accent)'} />} title={c.name} subtitle="Hidden from your Schedule and Contents" />
+            ))}
+          </Card>
+        )}
+        {state.courses.length > 0 && (
+          <p className="small muted" style={{ margin: 0 }}>
+            Your officers set this. Ask them if it is wrong.
+          </p>
+        )}
+      </div>
     </SubPage>
   );
 }

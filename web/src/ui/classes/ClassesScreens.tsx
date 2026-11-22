@@ -11,7 +11,7 @@ import type { AppUser, ClassMembership, JoinRequest } from '../../data/models';
 import { ClassRules } from '../../domain/classRules';
 import { InviteCode } from '../../domain/inviteCode';
 import { compareStrings } from '../../domain/classRules';
-import { pinnedClasses, useSettingsVersion } from '../settings';
+import { myAccent, pinnedClasses, useSettingsVersion } from '../settings';
 import { InfoButton } from './AboutDialog';
 
 /** The "My classes" list, sorted by name with pinned classes first. Null while loading. */
@@ -71,7 +71,7 @@ export function ClassesScreen({ user }: { user: AppUser }) {
             <div className="grid-2">
               {classes.map((m) => (
                 <Link key={m.classId} to={`/class/${m.classId}`} className="card row" style={{ textDecoration: 'none', color: 'inherit', padding: 14 }}>
-                  <Avatar photo={photos.get(m.classId)} name={m.className} color={hexColor(accents.get(m.classId), '#0F766E')} circle={false} />
+                  <Avatar photo={photos.get(m.classId)} name={m.className} color={hexColor(myAccent(m.classId) ?? accents.get(m.classId), '#0F766E')} circle={false} />
                   <span className="grow">
                     <span className="semibold" style={{ display: 'block', fontSize: 16 }}>{m.className}</span>
                     {pinned.has(m.classId) && <span className="small" style={{ color: 'var(--primary)' }}>Pinned</span>}

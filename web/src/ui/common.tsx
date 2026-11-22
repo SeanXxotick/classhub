@@ -294,6 +294,50 @@ export function DetailLine({ label, value, width = 100 }: { label: string; value
   );
 }
 
+const URL_PATTERN = /(https?:\/\/[^\s<>"'`]+)/g;
+
+/** Splits a URL match from trailing sentence punctuation (e.g. "https://a.com." -> ["https://a.com", "."]). */
+function trimUrlPunctuation(raw: string): [string, string] {
+  let url = raw;
+  let tail = '';
+  while (url.length > 0) {
+    const last = url[url.length - 1];
+    if (/[.,!?;:]/.test(last)) {
+      tail = last + tail;
+      url = url.slice(0, -1);
+    } else if (last === ')' && (url.match(/\(/g)?.length ?? 0) < (url.match(/\)/g)?.length ?? 0)) {
+      tail = last + tail;
+      url = url.slice(0, -1);
+    } else {
+      break;
+    }
+  }
+  return [url, tail];
+}
+
+/** Renders plain text with http(s) URLs turned into safe, tappable links. */
+export function LinkifiedText({ text }: { text: string }) {
+  const parts = text.split(URL_PATTERN);
+  if (parts.length === 1) return <>{text}</>;
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (i % 2 === 0) return part;
+        const [url, tail] = trimUrlPunctuation(part);
+        if (!url) return part;
+        return (
+          <span key={i}>
+            <a href={url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+              {url}
+            </a>
+            {tail}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
 // ------------------------------------------------------------------ Dates
 
 /** "Mon, Oct 19, 2026" */

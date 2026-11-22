@@ -28,7 +28,7 @@ import { newAnnouncement, type Announcement, type SeenMarks } from '../../data/f
 import { ROLE_MEMBER } from '../../data/models';
 import { manilaMonthStart, topHelpers } from '../../domain/forumBoard';
 import { forumUnseen } from '../../domain/forumUnseen';
-import { Avatar, ConfirmDialog, CourseDot, Dialog, Field, RoleChip, hexColor, shortDateTime } from '../common';
+import { Avatar, ConfirmDialog, CourseDot, Dialog, Field, LinkifiedText, RoleChip, hexColor, shortDateTime } from '../common';
 import { Badge, Button, Card, FilterChips, Icon, Notice, SearchInput, SegmentedControl, Switch } from '../../design';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 import { MoreMenu } from '../MoreMenu';
@@ -308,7 +308,7 @@ function QuestionPage({ state, q, authors, onBack, onPromote }: {
         <div className="ch-muted" style={{ fontStyle: 'italic' }}>Removed</div>
       ) : (
         <>
-          <div className="comment-text">{a.text}</div>
+          <div className="comment-text"><LinkifiedText text={a.text} /></div>
           <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
             {!q.closed && (
               <button type="button" className="btn text" onClick={() => { setReplyTo(top.id); setReplyText(''); }}>
@@ -349,7 +349,7 @@ function QuestionPage({ state, q, authors, onBack, onPromote }: {
               ]}
             />
           </div>
-          {q.body && <div className="prose">{q.body}</div>}
+          {q.body && <div className="prose"><LinkifiedText text={q.body} /></div>}
           <Who state={state} uid={q.uid} name={q.name} anonymous={q.anonymous} realUid={askerUid} when={q.createdAtMillis} size={36} />
         </div>
       </Card>

@@ -14,7 +14,8 @@ import { LedgerView } from '../../domain/ledgerView';
 import { ScheduleView } from '../../domain/scheduleView';
 import type { DayKey } from '../../domain/dates';
 import { Avatar, ConfirmDialog, Icon, Loading, RoleChip, TopBar, hexColor } from '../common';
-import { setPinned, startTab, useSettingsVersion } from '../settings';
+import { SearchInput } from '../../design';
+import { myAccent, setPinned, startTab, useSettingsVersion } from '../settings';
 import { ContentFormScreen, ContentsTab } from '../contents/ContentsUi';
 import { AddRecordChooser, balanceText, EntryRow, LedgerSummaryCard, LedgerTab, myBalanceValue } from '../ledger/LedgerUi';
 import { ChargeStudentsScreen, RecordRoute } from '../ledger/RecordForms';
@@ -24,7 +25,7 @@ import { byLastName, listName, PERMISSIONS } from '../../data/models';
 import { CLASS_TABS, tabShownIn, type ClassTabId } from './classTabs';
 import { HistoryScreen } from './HistoryScreen';
 import { ClassSettingsScreen, CoursesScreen, MemberDetailScreen, permissionLabel, RoleEditorScreen, RolesScreen } from './ManageScreens';
-import { MySettingsScreen } from './MySettingsScreen';
+import { MyCoursesScreen, MySettingsScreen } from './MySettingsScreen';
 import { SetupChecklist, Welcome } from './Onboarding';
 
 const s = (n: number) => (n === 1 ? '' : 's');
@@ -41,6 +42,7 @@ export function ClassRoute({ uid }: { uid: string }) {
 
 function ClassFrame() {
   const { state, actions } = useClass();
+  useSettingsVersion();
   const navigate = useNavigate();
 
   // Removed from the class, or the class was deleted: forget it and go back to My classes.
@@ -62,7 +64,7 @@ function ClassFrame() {
   }, [roomName]);
 
   return (
-    <div className="accented ch-accented class-frame" style={{ '--accent': hexColor(state.room?.accentColor) } as CSSProperties}>
+    <div className="accented ch-accented class-frame" style={{ '--accent': hexColor(myAccent(state.classId) ?? state.room?.accentColor) } as CSSProperties}>
       <Routes>
         <Route index element={<ClassScreen />} />
         <Route path="member/:memberId" element={<MemberDetailScreen />} />
@@ -72,6 +74,7 @@ function ClassFrame() {
         <Route path="settings" element={<ClassSettingsScreen />} />
         <Route path="history" element={<HistoryScreen />} />
         <Route path="mine" element={<MySettingsScreen />} />
+        <Route path="mine/courses" element={<MyCoursesScreen />} />
         <Route path="record/:type" element={<RecordRoute />} />
         <Route path="charge" element={<ChargeStudentsScreen />} />
         <Route path="content/:contentId" element={<ContentFormScreen />} />
@@ -574,16 +577,58 @@ function MembersTab({
 }
 
 function MembersList({ state, canManage, onOpenMember }: { state: ClassState; canManage: boolean; onOpenMember: (id: string) => void }) {
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'ALL' | 'OWES' | 'OFFICERS'>('ALL');
+  const canFilterOwes = state.room?.ledgerEnabled !== false && state.seeAll;
+  const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = byLastName(state.members).filter((m) => {
+    if (filter === 'OWES' && canFilterOwes && state.balanceOf(m.id) >= 0) return false;
+    if (filter === 'OFFICERS') {
+      const role = state.roleOf(m);
+      if (!role || (!role.locked && role.permissions.length === 0)) return false;
+    }
+    if (words.length === 0) return true;
+    const roleName = state.roleOf(m)?.name ?? '';
+    const hay = `${m.name} ${listName(m)} ${roleName}`.toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+  const activeFilter = filter === 'OWES' && !canFilterOwes ? 'ALL' : filter;
   return (
-    <div className="card flush">
-      <div className="small semibold muted" style={{ padding: '0 16px 6px' }}>
-        {state.members.length} member{s(state.members.length)}
-        {canManage ? '  ·  Tap someone to set their role or courses' : ''}
-      </div>
-      <div className="members-grid">
-        {byLastName(state.members).map((member) => (
-          <MemberRow key={member.id} member={member} state={state} isMe={member.id === state.myUid} onClick={() => onOpenMember(member.id)} />
-        ))}
+    <div className="stack">
+      {state.members.length > 0 && (
+        <>
+          <SearchInput aria-label="Search members" placeholder="Search members" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <div className="chips" role="tablist" aria-label="Filter members">
+            {(
+              [
+                ['ALL', 'All'],
+                ...(canFilterOwes ? ([['OWES', 'Owes money']] as const) : []),
+                ['OFFICERS', 'Officers'],
+              ] as const
+            ).map(([id, label]) => (
+              <button key={id} type="button" role="tab" aria-selected={activeFilter === id} className={'chip' + (activeFilter === id ? ' selected' : '')} onClick={() => setFilter(id)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="card flush">
+        <div className="small semibold muted" style={{ padding: '0 16px 6px' }}>
+          {words.length > 0 || activeFilter !== 'ALL'
+            ? `${shown.length} of ${state.members.length} member${s(state.members.length)}`
+            : `${state.members.length} member${s(state.members.length)}`}
+          {canManage ? '  ·  Tap someone to set their role or courses' : ''}
+        </div>
+        {shown.length === 0 ? (
+          <p className="empty" style={{ padding: 20 }}>Nothing matches.</p>
+        ) : (
+          <div className="members-grid">
+            {shown.map((member) => (
+              <MemberRow key={member.id} member={member} state={state} isMe={member.id === state.myUid} onClick={() => onOpenMember(member.id)} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

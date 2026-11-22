@@ -58,8 +58,8 @@ import { weekImage } from './weekImage';
 import { attendanceExportSheets, untakenMeetings } from '../../domain/attendanceExport';
 import { groupNoClass } from '../../domain/noClassGroups';
 import { xlsxFile } from '../../domain/xlsx';
-import { Avatar, ConfirmDialog, CourseDot, Dialog, Field, RoleChip, hexColor, inAndroidApp, saveFile, shortDate, shortDateTime } from '../common';
-import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, Section, StatusBadge, TypeIcon } from '../../design';
+import { Avatar, ConfirmDialog, CourseDot, Dialog, Field, LinkifiedText, RoleChip, hexColor, inAndroidApp, saveFile, shortDate, shortDateTime } from '../common';
+import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, SearchInput, Section, StatusBadge, TypeIcon } from '../../design';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 import { useSearchParams } from 'react-router-dom';
 import { useForum, useForumAnswersSince, useForumAuthors } from '../../data/forum';
@@ -597,7 +597,7 @@ export function NewsTab({ state }: { state: ClassState }) {
             <div className="bold" style={{ fontSize: 18, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
               {p.title}
             </div>
-            {p.body && <div className="prose">{p.body}</div>}
+            {p.body && <div className="prose"><LinkifiedText text={p.body} /></div>}
             <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
               <VoteBar state={state} votes={votes} memberIds={memberIds} targetId={p.id} />
               {(!p.commentsOff || p.commentCount > 0) && (
@@ -737,7 +737,7 @@ function Thread({ state, post, votes, memberIds }: { state: ClassState; post: An
         <div className="ch-muted" style={{ fontStyle: 'italic' }}>Comment removed</div>
       ) : (
         <>
-          <div className="comment-text">{c.text}</div>
+          <div className="comment-text"><LinkifiedText text={c.text} /></div>
           <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
             <VoteBar state={state} votes={votes} memberIds={memberIds} targetId={c.id} />
             {!post.commentsOff && (
@@ -1699,6 +1699,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
   // A meeting marked "No classes" opens without the student list until the officer chooses to take it anyway.
   const [anyway, setAnyway] = useState(false);
   const [removingSheet, setRemovingSheet] = useState(false);
+  const [studentSearch, setStudentSearch] = useState('');
 
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
@@ -1724,6 +1725,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
   useEffect(() => {
     setMarks(marksOf(saved));
     setAnyway(false);
+    setStudentSearch('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
@@ -1956,27 +1958,36 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
           </div>
         )}
 
+        {!hold && students.length > 5 && (
+          <SearchInput aria-label="Find a student" placeholder="Find a student" value={studentSearch} onChange={(e) => setStudentSearch(e.target.value)} />
+        )}
+
         <div className="att-students">
-          {!hold && students.map((m) => (
-            <div key={m.id} className="att-student">
-              <span className="grow">{listName(m)}</span>
-              <span className="att-seg" role="radiogroup" aria-label={`Attendance of ${m.name}`}>
-                {MARKS.map((mark) => (
-                  <button
-                    key={mark}
-                    type="button"
-                    role="radio"
-                    aria-checked={markOf(m.id) === mark}
-                    data-mark={mark}
-                    className={markOf(m.id) === mark ? 'on' : ''}
-                    onClick={() => setMarks({ ...marks, [m.id]: mark })}
-                  >
-                    {MARK_LABELS[mark]}
-                  </button>
-                ))}
-              </span>
-            </div>
-          ))}
+          {!hold && (() => {
+            const q = studentSearch.trim().toLowerCase();
+            const visible = q ? students.filter((m) => `${m.name} ${listName(m)}`.toLowerCase().includes(q)) : students;
+            if (visible.length === 0) return <p className="small muted" style={{ margin: '8px 0' }}>No student matches.</p>;
+            return visible.map((m) => (
+              <div key={m.id} className="att-student">
+                <span className="grow">{listName(m)}</span>
+                <span className="att-seg" role="radiogroup" aria-label={`Attendance of ${m.name}`}>
+                  {MARKS.map((mark) => (
+                    <button
+                      key={mark}
+                      type="button"
+                      role="radio"
+                      aria-checked={markOf(m.id) === mark}
+                      data-mark={mark}
+                      className={markOf(m.id) === mark ? 'on' : ''}
+                      onClick={() => setMarks({ ...marks, [m.id]: mark })}
+                    >
+                      {MARK_LABELS[mark]}
+                    </button>
+                  ))}
+                </span>
+              </div>
+            ));
+          })()}
         </div>
       </div>
     </Dialog>
