@@ -137,12 +137,12 @@ export function GroupingsView({ state }: { state: ClassState }) {
       {groupings && visible.length === 0 && (
         <Notice tone="info">{tag === '*' ? 'No groupings yet.' : 'No groupings for this course.'}</Notice>
       )}
-      {visible.map((grouping, idx) => (
+      {visible.map((grouping) => (
         <GroupingCard
           key={`${grouping.shared ? 's' : 'l'}-${grouping.id}`}
           state={state}
           grouping={grouping}
-          defaultOpen={idx === 0}
+          defaultOpen={false}
           manage={manage}
           onEdit={() => setEditing(grouping)}
           onToggleLock={() =>
