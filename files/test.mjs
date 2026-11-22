@@ -4,7 +4,7 @@
 //   3. node test.mjs
 // It deletes the seeded test class's document at the end (clean-up test): reseed afterwards.
 
-const W = 'http://127.0.0.1:8787';
+const W = process.env.FILES_URL ?? 'http://127.0.0.1:8787';
 const AUTH = 'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1';
 const FS = 'http://127.0.0.1:8080/v1/projects/demo-classhub/databases/(default)/documents';
 const ADMIN = { Authorization: 'Bearer owner', 'Content-Type': 'application/json' };
@@ -107,6 +107,16 @@ await test('usage counts the upload', async () => {
 await test('a web page renamed to .pdf is refused', async () => {
   const r = await up(mayor, classId, 'notes.pdf', new TextEncoder().encode('<html><script>alert(1)</script></html>'));
   expect(r.status, 415, 'status');
+});
+await test('a ZIP uploads; a text file renamed to .zip is refused', async () => {
+  const zip = new Uint8Array(3000).fill(0x20);
+  zip.set([0x50, 0x4b, 0x03, 0x04]); // PK
+  const r = await up(mayor, classId, 'Lab files.zip', zip);
+  expect(r.status, 201, 'status');
+  const done = await r.json();
+  expect(done.mimeType, 'application/zip', 'type');
+  expect((await get(mayor, `/classes/${classId}/files/${done.key}`, 'DELETE')).status, 200, 'clean up');
+  expect((await up(mayor, classId, 'fake.zip', new TextEncoder().encode('not a zip'))).status, 415, 'fake');
 });
 await test('other file types are refused', async () => {
   expect((await up(mayor, classId, 'setup.exe', pdf())).status, 415, '.exe');

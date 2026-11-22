@@ -14,7 +14,7 @@ export const filesEnabled = FILES_URL !== '';
 export const FILE_LIMIT_BYTES = 10 * 1024 * 1024;
 
 /** Extensions the Worker accepts (it also checks each file's first bytes). */
-export const FILE_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'] as const;
+export const FILE_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'zip'] as const;
 /** For the file picker. */
 export const FILE_ACCEPT = FILE_EXTENSIONS.map((e) => `.${e}`).join(',');
 
@@ -65,7 +65,7 @@ export function sizeText(bytes: number): string {
 /** A message when the file cannot be uploaded, before sending it; null when it can. */
 export function checkFile(file: { name: string; size: number }): string | null {
   const ext = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? '';
-  if (!(FILE_EXTENSIONS as readonly string[]).includes(ext)) return 'Only PDF, image, Word, PowerPoint and Excel files can be uploaded.';
+  if (!(FILE_EXTENSIONS as readonly string[]).includes(ext)) return 'Only PDF, image, Word, PowerPoint, Excel and ZIP files can be uploaded.';
   if (file.size === 0) return 'This file is empty.';
   if (file.size > FILE_LIMIT_BYTES) return `This file is ${sizeText(file.size)}. Files can be up to 10 MB. Save it as a smaller PDF, or share it as a Google Drive link.`;
   return null;

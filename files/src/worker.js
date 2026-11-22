@@ -28,6 +28,7 @@ const TYPES = {
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   xls: 'application/vnd.ms-excel',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  zip: 'application/zip',
 };
 
 /** The first bytes each type must start with, so a renamed web page or program is refused. */
@@ -44,6 +45,7 @@ const SIGNATURES = {
   doc: [[0xd0, 0xcf, 0x11, 0xe0]], // old Office
   ppt: [[0xd0, 0xcf, 0x11, 0xe0]],
   xls: [[0xd0, 0xcf, 0x11, 0xe0]],
+  zip: [[0x50, 0x4b, 0x03, 0x04]], // only downloaded, never opened in the browser
 };
 
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
@@ -211,7 +213,7 @@ async function upload(request, env, classId, uid) {
   }
   name = name.replace(/[\u0000-\u001f\u007f/\\]/g, ' ').trim().slice(-150);
   const ext = (name.match(/\.([A-Za-z0-9]+)$/)?.[1] ?? '').toLowerCase();
-  if (!name || !TYPES[ext]) throw new HttpError(415, 'BAD_TYPE', 'Only PDF, image, Word, PowerPoint and Excel files can be uploaded.');
+  if (!name || !TYPES[ext]) throw new HttpError(415, 'BAD_TYPE', 'Only PDF, image, Word, PowerPoint, Excel and ZIP files can be uploaded.');
   const bytes = new Uint8Array(await request.arrayBuffer());
   if (bytes.length === 0) throw new HttpError(400, 'EMPTY', 'This file is empty.');
   if (bytes.length > limit) throw new HttpError(413, 'TOO_BIG', 'Files can be up to 10 MB.');

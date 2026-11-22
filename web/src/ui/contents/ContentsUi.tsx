@@ -506,7 +506,7 @@ function ContentForm({ existing }: { existing: ContentItem | undefined }) {
       )}
       <p className="small muted" style={{ margin: 0 }}>
         {source === 'FILE'
-          ? 'Upload a PDF, picture, Word, PowerPoint or Excel file of up to 10 MB. Only your classmates can open it.'
+          ? 'Upload a PDF, picture, Word, PowerPoint, Excel or ZIP file of up to 10 MB. Only your classmates can open it.'
           : 'Make sure the link is shared with your classmates.'}
       </p>
       {source === 'FILE' && (
