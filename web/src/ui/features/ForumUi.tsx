@@ -322,7 +322,7 @@ function QuestionPage({ state, q, authors, onBack, onPromote }: {
   );
 
   return (
-    <div className="stack">
+    <div className="stack news-feed">
       <BackToForum onBack={onBack} />
       {q.hidden && <Notice tone="warning">Hidden from the class. Only officers see it.</Notice>}
       <Card>

@@ -1757,10 +1757,15 @@ a.list-row:hover {
 }
 
 .prose {
-  max-width: 68ch;
   white-space: pre-wrap;
   line-height: 1.6;
   overflow-wrap: anywhere;
+}
+
+.news-feed {
+  max-width: 740px;
+  width: 100%;
+  margin: 0 auto;
 }
 
 .menu-anchor {
@@ -1910,7 +1915,6 @@ a.list-row:hover {
   color: var(--ch-text);
 }
 .comment-text {
-  max-width: 68ch;
   white-space: pre-wrap;
   line-height: 1.55;
   overflow-wrap: anywhere;

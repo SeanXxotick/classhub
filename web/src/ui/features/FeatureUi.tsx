@@ -552,7 +552,7 @@ export function NewsTab({ state }: { state: ClassState }) {
   const seenBy = (id: string) => seen.filter((s) => s.announcements[id] && state.members.some((m) => m.id === s.id)).length;
 
   return (
-    <div className="stack">
+    <div className="stack news-feed">
       {switcher}
       {manage && (
         <div className="ch-row">
