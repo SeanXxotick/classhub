@@ -242,8 +242,13 @@ export async function linkSharedGrouping(
 
   // This class cannot read the grouping until it is linked, so the write names the code it used and the
   // rules check that the code belongs to this grouping.
-  if ((await getDoc(sharedGroupingLinkRef(db, classId, sharedId)).catch(() => null))?.exists()) {
-    throw new UserError('NAME_MISSING', `${title} is already linked to this class.`);
+  const existingLink = await getDoc(sharedGroupingLinkRef(db, classId, sharedId)).catch(() => null);
+  if (existingLink?.exists()) {
+    const cur = await getDoc(sharedGroupingRef(db, sharedId)).catch(() => null);
+    const linkedIds = (cur?.data()?.linkedClassIds as string[] | undefined) ?? [];
+    if (cur?.exists() && linkedIds.includes(classId)) {
+      throw new UserError('NAME_MISSING', `${title} is already linked to this class.`);
+    }
   }
   const batch = writeBatch(db);
   batch.update(
@@ -257,7 +262,9 @@ export async function linkSharedGrouping(
     new FieldPath('updatedAtMillis'),
     now,
   );
-  batch.set(sharedGroupingLinkRef(db, classId, sharedId), { sharedId, linkedAtMillis: now });
+  if (!existingLink?.exists()) {
+    batch.set(sharedGroupingLinkRef(db, classId, sharedId), { sharedId, linkedAtMillis: now });
+  }
   try {
     await explainRefusal(db, classId, () => batch.commit());
   } catch (e) {
@@ -846,12 +853,16 @@ export function useSharedGroupings(db: Firestore, classId: string, enabled: bool
               next.set(sharedId, null);
             } else {
               const raw = groupingFrom(snap);
-              const myLink = raw.linkedClasses?.[classId];
-              next.set(sharedId, {
-                ...raw,
-                shared: true,
-                courseId: myLink?.courseId ?? '',
-              });
+              if (!(raw.linkedClassIds ?? []).includes(classId)) {
+                next.set(sharedId, null);
+              } else {
+                const myLink = raw.linkedClasses?.[classId];
+                next.set(sharedId, {
+                  ...raw,
+                  shared: true,
+                  courseId: myLink?.courseId ?? '',
+                });
+              }
             }
             return next;
           });
