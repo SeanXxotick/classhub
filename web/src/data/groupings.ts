@@ -17,6 +17,7 @@ import {
   type DocumentData,
   type DocumentSnapshot,
   type Firestore,
+  type WriteBatch,
 } from 'firebase/firestore';
 import {
   GROUPING_MAX_GROUPS,
@@ -314,6 +315,17 @@ export async function linkSharedGrouping(
   return title;
 }
 
+/**
+ * Ending a shared grouping: this class stops trusting the other classes it linked, so they can no longer
+ * send it polls or notifications. Any shared grouping that still links two classes registers them again
+ * when an officer opens it.
+ */
+function forgetPartners(b: WriteBatch, db: Firestore, classId: string, grouping: Grouping): void {
+  for (const id of grouping.linkedClassIds ?? []) {
+    if (id && id !== classId) b.delete(partnerRef(db, classId, id));
+  }
+}
+
 /** Unlinks a partner class from a shared grouping (host officer or partner officer). */
 export async function unlinkSharedGrouping(
   db: Firestore,
@@ -520,6 +532,7 @@ export async function disableGroupingSharing(
         b.delete(sharedGroupingRef(db, grouping.id));
         if (grouping.shareCode) b.delete(groupingInviteRef(db, grouping.shareCode));
         b.delete(sharedGroupingLinkRef(db, classId, grouping.id));
+        forgetPartners(b, db, classId, grouping);
       },
     ),
   );
@@ -696,6 +709,7 @@ export async function deleteGrouping(
           b.delete(sharedGroupingRef(db, grouping.id));
           if (grouping.shareCode) b.delete(groupingInviteRef(db, grouping.shareCode));
           b.delete(sharedGroupingLinkRef(db, classId, grouping.id));
+          forgetPartners(b, db, classId, grouping);
         },
       ),
     );

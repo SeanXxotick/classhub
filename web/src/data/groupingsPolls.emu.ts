@@ -15,6 +15,7 @@ import {
   addGuestTeammate,
   approveJoinRequest,
   createGrouping,
+  deleteGrouping,
   joinGroup,
   leaveGroup,
   linkSharedGrouping,
@@ -163,6 +164,15 @@ describe('groupings', () => {
     expect(await trusted()).toBe(false);
     await expect(notice()).rejects.toBeTruthy();
     expect((await stored(['sharedGroupings', id])).linkedClassIds).toEqual([classId]);
+
+    // The same when the host deletes a shared grouping a class is still linked to.
+    const second = await createGrouping(as(MAYOR.uid), MAYOR.uid, classId, {
+      title: 'Debate teams 2', courseId: '', note: '', groupCount: 1, defaultMaxSize: 3, selfJoin: true, shared: true, className: 'BSIT 3C', sectionTag: 'G1',
+    });
+    await linkSharedGrouping(as(STRANGER.uid), STRANGER.uid, other, 'BSIT 3F', second.shareCode!, 'G4', '');
+    expect(await trusted()).toBe(true);
+    await deleteGrouping(as(MAYOR.uid), MAYOR.uid, classId, { ...(await stored(['sharedGroupings', second.id])), id: second.id, shared: true });
+    expect(await trusted()).toBe(false);
   });
 
   it('an officer saving from an older copy keeps a class that linked in the meantime', async () => {
