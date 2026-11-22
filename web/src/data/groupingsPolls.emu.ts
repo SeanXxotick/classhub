@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app';
-import { collection, connectFirestoreEmulator, doc, getDoc, getDocs, initializeFirestore, setDoc, type Firestore } from 'firebase/firestore';
+import { collection, collectionGroup, connectFirestoreEmulator, doc, getDoc, getDocs, initializeFirestore, query, setDoc, where, type Firestore } from 'firebase/firestore';
 import { decodeGroups, type Grouping } from '../domain/groupingLogic';
 import { createClass } from './classes';
 import { resetDataEnv, setDataEnv } from './dataEnv';
@@ -186,5 +186,29 @@ describe('semester rollover', () => {
     const result = await rolloverClass(as(MAYOR.uid), MAYOR.uid, { room: { ...room, id: classId }, roles, members, balances: new Map() }, { name: 'BSIT 4C', description: '', carryBalances: true, carryPaymentSettings: true });
     const copied = await getDocs(collection(adminDb, 'classes', result.classId, 'members'));
     expect(copied.docs.map((d) => d.id).sort()).toEqual([ANA.uid, BEN.uid, MAYOR.uid].sort());
+  });
+
+  it('removes the half-made class when copying the members fails', async () => {
+    const room = (await getDoc(doc(adminDb, 'classes', classId))).data() as ClassRoom;
+    const roles = (await getDocs(collection(adminDb, 'classes', classId, 'roles'))).docs.map((d) => newRole({ ...(d.data() as Partial<Role>), id: d.id }));
+    const members = (await getDocs(collection(adminDb, 'classes', classId, 'members'))).docs.map((d) => newMember({ ...(d.data() as Partial<Member>), id: d.id }));
+    // Someone who is not in the old class: the rules refuse to copy them, partway through the rollover.
+    const outsider = newMember({ id: 'gpOutsider', uid: 'gpOutsider', name: 'Out Sider', roleId: 'member' });
+    const traces = async () => [
+      (await getDocs(query(collectionGroup(adminDb, 'members'), where('uid', '==', MAYOR.uid)))).size,
+      (await getDocs(query(collectionGroup(adminDb, 'members'), where('uid', '==', ANA.uid)))).size,
+      (await getDocs(collectionGroup(adminDb, 'rollover'))).size,
+      (await getDocs(collectionGroup(adminDb, 'roles'))).size,
+      (await getDocs(collectionGroup(adminDb, 'records'))).size,
+    ];
+    const before = await traces();
+    await expect(
+      rolloverClass(as(MAYOR.uid), MAYOR.uid, { room: { ...room, id: classId }, roles, members: [...members, outsider], balances: new Map([[ANA.uid, 5000]]) }, { name: 'BSIT 9Z', description: '', carryBalances: true, carryPaymentSettings: true }),
+    ).rejects.toBeTruthy();
+    const left = await getDocs(query(collection(adminDb, 'classes'), where('name', '==', 'BSIT 9Z')));
+    expect(left.size).toBe(0);
+    const invites = await getDocs(query(collection(adminDb, 'invites'), where('className', '==', 'BSIT 9Z')));
+    expect(invites.size).toBe(0);
+    expect(await traces()).toEqual(before);
   });
 });
