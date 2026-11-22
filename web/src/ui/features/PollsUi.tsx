@@ -1,6 +1,6 @@
 /*
  * Class Polls (inside the News tab): interactive single/multi-choice polls, optional anonymous voting,
- * percentage bars, and an officer-only "Who hasn't voted" list.
+ * percentage bars, and an officer-only list of who has not voted (not on anonymous polls).
  */
 import { useMemo, useRef, useState } from 'react';
 import { db } from '../../data/firebase';
@@ -125,14 +125,17 @@ function PollCard({
     () => byLastName(poll.courseId ? state.members.filter((m) => !m.excludedCourseIds.includes(poll.courseId)) : state.members),
     [state.members, poll.courseId],
   );
-  const tally = useMemo(
-    () => tallyPoll(poll, votes, eligibleMembers.map((m) => m.id)),
-    [poll, votes, eligibleMembers],
-  );
+  // An anonymous poll's votes are private: its counts come from the poll itself, and only your own ballot loads.
+  const tally = useMemo(() => {
+    if (!poll.anonymous) return tallyPoll(poll, votes, eligibleMembers.map((m) => m.id));
+    const counts = poll.options.map((_, i) => Math.max(0, poll.tally?.[String(i)] ?? 0));
+    const totalVotes = counts.reduce((a, b) => a + b, 0);
+    return { counts, totalVotes, totalVoters: Math.max(0, poll.voters ?? 0), votedUids: new Set<string>(), unvotedUids: [] as string[] };
+  }, [poll, votes, eligibleMembers]);
   const myVote = votes.find((v) => v.uid === state.myUid);
   const myChoices = myVote?.choices ?? [];
   const authorName = state.members.find((m) => m.id === poll.createdByUid)?.name ?? 'An officer';
-  const unvotedMembers = eligibleMembers.filter((m) => !tally.votedUids.has(m.id));
+  const unvotedMembers = poll.anonymous ? [] : eligibleMembers.filter((m) => !tally.votedUids.has(m.id));
   const denom = poll.multi ? Math.max(1, tally.totalVoters) : Math.max(1, tally.totalVotes);
 
   async function pick(index: number) {
@@ -144,7 +147,7 @@ function PollCard({
     }
     setSaving(true);
     try {
-      await castPollVote(db, state.classId, poll.id, state.myUid, next);
+      await castPollVote(db, state.classId, poll, state.myUid, next);
     } catch (e) {
       actions.showNotice(friendlyMessage(e));
     } finally {
@@ -214,7 +217,7 @@ function PollCard({
           </span>
           {manage && unvotedMembers.length > 0 && (
             <button type="button" className="btn text small" onClick={() => setShowUnvoted(!showUnvoted)}>
-              {`Who hasn't voted (${unvotedMembers.length}) ${showUnvoted ? '▴' : '▾'}`}
+              {`Not voted yet (${unvotedMembers.length}) ${showUnvoted ? '▴' : '▾'}`}
             </button>
           )}
         </div>
@@ -222,7 +225,7 @@ function PollCard({
         {manage && showUnvoted && unvotedMembers.length > 0 && (
           <div className="poll-unvoted">
             <span className="tiny bold muted" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Haven't voted yet ({unvotedMembers.length}) · Officers only
+              Not voted yet ({unvotedMembers.length}) · Officers only
             </span>
             <div className="poll-chips">
               {unvotedMembers.map((m) => (

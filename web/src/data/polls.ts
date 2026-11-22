@@ -2,7 +2,7 @@
  * Class Polls (inside the News tab): officers with ANNOUNCEMENTS_MANAGE create, close and delete polls;
  * every class member votes once (or changes/clears their vote while the poll is open).
  */
-import { collection, deleteDoc, doc, getDocs, query, setDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
+import { FieldPath, collection, deleteDoc, doc, getDocs, increment, query, runTransaction, setDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
 import { newId, nowMillis } from './dataEnv';
 import { UserError } from './errors';
 import { commitLogged, logToBatch } from './history';
@@ -26,6 +26,10 @@ export interface Poll {
   /** 0 = no automatic closing time. */
   closesAtMillis: number;
   closed: boolean;
+  /** Anonymous polls: option index to its count, kept by the voters' own writes (checked by the rules). */
+  tally: Record<string, number>;
+  /** Anonymous polls: how many members have voted. */
+  voters: number;
   createdByUid: string;
   createdAtMillis: number;
 }
@@ -40,6 +44,8 @@ export const newPoll = (p: Partial<Poll>): Poll => ({
   anonymous: false,
   closesAtMillis: 0,
   closed: false,
+  tally: {},
+  voters: 0,
   createdByUid: '',
   createdAtMillis: 0,
   ...p,
@@ -64,6 +70,8 @@ export const newPollVote = (v: Partial<PollVote>): PollVote => ({
 
 export const pollsCol = (db: Firestore, classId: string) => collection(db, 'classes', classId, 'polls');
 export const pollVotesCol = (db: Firestore, classId: string) => collection(db, 'classes', classId, 'pollVotes');
+/** Anonymous polls keep each ballot here, readable only by the member who cast it. */
+export const pollBallotsCol = (db: Firestore, classId: string) => collection(db, 'classes', classId, 'pollBallots');
 export const pollVoteId = (pollId: string, uid: string) => `${pollId}_${uid}`;
 
 export interface NewPollInput {
@@ -111,8 +119,33 @@ export async function createPoll(db: Firestore, actorUid: string, classId: strin
   return id;
 }
 
-/** Saves or clears (when choices is empty) a member's vote on an open poll. */
-export async function castPollVote(db: Firestore, classId: string, pollId: string, uid: string, choices: number[]): Promise<void> {
+/**
+ * Saves or clears (when choices is empty) a member's vote on an open poll. On an anonymous poll the ballot is
+ * private and the poll's counts move with it in the same write, so nobody can see who chose what.
+ */
+export async function castPollVote(db: Firestore, classId: string, poll: Poll, uid: string, choices: number[]): Promise<void> {
+  const pollId = poll.id;
+  if (poll.anonymous) {
+    const ballotRef = doc(pollBallotsCol(db, classId), pollVoteId(pollId, uid));
+    const pollRef = doc(pollsCol(db, classId), pollId);
+    await explainRefusal(db, classId, () =>
+      runTransaction(db, async (tx) => {
+        const before = await tx.get(ballotRef);
+        const was: number[] = before.exists() ? ((before.data().choices as number[]) ?? []) : [];
+        const changes: unknown[] = [];
+        for (let i = 0; i < poll.options.length; i++) {
+          const delta = Number(choices.includes(i)) - Number(was.includes(i));
+          if (delta !== 0) changes.push(new FieldPath('tally', String(i)), increment(delta));
+        }
+        const voterDelta = Number(choices.length > 0) - Number(was.length > 0);
+        if (voterDelta !== 0) changes.push(new FieldPath('voters'), increment(voterDelta));
+        if (choices.length === 0) tx.delete(ballotRef);
+        else tx.set(ballotRef, { pollId, uid, choices, votedAtMillis: nowMillis() });
+        if (changes.length > 0) tx.update(pollRef, changes[0] as FieldPath, changes[1], ...changes.slice(2));
+      }),
+    );
+    return;
+  }
   const ref = doc(pollVotesCol(db, classId), pollVoteId(pollId, uid));
   if (choices.length === 0) {
     await explainRefusal(db, classId, () => deleteDoc(ref));
@@ -155,6 +188,14 @@ export function usePolls(db: Firestore, classId: string, enabled: boolean) {
   return { ...live, data: live.data ? [...live.data].sort((a, b) => b.createdAtMillis - a.createdAtMillis) : live.data };
 }
 
-/** All poll votes in the class. */
+/** All votes on polls that are not anonymous. */
 export const usePollVotes = (db: Firestore, classId: string, enabled: boolean) =>
   useQueryList<PollVote>(`v2/pollVotes/${classId}/${enabled}`, enabled ? pollVotesCol(db, classId) : null, (d) => fromDoc(newPollVote({}), d));
+
+/** The signed-in member's own ballots on anonymous polls. */
+export const useMyBallots = (db: Firestore, classId: string, uid: string, enabled: boolean) =>
+  useQueryList<PollVote>(
+    `v2/pollBallots/${classId}/${uid}/${enabled}`,
+    enabled ? query(pollBallotsCol(db, classId), where('uid', '==', uid)) : null,
+    (d) => fromDoc(newPollVote({}), d),
+  );

@@ -2159,6 +2159,171 @@ async function main() {
     await assertSucceeds(lastTiny().commit());
   });
 
+  // ==================================================================== Groupings, shared groupings, polls, rollover
+
+  /** A class seeded with rules off: the owner as Mayor and the given members. */
+  async function seedClass(classId, code, owner, members) {
+    await admin(async (s) => {
+      await createClassBatch(s, owner, { classId, code }).commit();
+      for (const m of members) await setDoc(doc(s, `classes/${classId}/members/${m}`), memberData(m, { approvedByUid: owner }));
+    });
+  }
+
+  const SLOTS = [{ id: 'g1', name: 'Group 1', maxSize: 3 }, { id: 'g2', name: 'Group 2', maxSize: 3 }];
+  /** A grouping in the stored form: Ben sits in Group 1 and leads it. */
+  function groupingData(extra = {}) {
+    return {
+      title: 'Lab groups', courseId: '', note: '', selfJoin: true, locked: false, hasLeader: false,
+      groups: SLOTS, seats: { ben: { g: 'g1', at: 1 } }, meta: {}, leaders: { g1: 'ben' }, requests: {}, guests: {}, act: '',
+      createdByUid: 'gmayor', createdAtMillis: now(), updatedAtMillis: now(), ...extra,
+    };
+  }
+
+  await seedClass('grp', 'GGGGGG', 'gmayor', ['ann', 'ben', 'cat']);
+  await admin(async (s) => {
+    await setDoc(doc(s, 'classes/grp/groupings/open'), groupingData());
+    await setDoc(doc(s, 'classes/grp/groupings/led'), groupingData({ hasLeader: true }));
+  });
+  const grp = (uid, id = 'open') => doc(db(uid), `classes/grp/groupings/${id}`);
+
+  await test('Groupings: a student takes a seat in an empty group and leads it', async () => {
+    await assertSucceeds(updateDoc(grp('ann'), { 'seats.ann': { g: 'g2', at: now() }, 'leaders.g2': 'ann', act: '', updatedAtMillis: now() }));
+  });
+
+  await test('Groupings: a student cannot move or remove a classmate, or take over their lead', async () => {
+    await assertFails(updateDoc(grp('ann'), { 'seats.ben': deleteField(), updatedAtMillis: now() }));
+    await assertFails(updateDoc(grp('ann'), { 'seats.ben': { g: 'g2', at: now() }, updatedAtMillis: now() }));
+    await assertFails(updateDoc(grp('cat'), { 'seats.cat': { g: 'g1', at: now() }, 'leaders.g1': 'cat', updatedAtMillis: now() }));
+    // The nearest allowed change: Cat joins Group 1 without touching its leader.
+    await assertSucceeds(updateDoc(grp('cat'), { 'seats.cat': { g: 'g1', at: now() }, updatedAtMillis: now() }));
+  });
+
+  await test('Groupings: a student cannot rename groups or change their caps', async () => {
+    await assertFails(updateDoc(grp('ann'), { groups: [{ id: 'g1', name: 'Mine', maxSize: 99 }, SLOTS[1]], updatedAtMillis: now() }));
+    await assertSucceeds(updateDoc(doc(db('gmayor'), 'classes/grp/groupings/open'), { groups: [{ id: 'g1', name: 'Mine', maxSize: 4 }, SLOTS[1]], updatedAtMillis: now() }));
+  });
+
+  await test('Groupings: a guest goes only into the student\'s own group, named in act', async () => {
+    const guest = (g) => ({ g, name: 'Irregular', tag: 'G2', by: 'ann', at: now() });
+    await assertFails(updateDoc(grp('ann'), { 'guests.x1': guest('g1'), act: 'x1', updatedAtMillis: now() }));
+    await assertFails(updateDoc(grp('ann'), { 'guests.x1': guest('g2'), act: 'other', updatedAtMillis: now() }));
+    await assertSucceeds(updateDoc(grp('ann'), { 'guests.x1': guest('g2'), act: 'x1', updatedAtMillis: now() }));
+    await assertFails(updateDoc(grp('cat'), { 'guests.x1': deleteField(), act: 'x1', updatedAtMillis: now() }));
+    await assertSucceeds(updateDoc(grp('ann'), { 'guests.x1': deleteField(), act: 'x1', updatedAtMillis: now() }));
+  });
+
+  await test('Groupings: nothing changes for students once the grouping is locked', async () => {
+    await assertSucceeds(updateDoc(doc(db('gmayor'), 'classes/grp/groupings/open'), { locked: true, updatedAtMillis: now() }));
+    await assertFails(updateDoc(grp('ann'), { 'seats.ann': deleteField(), updatedAtMillis: now() }));
+    await assertSucceeds(updateDoc(doc(db('gmayor'), 'classes/grp/groupings/open'), { locked: false, updatedAtMillis: now() }));
+    await assertSucceeds(updateDoc(grp('ann'), { 'seats.ann': deleteField(), 'leaders.g2': deleteField(), updatedAtMillis: now() }));
+  });
+
+  await test('Groupings with leaders: a led group is joined by asking, and only its leader decides', async () => {
+    await assertFails(updateDoc(grp('cat', 'led'), { 'seats.cat': { g: 'g1', at: now() }, updatedAtMillis: now() }));
+    await assertSucceeds(updateDoc(grp('cat', 'led'), { 'requests.cat': { g: 'g1', name: 'Cat', classId: 'grp', tag: '', at: now() }, act: 'cat', updatedAtMillis: now() }));
+    const approve = (uid) => updateDoc(grp(uid, 'led'), { 'seats.cat': { g: 'g1', at: now() }, 'requests.cat': deleteField(), act: 'cat', updatedAtMillis: now() });
+    await assertFails(approve('ann'));
+    await assertFails(updateDoc(grp('ben', 'led'), { 'seats.cat': { g: 'g2', at: now() }, 'requests.cat': deleteField(), act: 'cat', updatedAtMillis: now() }));
+    await assertSucceeds(approve('ben'));
+  });
+
+  // ---- Shared groupings: linking by code
+  await seedClass('grp2', 'HHHHHH', 'pmayor', ['pam']);
+  await admin(async (s) => {
+    const shared = (id, code) => ({
+      ...groupingData({ title: id }), hostClassId: 'grp', shareCode: code, linkedClassIds: ['grp'],
+      linkedClasses: { grp: { name: 'G1', tag: 'G1', courseId: '' } },
+    });
+    const a = shared('sh', 'GRP-AAAAAAAA');
+    const b = shared('other', 'GRP-BBBBBBBB');
+    delete a.courseId;
+    delete b.courseId;
+    await setDoc(doc(s, 'sharedGroupings/sh'), a);
+    await setDoc(doc(s, 'sharedGroupings/other'), b);
+    await setDoc(doc(s, 'groupingInvites/GRP-AAAAAAAA'), { sharedId: 'sh', title: 'sh', hostClassId: 'grp', hostClassName: 'G1' });
+    await setDoc(doc(s, 'groupingInvites/GRP-BBBBBBBB'), { sharedId: 'other', title: 'other', hostClassId: 'grp', hostClassName: 'G1' });
+  });
+  const link = (uid, code, extra = {}) =>
+    updateDoc(doc(db(uid), 'sharedGroupings/sh'), {
+      linkedClassIds: ['grp', 'grp2'], 'linkedClasses.grp2': { name: 'G2', tag: 'G2', courseId: '' }, linkCode: code, updatedAtMillis: now(), ...extra,
+    });
+
+  await test('Shared groupings: a partner class links only with this grouping\'s own code', async () => {
+    await assertFails(getDoc(doc(db('pmayor'), 'sharedGroupings/sh')));
+    await assertFails(link('pmayor', 'GRP-BBBBBBBB'));
+    await assertFails(link('pmayor', 'GRP-NOSUCH1'));
+    await assertFails(link('pmayor', 'GRP-AAAAAAAA', { 'linkedClasses.grp': { name: 'Renamed', tag: 'X', courseId: '' } }));
+    await assertFails(link('pam', 'GRP-AAAAAAAA'));
+    await assertSucceeds(link('pmayor', 'GRP-AAAAAAAA'));
+    await assertSucceeds(getDoc(doc(db('pam'), 'sharedGroupings/sh')));
+  });
+
+  await test('Shared groupings: a partner student changes only their own seat', async () => {
+    const sh = (uid) => doc(db(uid), 'sharedGroupings/sh');
+    await assertFails(updateDoc(sh('pam'), { 'seats.ben': deleteField(), updatedAtMillis: now() }));
+    await assertSucceeds(updateDoc(sh('pam'), { 'seats.pam': { g: 'g2', at: now() }, 'leaders.g2': 'pam', 'meta.pam': { name: 'Pam', classId: 'grp2', tag: 'G2' }, updatedAtMillis: now() }));
+  });
+
+  // ---- Anonymous polls
+  await admin(async (s) => {
+    const poll = (anonymous) => ({
+      question: 'When?', options: ['Mon', 'Tue', 'Wed'], courseId: '', multi: false, maxChoices: 1, anonymous,
+      closesAtMillis: 0, closed: false, tally: {}, voters: 0, createdByUid: 'gmayor', createdAtMillis: now(),
+    });
+    await setDoc(doc(s, 'classes/grp/polls/anon'), poll(true));
+    await setDoc(doc(s, 'classes/grp/polls/open'), poll(false));
+  });
+  const ballot = (uid, choices) => ({ pollId: 'anon', uid, choices, votedAtMillis: now() });
+  const vote = (uid, choices, tally, voters) => {
+    const s = db(uid);
+    const b = writeBatch(s);
+    b.set(doc(s, `classes/grp/pollBallots/anon_${uid}`), ballot(uid, choices));
+    const counts = Object.fromEntries(Object.entries(tally).map(([k, v]) => [`tally.${k}`, increment(v)]));
+    if (Object.keys(counts).length || voters) b.update(doc(s, 'classes/grp/polls/anon'), { ...counts, ...(voters ? { voters: increment(voters) } : {}) });
+    return b.commit();
+  };
+
+  await test('Anonymous polls: the count moves by exactly the ballot, and ballots stay private', async () => {
+    await assertFails(vote('ann', [1], {}, 0));
+    await assertFails(vote('ann', [1], { 1: 2 }, 1));
+    await assertFails(vote('ann', [1], { 0: 1 }, 1));
+    await assertSucceeds(vote('ann', [1], { 1: 1 }, 1));
+    await assertFails(getDoc(doc(db('ben'), 'classes/grp/pollBallots/anon_ann')));
+    await assertFails(getDoc(doc(db('gmayor'), 'classes/grp/pollBallots/anon_ann')));
+    await assertSucceeds(getDoc(doc(db('ann'), 'classes/grp/pollBallots/anon_ann')));
+    await assertSucceeds(vote('ann', [2], { 1: -1, 2: 1 }, 0));
+    const p = await assertSucceeds(getDoc(doc(db('ben'), 'classes/grp/polls/anon')));
+    expect(p.data().tally['1'] === 0 && p.data().tally['2'] === 1 && p.data().voters === 1, 'tally should be {1: 0, 2: 1}, 1 voter');
+  });
+
+  await test('Anonymous polls: no open vote document, and nobody edits the count on its own', async () => {
+    await assertFails(setDoc(doc(db('ben'), 'classes/grp/pollVotes/anon_ben'), ballot('ben', [0])));
+    await assertFails(updateDoc(doc(db('ben'), 'classes/grp/polls/anon'), { 'tally.0': increment(5) }));
+    await assertSucceeds(setDoc(doc(db('ben'), 'classes/grp/pollVotes/open_ben'), { ...ballot('ben', [0]), pollId: 'open' }));
+  });
+
+  // ---- Semester rollover
+  await seedClass('oldsem', 'OOOOOO', 'rmayor', ['dan']);
+  await seedClass('elsewhere', 'EEEEEE', 'xmayor', ['eve']);
+
+  await test('Rollover: the Mayor copies members of the class being rolled over, and nobody else', async () => {
+    const m = db('rmayor');
+    const b = createClassBatch(m, 'rmayor', { classId: 'newsem', code: 'NNNNNN' });
+    b.set(doc(m, 'classes/newsem/rollover/source'), { fromClassId: 'oldsem' });
+    await assertSucceeds(b.commit());
+    const copy = (uid) => setDoc(doc(m, `classes/newsem/members/${uid}`), { uid, name: nameOf(uid), roleId: 'member', joinedAtMillis: now(), excludedCourseIds: [], approvedByUid: 'rmayor' });
+    await assertFails(copy('eve'));
+    await assertSucceeds(copy('dan'));
+  });
+
+  await test('Rollover: a class cannot claim to come from someone else\'s class', async () => {
+    const x = db('xmayor');
+    const b = createClassBatch(x, 'xmayor', { classId: 'fake', code: 'FFFFFF' });
+    b.set(doc(x, 'classes/fake/rollover/source'), { fromClassId: 'oldsem' });
+    await assertFails(b.commit());
+  });
+
   await env.cleanup();
 
   // ---------------------------------------------------------------- Report

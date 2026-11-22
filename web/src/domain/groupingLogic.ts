@@ -386,3 +386,143 @@ export function formatGroupingExport(
   }
   return lines.join('\n');
 }
+
+// ------------------------------------------------------------------ Stored form
+
+/*
+ * How a grouping's groups are stored. The group slots (name and cap) are a list only officers change.
+ * Who sits where, join requests, leaders and guests are maps keyed by student, group or guest, so the
+ * security rules can check that a student changes only their own entries.
+ */
+export interface StoredSlot {
+  id: string;
+  name: string;
+  maxSize: number;
+}
+
+export interface GroupMaps {
+  groups: StoredSlot[];
+  /** Student uid to their group and when they took the seat (keeps the join order). */
+  seats: Record<string, { g: string; at: number }>;
+  /** Shared groupings: each student's name and section, so partner classes can show them. */
+  meta: Record<string, MemberMeta>;
+  /** Group id to its leader's uid. */
+  leaders: Record<string, string>;
+  /** Student uid to the group they asked to join. */
+  requests: Record<string, { g: string; name: string; classId: string; tag: string; at: number }>;
+  /** Guest id to the guest. */
+  guests: Record<string, { g: string; name: string; tag: string; by: string; at: number }>;
+}
+
+const MAP_KEYS = ['seats', 'meta', 'leaders', 'requests', 'guests'] as const;
+export type GroupMapKey = (typeof MAP_KEYS)[number];
+export const GROUP_MAP_KEYS: readonly GroupMapKey[] = MAP_KEYS;
+
+const asRecord = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+const str = (v: unknown) => (typeof v === 'string' ? v : '');
+const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+
+/** True when a stored grouping still keeps members inside its group list (written before the maps). */
+export function isLegacyGrouping(raw: Record<string, unknown>): boolean {
+  return !('seats' in raw);
+}
+
+/** The groups as the screens use them, from the stored document (either form). */
+export function decodeGroups(raw: Record<string, unknown>): GroupSlot[] {
+  const list = Array.isArray(raw.groups) ? (raw.groups as Record<string, unknown>[]) : [];
+  if (isLegacyGrouping(raw)) {
+    return list.map((g) => ({
+      ...(g as unknown as GroupSlot),
+      id: str(g.id),
+      name: str(g.name),
+      maxSize: num(g.maxSize),
+      memberUids: Array.isArray(g.memberUids) ? (g.memberUids as string[]) : [],
+      guests: Array.isArray(g.guests) ? (g.guests as GuestMember[]) : [],
+    }));
+  }
+  const seats = asRecord(raw.seats);
+  const meta = asRecord(raw.meta);
+  const leaders = asRecord(raw.leaders);
+  const requests = asRecord(raw.requests);
+  const guests = asRecord(raw.guests);
+  const byAt = (a: [string, unknown], b: [string, unknown]) => num(asRecord(a[1]).at) - num(asRecord(b[1]).at) || a[0].localeCompare(b[0]);
+  return list.map((slot) => {
+    const id = str(slot.id);
+    const inSlot = (m: Record<string, unknown>) => Object.entries(m).filter(([, v]) => str(asRecord(v).g) === id).sort(byAt);
+    const memberUids = inSlot(seats).map(([uid]) => uid);
+    const metaHere = Object.fromEntries(memberUids.filter((u) => u in meta).map((u) => [u, asRecord(meta[u]) as unknown as MemberMeta]));
+    const leaderUid = str(leaders[id]);
+    const joinRequests: GroupJoinRequest[] = inSlot(requests).map(([uid, v]) => {
+      const r = asRecord(v);
+      return { uid, name: str(r.name), classId: str(r.classId), tag: str(r.tag), requestedAtMillis: num(r.at) };
+    });
+    const slotGuests: GuestMember[] = inSlot(guests).map(([gid, v]) => {
+      const x = asRecord(v);
+      return { id: gid, name: str(x.name), tag: str(x.tag), addedByUid: str(x.by) };
+    });
+    return {
+      id,
+      name: str(slot.name),
+      maxSize: num(slot.maxSize),
+      memberUids,
+      ...(Object.keys(metaHere).length > 0 ? { memberMeta: metaHere } : {}),
+      ...(leaderUid ? { leaderUid } : {}),
+      ...(joinRequests.length > 0 ? { joinRequests } : {}),
+      guests: slotGuests,
+    };
+  });
+}
+
+/**
+ * The stored form of `groups`. Seats and guests that stay where they were keep their time, so the join
+ * order does not change; new ones get `now` (plus their place, to keep several in order).
+ */
+export function encodeGroups(groups: GroupSlot[], prev: GroupMaps | null, now: number): GroupMaps {
+  const out: GroupMaps = { groups: [], seats: {}, meta: {}, leaders: {}, requests: {}, guests: {} };
+  let n = 0;
+  for (const g of groups) {
+    out.groups.push({ id: g.id, name: g.name, maxSize: g.maxSize });
+    for (const uid of g.memberUids) {
+      const before = prev?.seats[uid];
+      out.seats[uid] = { g: g.id, at: before && before.g === g.id ? before.at : now + n++ };
+      const m = g.memberMeta?.[uid];
+      if (m) out.meta[uid] = { name: m.name, classId: m.classId, tag: m.tag };
+    }
+    if (g.leaderUid && g.memberUids.includes(g.leaderUid)) out.leaders[g.id] = g.leaderUid;
+    for (const r of g.joinRequests ?? []) {
+      if (!out.requests[r.uid]) out.requests[r.uid] = { g: g.id, name: r.name, classId: r.classId, tag: r.tag, at: r.requestedAtMillis };
+    }
+    for (const x of g.guests) {
+      const before = prev?.guests[x.id];
+      out.guests[x.id] = { g: g.id, name: x.name, tag: x.tag, by: x.addedByUid, at: before && before.g === g.id ? before.at : now + n++ };
+    }
+  }
+  return out;
+}
+
+/** The stored maps of a document in the new form (empty ones for a legacy document). */
+export function storedMaps(raw: Record<string, unknown>): GroupMaps {
+  const pick = <T,>(k: string) => asRecord(raw[k]) as T;
+  return {
+    groups: (Array.isArray(raw.groups) ? (raw.groups as Record<string, unknown>[]) : []).map((g) => ({ id: str(g.id), name: str(g.name), maxSize: num(g.maxSize) })),
+    seats: pick('seats'),
+    meta: pick('meta'),
+    leaders: pick('leaders'),
+    requests: pick('requests'),
+    guests: pick('guests'),
+  };
+}
+
+/** Each map entry that differs between two stored forms: [map, key, new value or undefined when removed]. */
+export function changedEntries(before: GroupMaps, after: GroupMaps): [GroupMapKey, string, unknown][] {
+  const out: [GroupMapKey, string, unknown][] = [];
+  for (const k of MAP_KEYS) {
+    const a = before[k] as Record<string, unknown>;
+    const b = after[k] as Record<string, unknown>;
+    for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+      if (!(key in b)) out.push([k, key, undefined]);
+      else if (JSON.stringify(a[key]) !== JSON.stringify(b[key])) out.push([k, key, b[key]]);
+    }
+  }
+  return out;
+}

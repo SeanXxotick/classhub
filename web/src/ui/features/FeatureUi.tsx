@@ -63,7 +63,7 @@ import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, SearchInp
 import { useClass, type ClassState } from '../classroom/ClassContext';
 import { useSearchParams } from 'react-router-dom';
 import { useForum, useForumAnswersSince, useForumAuthors } from '../../data/forum';
-import { usePolls, usePollVotes } from '../../data/polls';
+import { useMyBallots, usePolls, usePollVotes } from '../../data/polls';
 import { isPollOpen } from '../../domain/pollLogic';
 import { forumUnseen } from '../../domain/forumUnseen';
 import { ForumView, TagBadge, TagSelect } from './ForumUi';
@@ -496,7 +496,9 @@ export function NewsTab({ state }: { state: ClassState }) {
   const questions = useForum(db, state.classId, manage, true).data;
   const authors = useForumAuthors(db, state.classId, state.myUid, manage, true).data ?? [];
   const polls = usePolls(db, state.classId, true).data;
-  const pollVotes = usePollVotes(db, state.classId, inPolls).data ?? [];
+  const openVotes = usePollVotes(db, state.classId, inPolls).data;
+  const myBallots = useMyBallots(db, state.classId, state.myUid, inPolls).data;
+  const pollVotes = useMemo(() => [...(openVotes ?? []), ...(myBallots ?? [])], [openVotes, myBallots]);
   const openPollsCount = useMemo(
     () => (polls ?? []).filter((p) => (manage || state.takes(p.courseId)) && isPollOpen(p, Date.now())).length,
     [polls, manage, state],

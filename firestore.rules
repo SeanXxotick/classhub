@@ -282,6 +282,96 @@ service cloud.firestore {
       );
     }
 
+    // ---- What a student may change on a grouping (local or shared). Seats, join requests, leaders and guests
+    // are kept in maps keyed by student, group or guest, so the rules can see exactly whose entry changed.
+    // The app names the entry it means in 'act' (a guest id, or the student a leader decides on).
+    // Group sizes are not checked here: rules cannot count, so the app keeps groups within their caps.
+
+    function groupMap(d, k) {
+      return d.get(k, {});
+    }
+
+    function seatOf(d, u) {
+      return groupMap(d, 'seats').get(u, {}).get('g', '');
+    }
+
+    function mapChanges(k) {
+      return groupMap(request.resource.data, k).diff(groupMap(resource.data, k)).affectedKeys();
+    }
+
+    function leaderOf(d, g) {
+      return groupMap(d, 'leaders').get(g, '');
+    }
+
+    // With group leaders on, only the leader manages the group's guests.
+    function mayManageGuests(g) {
+      return g != '' && (resource.data.get('hasLeader', false) != true || leaderOf(resource.data, g) == uid());
+    }
+
+    function isOwnGuestEdit(g0, g1) {
+      let k = request.resource.data.get('act', '');
+      let after = groupMap(request.resource.data, 'guests');
+      let before = groupMap(resource.data, 'guests');
+      return mapChanges('guests').size() == 0
+        || (mapChanges('guests').hasOnly([k])
+          && ((k in after && after[k].get('by', '') == uid() && after[k].get('g', '') == g1 && mayManageGuests(g1))
+            || (!(k in after) && k in before && before[k].get('g', '') == g0 && mayManageGuests(g0))));
+    }
+
+    // Leaders: the student may hand over or drop the lead of the group they leave or stay in, and take the
+    // lead of the group they join when it has no leader yet.
+    function isOwnLeaderEdit(g0, g1) {
+      let lead = mapChanges('leaders');
+      return lead.hasOnly([g0, g1])
+        && (!(g0 in lead) || leaderOf(resource.data, g0) == uid())
+        && (!(g1 in lead) || leaderOf(resource.data, g1) == uid()
+            || (leaderOf(resource.data, g1) == '' && leaderOf(request.resource.data, g1) == uid()));
+    }
+
+    // A student joins, switches, leaves, asks to join, adds or removes a guest, or passes the lead.
+    function isOwnGroupEdit() {
+      let g0 = seatOf(resource.data, uid());
+      let g1 = seatOf(request.resource.data, uid());
+      return mapChanges('seats').hasOnly([uid()])
+        && mapChanges('meta').hasOnly([uid()])
+        && mapChanges('requests').hasOnly([uid()])
+        && (resource.data.selfJoin == true
+            || (mapChanges('seats').size() == 0 && mapChanges('requests').size() == 0 && mapChanges('guests').size() == 0))
+        // With leaders on, a group that has a leader is joined by asking, not directly.
+        && (g1 == g0 || g1 == '' || resource.data.get('hasLeader', false) != true || leaderOf(resource.data, g1) == '')
+        && isOwnLeaderEdit(g0, g1)
+        && isOwnGuestEdit(g0, g1);
+    }
+
+    // A group leader approves or turns down one student's request to join their group.
+    function isLeaderDecision() {
+      let r = request.resource.data.get('act', '');
+      let g = groupMap(resource.data, 'requests').get(r, {}).get('g', '');
+      return r != '' && r != uid() && g != ''
+        && leaderOf(resource.data, g) == uid()
+        && !(r in groupMap(request.resource.data, 'requests'))
+        && mapChanges('requests').hasOnly([r])
+        && mapChanges('seats').hasOnly([r])
+        && (!(r in mapChanges('seats')) || seatOf(request.resource.data, r) == g)
+        && mapChanges('meta').hasOnly([r])
+        && mapChanges('leaders').size() == 0
+        && mapChanges('guests').size() == 0;
+    }
+
+    // Any member's change while the grouping is open: their own entries, or a leader's decision.
+    function isStudentGroupEdit() {
+      return resource.data.locked == false
+        && (resource.data.selfJoin == true || resource.data.get('hasLeader', false) == true)
+        && changesOnly(['seats', 'meta', 'leaders', 'requests', 'guests', 'act', 'updatedAtMillis'])
+        && isRecentMillis(request.resource.data.updatedAtMillis)
+        && (isOwnGroupEdit() || isLeaderDecision());
+    }
+
+    function groupingMapsOk(d) {
+      return d.get('seats', {}) is map && d.get('meta', {}) is map && d.get('leaders', {}) is map
+        && d.get('requests', {}) is map && d.get('guests', {}) is map && d.get('act', '') is string;
+    }
+
     match /groupingInvites/{code} {
       allow get: if signedIn();
       allow list: if false;
@@ -295,12 +385,30 @@ service cloud.firestore {
       allow delete: if signedIn() && can(resource.data.hostClassId, 'MEMBERS_MANAGE');
     }
 
+    function isLinkByCode(sharedId) {
+      let d = request.resource.data;
+      let added = d.linkedClassIds[d.linkedClassIds.size() - 1];
+      let invite = /databases/$(database)/documents/groupingInvites/$(d.get('linkCode', '-'));
+      return changesOnly(['linkedClassIds', 'linkedClasses', 'linkCode', 'updatedAtMillis'])
+        && d.linkedClassIds is list
+        && d.linkedClassIds.size() == resource.data.linkedClassIds.size() + 1
+        && d.linkedClassIds.size() <= 4
+        && d.linkedClassIds.hasAll(resource.data.linkedClassIds)
+        && !(added in resource.data.linkedClassIds)
+        && can(added, 'MEMBERS_MANAGE')
+        && d.linkedClasses is map
+        && d.linkedClasses.diff(resource.data.linkedClasses).affectedKeys().hasOnly([added])
+        && exists(invite)
+        && get(invite).data.sharedId == sharedId
+        && isRecentMillis(d.updatedAtMillis);
+    }
+
     match /sharedGroupings/{sharedId} {
       allow get: if isSharedGroupingMember(resource.data.linkedClassIds);
       allow list: if false;
       allow create: if signedIn()
         && request.resource.data.keys().hasAll(['title', 'note', 'hostClassId', 'shareCode', 'linkedClassIds', 'linkedClasses', 'selfJoin', 'locked', 'groups', 'createdByUid', 'createdAtMillis', 'updatedAtMillis'])
-        && request.resource.data.keys().hasOnly(['title', 'note', 'hostClassId', 'shareCode', 'linkedClassIds', 'linkedClasses', 'selfJoin', 'locked', 'hasLeader', 'groups', 'createdByUid', 'createdAtMillis', 'updatedAtMillis', 'id'])
+        && request.resource.data.keys().hasOnly(['title', 'note', 'hostClassId', 'shareCode', 'linkedClassIds', 'linkedClasses', 'selfJoin', 'locked', 'hasLeader', 'groups', 'seats', 'meta', 'leaders', 'requests', 'guests', 'act', 'linkCode', 'createdByUid', 'createdAtMillis', 'updatedAtMillis', 'id'])
         && request.resource.data.get('id', '') == ''
         && request.resource.data.get('hasLeader', false) is bool
         && can(request.resource.data.hostClassId, 'MEMBERS_MANAGE')
@@ -312,6 +420,7 @@ service cloud.firestore {
         && request.resource.data.linkedClassIds.size() == 1
         && request.resource.data.linkedClassIds[0] == request.resource.data.hostClassId
         && request.resource.data.linkedClasses is map
+        && groupingMapsOk(request.resource.data)
         && request.resource.data.selfJoin is bool
         && request.resource.data.locked is bool
         && request.resource.data.groups is list
@@ -323,9 +432,10 @@ service cloud.firestore {
       allow update: if signedIn() && (
         // Any officer of a linked class updates details, lock, leader mode, groups, or unlinks a partner class.
         (isSharedGroupingManager(resource.data.linkedClassIds)
-          && changesOnly(['title', 'note', 'linkedClassIds', 'linkedClasses', 'selfJoin', 'locked', 'hasLeader', 'groups', 'updatedAtMillis'])
+          && changesOnly(['title', 'note', 'linkedClassIds', 'linkedClasses', 'selfJoin', 'locked', 'hasLeader', 'groups', 'seats', 'meta', 'leaders', 'requests', 'guests', 'act', 'updatedAtMillis'])
           && isFilled(request.resource.data.title, 120)
           && isText(request.resource.data.note, 300)
+          && groupingMapsOk(request.resource.data)
           && request.resource.data.linkedClassIds is list
           && request.resource.data.linkedClassIds.size() >= 1
           && request.resource.data.linkedClassIds.size() <= 4
@@ -338,23 +448,11 @@ service cloud.firestore {
           && request.resource.data.groups.size() >= 1
           && request.resource.data.groups.size() <= 50
           && isRecentMillis(request.resource.data.updatedAtMillis))
-        // A partner class officer links their own class via the share code.
-        || (changesOnly(['linkedClassIds', 'linkedClasses', 'updatedAtMillis'])
-          && request.resource.data.linkedClassIds is list
-          && request.resource.data.linkedClassIds.size() == resource.data.linkedClassIds.size() + 1
-          && request.resource.data.linkedClassIds.size() <= 4
-          && request.resource.data.linkedClassIds.hasAll(resource.data.linkedClassIds)
-          && can(request.resource.data.linkedClassIds[request.resource.data.linkedClassIds.size() - 1], 'MEMBERS_MANAGE')
-          && request.resource.data.linkedClasses is map
-          && isRecentMillis(request.resource.data.updatedAtMillis))
-        // Any member of a linked class joins/leaves, adds/removes guests, or passes leadership while unlocked.
-        || (isSharedGroupingMember(resource.data.linkedClassIds)
-          && (resource.data.selfJoin == true || resource.data.get('hasLeader', false) == true)
-          && resource.data.locked == false
-          && changesOnly(['groups', 'updatedAtMillis'])
-          && request.resource.data.groups is list
-          && request.resource.data.groups.size() == resource.data.groups.size()
-          && isRecentMillis(request.resource.data.updatedAtMillis))
+        // A partner class officer links their own class with the share code: the code's invite must point at
+        // this grouping, the class is added at the end, and only that class's own entry in linkedClasses changes.
+        || isLinkByCode(sharedId)
+        // Any member of a linked class changes their own seat, request or guests, or a leader decides a request.
+        || (isSharedGroupingMember(resource.data.linkedClassIds) && isStudentGroupEdit())
       );
       allow delete: if signedIn() && can(resource.data.hostClassId, 'MEMBERS_MANAGE');
     }
@@ -510,7 +608,10 @@ service cloud.firestore {
     function isRolloverMember(c, memberId) {
       let d = request.resource.data;
       let room = get(classPath(c)).data;
+      let from = get(/databases/$(database)/documents/classes/$(c)/rollover/source).data.fromClassId;
       return isOwner(c)
+        && get(classPath(from)).data.ownerUid == uid()
+        && exists(memberPath(from, memberId))
         && isOpen(c)
         && memberId != uid()
         && (request.time.toMillis() - room.createdAtMillis) < 300000
@@ -1336,10 +1437,52 @@ service cloud.firestore {
       }
 
       // ---- Polls (in News). Created and closed/deleted by News officers; every member may vote.
+      function pollPath(c, pollId) {
+        return /databases/$(database)/documents/classes/$(c)/polls/$(pollId);
+      }
+
+      function isPollOpen(c, pollId) {
+        let p = get(pollPath(c, pollId)).data;
+        return p.closed == false && (p.closesAtMillis == 0 || p.closesAtMillis > request.time.toMillis());
+      }
+
+      function isBallotPoll(c, pollId) {
+        return get(pollPath(c, pollId)).data.get('anonymous', false) == true && isPollOpen(c, pollId);
+      }
+
+      // 1 when option i is in the list.
+      function picks(list, i) {
+        return i in list ? 1 : 0;
+      }
+
+      // The count of option i moves by exactly what this member's ballot added or removed.
+      function optionMoved(before, after, was, now, i) {
+        return after.get(string(i), 0) == before.get(string(i), 0) + picks(now, i) - picks(was, i);
+      }
+
+      // The poll's tally and voter count match the change to the signed-in member's ballot in this batch.
+      function isTallyMatched(c, pollId) {
+        let ballot = /databases/$(database)/documents/classes/$(c)/pollBallots/$(pollId + '_' + uid());
+        let was = exists(ballot) ? get(ballot).data.choices : [];
+        let now = existsAfter(ballot) ? getAfter(ballot).data.choices : [];
+        let before = get(pollPath(c, pollId)).data.get('tally', {});
+        let after = getAfter(pollPath(c, pollId)).data.get('tally', {});
+        return optionMoved(before, after, was, now, 0) && optionMoved(before, after, was, now, 1)
+          && optionMoved(before, after, was, now, 2) && optionMoved(before, after, was, now, 3)
+          && optionMoved(before, after, was, now, 4) && optionMoved(before, after, was, now, 5)
+          && optionMoved(before, after, was, now, 6) && optionMoved(before, after, was, now, 7)
+          && optionMoved(before, after, was, now, 8) && optionMoved(before, after, was, now, 9)
+          && after.keys().hasOnly(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
+          && getAfter(pollPath(c, pollId)).data.get('voters', 0)
+            == get(pollPath(c, pollId)).data.get('voters', 0) + (now.size() > 0 ? 1 : 0) - (was.size() > 0 ? 1 : 0);
+      }
+
       match /polls/{pollId} {
         allow read: if isMember(classId);
         allow create: if can(classId, 'ANNOUNCEMENTS_MANAGE') && isOpen(classId)
-          && hasFields(request.resource.data, ['question', 'options', 'courseId', 'multi', 'maxChoices', 'anonymous', 'closesAtMillis', 'closed', 'createdByUid', 'createdAtMillis'])
+          && request.resource.data.keys().hasAll(['question', 'options', 'courseId', 'multi', 'maxChoices', 'anonymous', 'closesAtMillis', 'closed', 'createdByUid', 'createdAtMillis'])
+          && request.resource.data.keys().hasOnly(['question', 'options', 'courseId', 'multi', 'maxChoices', 'anonymous', 'closesAtMillis', 'closed', 'tally', 'voters', 'createdByUid', 'createdAtMillis', 'id'])
+          && request.resource.data.get('id', '') == ''
           && isFilled(request.resource.data.question, 150)
           && request.resource.data.options is list
           && request.resource.data.options.size() >= 2
@@ -1352,15 +1495,54 @@ service cloud.firestore {
           && request.resource.data.anonymous is bool
           && request.resource.data.closesAtMillis is int
           && request.resource.data.closed == false
+          && request.resource.data.get('tally', {}) == {}
+          && request.resource.data.get('voters', 0) == 0
           && request.resource.data.createdByUid == uid()
           && isRecentMillis(request.resource.data.createdAtMillis);
-        allow update: if can(classId, 'ANNOUNCEMENTS_MANAGE') && isOpen(classId)
-          && changesOnly(['closed'])
-          && request.resource.data.closed is bool;
+        allow update: if (can(classId, 'ANNOUNCEMENTS_MANAGE') && isOpen(classId)
+            && changesOnly(['closed'])
+            && request.resource.data.closed is bool)
+          || (isMember(classId) && isOpen(classId)
+            && resource.data.get('anonymous', false) == true
+            && changesOnly(['tally', 'voters'])
+            && isTallyMatched(classId, pollId));
         allow delete: if can(classId, 'ANNOUNCEMENTS_MANAGE') || isOwnerClosing(classId);
       }
 
-      // One vote document per member per poll: id is {pollId}_{uid}.
+      // Where a semester class came from (written with the new class; it lets the Mayor copy that class's members).
+      match /rollover/{docId} {
+        allow read: if isMember(classId);
+        allow create: if docId == 'source'
+          && isNewClassOwner(classId)
+          && request.resource.data.keys().hasOnly(['fromClassId'])
+          && isId(request.resource.data.fromClassId)
+          && get(classPath(request.resource.data.fromClassId)).data.ownerUid == uid();
+        allow delete: if isOwnerClosing(classId);
+      }
+
+      // Anonymous polls: each member's ballot is readable only by them, and the poll's 'tally' (option index
+      // to count) and 'voters' move with it in the same batch, by exactly what the ballot added and removed.
+      match /pollBallots/{ballotId} {
+        // A ballot not cast yet reads as missing (the app checks before voting); nobody reads another's.
+        allow get: if signedIn() && (resource == null || resource.data.uid == uid());
+        allow list: if (signedIn() && resource.data.uid == uid()) || isOwnerClosing(classId);
+        allow create, update: if isMember(classId) && isOpen(classId)
+          && hasFields(request.resource.data, ['pollId', 'uid', 'choices', 'votedAtMillis'])
+          && request.resource.data.uid == uid()
+          && ballotId == request.resource.data.pollId + '_' + uid()
+          && isBallotPoll(classId, request.resource.data.pollId)
+          && request.resource.data.choices is list
+          && request.resource.data.choices.size() >= 1
+          && request.resource.data.choices.size() <= get(pollPath(classId, request.resource.data.pollId)).data.maxChoices
+          && isRecentMillis(request.resource.data.votedAtMillis)
+          && isTallyMatched(classId, request.resource.data.pollId);
+        allow delete: if (signedIn() && resource.data.uid == uid()
+            && isBallotPoll(classId, resource.data.pollId) && isTallyMatched(classId, resource.data.pollId))
+          || can(classId, 'ANNOUNCEMENTS_MANAGE')
+          || isOwnerClosing(classId);
+      }
+
+      // One vote document per member per poll: id is {pollId}_{uid}. Only for polls that are not anonymous.
       match /pollVotes/{voteId} {
         allow read: if isMember(classId);
         allow create, update: if isMember(classId) && isOpen(classId)
@@ -1371,9 +1553,8 @@ service cloud.firestore {
           && request.resource.data.choices is list
           && request.resource.data.choices.size() >= 1
           && request.resource.data.choices.size() <= get(/databases/$(database)/documents/classes/$(classId)/polls/$(request.resource.data.pollId)).data.maxChoices
-          && get(/databases/$(database)/documents/classes/$(classId)/polls/$(request.resource.data.pollId)).data.closed == false
-          && (get(/databases/$(database)/documents/classes/$(classId)/polls/$(request.resource.data.pollId)).data.closesAtMillis == 0
-              || get(/databases/$(database)/documents/classes/$(classId)/polls/$(request.resource.data.pollId)).data.closesAtMillis > request.time.toMillis())
+          && get(pollPath(classId, request.resource.data.pollId)).data.get('anonymous', false) == false
+          && isPollOpen(classId, request.resource.data.pollId)
           && isRecentMillis(request.resource.data.votedAtMillis);
         allow delete: if (isMember(classId) && resource.data.uid == uid())
           || can(classId, 'ANNOUNCEMENTS_MANAGE')
@@ -1386,7 +1567,8 @@ service cloud.firestore {
         allow read: if isMember(classId);
         allow create: if can(classId, 'MEMBERS_MANAGE') && isOpen(classId)
           && request.resource.data.keys().hasAll(['title', 'courseId', 'note', 'selfJoin', 'locked', 'groups', 'createdByUid', 'createdAtMillis', 'updatedAtMillis'])
-          && request.resource.data.keys().hasOnly(['title', 'courseId', 'note', 'selfJoin', 'locked', 'hasLeader', 'groups', 'createdByUid', 'createdAtMillis', 'updatedAtMillis', 'id'])
+          && request.resource.data.keys().hasOnly(['title', 'courseId', 'note', 'selfJoin', 'locked', 'hasLeader', 'groups', 'seats', 'meta', 'leaders', 'requests', 'guests', 'act', 'createdByUid', 'createdAtMillis', 'updatedAtMillis', 'id'])
+          && groupingMapsOk(request.resource.data)
           && request.resource.data.get('id', '') == ''
           && request.resource.data.get('hasLeader', false) is bool
           && isFilled(request.resource.data.title, 120)
@@ -1402,7 +1584,8 @@ service cloud.firestore {
           && isRecentMillis(request.resource.data.updatedAtMillis);
         allow update: if isOpen(classId) && (
           (can(classId, 'MEMBERS_MANAGE')
-            && changesOnly(['title', 'courseId', 'note', 'selfJoin', 'locked', 'hasLeader', 'groups', 'updatedAtMillis'])
+            && changesOnly(['title', 'courseId', 'note', 'selfJoin', 'locked', 'hasLeader', 'groups', 'seats', 'meta', 'leaders', 'requests', 'guests', 'act', 'updatedAtMillis'])
+            && groupingMapsOk(request.resource.data)
             && isFilled(request.resource.data.title, 120)
             && isText(request.resource.data.courseId, 128)
             && isText(request.resource.data.note, 300)
@@ -1413,13 +1596,7 @@ service cloud.firestore {
             && request.resource.data.groups.size() >= 1
             && request.resource.data.groups.size() <= 50
             && isRecentMillis(request.resource.data.updatedAtMillis))
-          || (isMember(classId)
-            && (resource.data.selfJoin == true || resource.data.get('hasLeader', false) == true)
-            && resource.data.locked == false
-            && changesOnly(['groups', 'updatedAtMillis'])
-            && request.resource.data.groups is list
-            && request.resource.data.groups.size() == resource.data.groups.size()
-            && isRecentMillis(request.resource.data.updatedAtMillis))
+          || (isMember(classId) && isStudentGroupEdit())
         );
         allow delete: if can(classId, 'MEMBERS_MANAGE') || isOwnerClosing(classId);
       }

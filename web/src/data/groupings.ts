@@ -5,11 +5,17 @@
  */
 import { useEffect, useState } from 'react';
 import {
+  FieldPath,
+  arrayUnion,
   collection,
+  deleteField,
   doc,
   getDoc,
   onSnapshot,
   runTransaction,
+  writeBatch,
+  type DocumentData,
+  type DocumentSnapshot,
   type Firestore,
 } from 'firebase/firestore';
 import {
@@ -24,7 +30,12 @@ import {
   approveGroupJoinRequest,
   autoAssignMembers,
   buildInitialGroups,
+  changedEntries,
+  decodeGroups,
   effectiveLeaderUid,
+  encodeGroups,
+  isLegacyGrouping,
+  storedMaps,
   moveMemberToGroup,
   newGrouping,
   passGroupLeadership,
@@ -42,7 +53,7 @@ import { newId, nowMillis } from './dataEnv';
 import { UserError } from './errors';
 import { commitLogged } from './history';
 import { fromDoc, useQueryList } from './live';
-import { explainRefusal, withoutId } from './paths';
+import { explainRefusal } from './paths';
 
 export {
   GROUPING_MAX_GROUPS,
@@ -67,6 +78,19 @@ export const sharedGroupingLinkRef = (db: Firestore, classId: string, sharedId: 
 export const sharedGroupingRef = (db: Firestore, sharedId: string) => doc(db, 'sharedGroupings', sharedId);
 export const groupingInviteRef = (db: Firestore, code: string) => doc(db, 'groupingInvites', code);
 
+/** A grouping as the screens use it, from its stored document. */
+function groupingFrom(snap: DocumentSnapshot<DocumentData>): Grouping {
+  const raw = (snap.data() ?? {}) as Record<string, unknown>;
+  const g = fromDoc(newGrouping({}), snap) as Grouping & Record<string, unknown>;
+  for (const k of ['seats', 'meta', 'leaders', 'requests', 'guests', 'act', 'linkCode']) delete g[k];
+  return { ...g, groups: decodeGroups(raw) };
+}
+
+/** The fields that hold a new grouping's groups. */
+function storedGroups(groups: GroupSlot[], now: number) {
+  return { ...encodeGroups(groups, null, now), act: '' };
+}
+
 function targetRef(db: Firestore, classId: string, groupingId: string, shared?: boolean) {
   return shared ? sharedGroupingRef(db, groupingId) : groupingRef(db, classId, groupingId);
 }
@@ -74,7 +98,8 @@ function targetRef(db: Firestore, classId: string, groupingId: string, shared?: 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function makeShareCode(): string {
   let out = 'GRP-';
-  for (let i = 0; i < 4; i++) out += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  for (const b of bytes) out += CODE_CHARS[b % CODE_CHARS.length];
   return out;
 }
 
@@ -134,7 +159,7 @@ export async function createGrouping(
       selfJoin: input.selfJoin,
       locked: false,
       hasLeader: !!input.hasLeader,
-      groups,
+      ...storedGroups(groups, now),
       createdByUid: actorUid,
       createdAtMillis: now,
       updatedAtMillis: now,
@@ -159,24 +184,24 @@ export async function createGrouping(
     return { id, shareCode };
   }
 
-  const grouping = newGrouping({
+  const grouping = {
     title,
     courseId: input.courseId,
     note,
     selfJoin: input.selfJoin,
     locked: false,
     hasLeader: !!input.hasLeader,
-    groups,
+    ...storedGroups(groups, now),
     createdByUid: actorUid,
     createdAtMillis: now,
     updatedAtMillis: now,
-  });
+  };
   await explainRefusal(db, classId, () =>
     commitLogged(
       db,
       classId,
       { actorUid, kind: 'GROUPING_CREATED', text: `Created the grouping "${title}" (${groups.length} groups)` },
-      (b) => b.set(groupingRef(db, classId, id), withoutId(grouping)),
+      (b) => b.set(groupingRef(db, classId, id), grouping),
     ),
   );
   return { id };
@@ -202,38 +227,31 @@ export async function linkSharedGrouping(
   const tag = sectionTag.trim().slice(0, GUEST_TAG_MAX) || cleanName.slice(0, GUEST_TAG_MAX);
   const now = nowMillis();
 
-  await explainRefusal(db, classId, () =>
-    runTransaction(db, async (tx) => {
-      const ref = sharedGroupingRef(db, sharedId);
-      const snap = await tx.get(ref);
-      if (!snap.exists()) throw new UserError('CLASS_GONE', 'That shared grouping was deleted.');
-      const data = snap.data() as {
-        linkedClassIds?: string[];
-        linkedClasses?: Record<string, SharedClassLink>;
-      };
-      const ids = Array.isArray(data.linkedClassIds) ? [...data.linkedClassIds] : [];
-      if (ids.includes(classId)) {
-        // Already linked — ensure local pointer exists
-        tx.set(sharedGroupingLinkRef(db, classId, sharedId), { sharedId, linkedAtMillis: now });
-        return;
-      }
-      if (ids.length >= SHARED_MAX_CLASSES) {
-        throw new UserError('NAME_MISSING', `A shared grouping can link at most ${SHARED_MAX_CLASSES} classes.`);
-      }
-      const nextIds = [...ids, classId];
-      const nextClasses = {
-        ...(data.linkedClasses ?? {}),
-        [classId]: {
-          name: cleanName,
-          tag,
-          courseId,
-          ...(accentColor ? { accentColor } : {}),
-        },
-      };
-      tx.update(ref, { linkedClassIds: nextIds, linkedClasses: nextClasses, updatedAtMillis: now });
-      tx.set(sharedGroupingLinkRef(db, classId, sharedId), { sharedId, linkedAtMillis: now });
-    }),
+  // This class cannot read the grouping until it is linked, so the write names the code it used and the
+  // rules check that the code belongs to this grouping.
+  if ((await getDoc(sharedGroupingLinkRef(db, classId, sharedId)).catch(() => null))?.exists()) {
+    throw new UserError('NAME_MISSING', `${title} is already linked to this class.`);
+  }
+  const batch = writeBatch(db);
+  batch.update(
+    sharedGroupingRef(db, sharedId),
+    new FieldPath('linkedClassIds'),
+    arrayUnion(classId),
+    new FieldPath('linkedClasses', classId),
+    { name: cleanName, tag, courseId, ...(accentColor ? { accentColor } : {}) },
+    new FieldPath('linkCode'),
+    code,
+    new FieldPath('updatedAtMillis'),
+    now,
   );
+  batch.set(sharedGroupingLinkRef(db, classId, sharedId), { sharedId, linkedAtMillis: now });
+  try {
+    await explainRefusal(db, classId, () => batch.commit());
+  } catch (e) {
+    if (e instanceof UserError) throw e;
+    // The grouping was deleted, or it already links the most classes it can.
+    throw new UserError('NO_PERMISSION', `That grouping could not be linked. It may have been deleted, or it already links ${SHARED_MAX_CLASSES} classes.`);
+  }
 
   await commitLogged(
     db,
@@ -446,13 +464,16 @@ async function mutateGroups(
   groupingId: string,
   shared: boolean | undefined,
   mutate: (current: Grouping) => GroupSlot[],
+  /** The entry this change is about: a guest id, or the student a leader decides on. */
+  act = '',
 ): Promise<void> {
   await explainRefusal(db, classId, () =>
     runTransaction(db, async (tx) => {
       const ref = targetRef(db, classId, groupingId, shared);
       const snap = await tx.get(ref);
       if (!snap.exists()) throw new UserError('CLASS_GONE', 'This grouping was deleted.');
-      const current = fromDoc(newGrouping({}), snap);
+      const raw = (snap.data() ?? {}) as Record<string, unknown>;
+      const current = groupingFrom(snap);
       let nextGroups: GroupSlot[];
       try {
         nextGroups = mutate(current);
@@ -460,7 +481,20 @@ async function mutateGroups(
         if (e instanceof UserError) throw e;
         throw new UserError('NAME_MISSING', e instanceof Error ? e.message : 'Could not update group.');
       }
-      tx.update(ref, { groups: nextGroups, updatedAtMillis: nowMillis() });
+      const now = nowMillis();
+      const before = storedMaps(raw);
+      const after = encodeGroups(nextGroups, isLegacyGrouping(raw) ? null : before, now);
+      if (isLegacyGrouping(raw)) {
+        // Written before the maps: an officer's change stores it in the new form.
+        tx.update(ref, { ...after, act, updatedAtMillis: now });
+        return;
+      }
+      const pairs: unknown[] = [new FieldPath('act'), act];
+      if (JSON.stringify(before.groups) !== JSON.stringify(after.groups)) pairs.push(new FieldPath('groups'), after.groups);
+      for (const [map, key, value] of changedEntries(before, after)) {
+        pairs.push(new FieldPath(map, key), value === undefined ? deleteField() : value);
+      }
+      tx.update(ref, new FieldPath('updatedAtMillis'), now, ...pairs);
     }),
   );
 }
@@ -523,7 +557,7 @@ export async function requestJoinGroup(
       tag: shared ? tag : '',
       requestedAtMillis: nowMillis(),
     });
-  });
+  }, uid);
 }
 
 /** Cancels the signed-in student's own pending join request. */
@@ -538,7 +572,7 @@ export async function cancelJoinRequest(
   await mutateGroups(db, classId, groupingId, shared, (g) => {
     if (g.locked) throw new UserError('NO_PERMISSION', 'This grouping is locked.');
     return removeGroupJoinRequest(g.groups, targetGroupId, uid);
-  });
+  }, uid);
 }
 
 /** Approves a pending join request (only the group's appointed leader or an officer). */
@@ -561,7 +595,7 @@ export async function approveJoinRequest(
       }
     }
     return approveGroupJoinRequest(g.groups, groupId, requesterUid, asOfficer);
-  });
+  }, requesterUid);
 }
 
 /** Rejects a pending join request (only the group's appointed leader or an officer). */
@@ -584,7 +618,7 @@ export async function rejectJoinRequest(
       }
     }
     return removeGroupJoinRequest(g.groups, groupId, requesterUid);
-  });
+  }, requesterUid);
 }
 
 /** Removes a student from their group (self-leave or officer remove). */
@@ -616,6 +650,7 @@ export async function addGuestTeammate(
   asOfficer = false,
   shared?: boolean,
 ): Promise<void> {
+  const guestId = newId().slice(0, 10);
   await mutateGroups(db, classId, groupingId, shared, (g) => {
     if (!asOfficer) {
       if (g.locked || !g.selfJoin) {
@@ -629,13 +664,8 @@ export async function addGuestTeammate(
         throw new UserError('NO_PERMISSION', 'Only the group leader can add guests.');
       }
     }
-    return addGuestToGroup(
-      g.groups,
-      groupId,
-      { id: newId().slice(0, 10), name, tag, addedByUid: actorUid },
-      asOfficer,
-    );
-  });
+    return addGuestToGroup(g.groups, groupId, { id: guestId, name, tag, addedByUid: actorUid }, asOfficer);
+  }, guestId);
 }
 
 /** Removes a guest teammate from a group. */
@@ -663,7 +693,7 @@ export async function removeGuestTeammate(
       }
     }
     return removeGuestFromGroup(g.groups, groupId, guestId);
-  });
+  }, guestId);
 }
 
 /** Adds a new group slot to an existing grouping (MEMBERS_MANAGE). */
@@ -744,7 +774,7 @@ export function useLocalGroupings(db: Firestore, classId: string, enabled: boole
   return useQueryList<Grouping>(
     `v2/groupings/${classId}/${enabled}`,
     enabled ? groupingsCol(db, classId) : null,
-    (d) => fromDoc(newGrouping({}), d),
+    groupingFrom,
   );
 }
 
@@ -774,7 +804,7 @@ export function useSharedGroupings(db: Firestore, classId: string, enabled: bool
             if (!snap.exists()) {
               next.set(sharedId, null);
             } else {
-              const raw = fromDoc(newGrouping({}), snap);
+              const raw = groupingFrom(snap);
               const myLink = raw.linkedClasses?.[classId];
               next.set(sharedId, {
                 ...raw,

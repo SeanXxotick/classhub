@@ -3,7 +3,7 @@
  * the current class's roles, members, optional closing balances (as OPENING records), and optional
  * payment settings. The old class stays intact as an archive.
  */
-import { getDoc, writeBatch, type Firestore } from 'firebase/firestore';
+import { doc, getDoc, writeBatch, type Firestore } from 'firebase/firestore';
 import { ClassRules } from '../domain/classRules';
 import { Ledger } from '../domain/ledger';
 import { DefaultRoles } from '../domain/permissions';
@@ -97,6 +97,8 @@ export async function rolloverClass(db: Firestore, ownerUid: string, source: Rol
     withoutId(newMember({ uid: ownerUid, name: ownerName, roleId: ROLE_MAYOR, joinedAtMillis: now })),
   );
   first.set(inviteRef(db, code), { classId, className: newRoom.name });
+  // Where this class came from: the rules let the Mayor copy only that class's members.
+  first.set(doc(db, 'classes', classId, 'rollover', 'source'), { fromClassId: source.room.id });
   await first.commit();
 
   // 2. Copy all other members (keeping their role and sortName; courses start fresh).
