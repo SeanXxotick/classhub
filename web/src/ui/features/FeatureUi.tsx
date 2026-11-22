@@ -496,20 +496,27 @@ export function NewsTab({ state }: { state: ClassState }) {
   const questions = useForum(db, state.classId, manage, true).data;
   const authors = useForumAuthors(db, state.classId, state.myUid, manage, true).data ?? [];
   const localPolls = usePolls(db, state.classId, true).data;
-  const sharedPolls = useSharedPolls(db, state.classId, state.myUid, true, inPolls);
+  const sharedPolls = useSharedPolls(db, state.classId, state.myUid, true, true);
   const polls = useMemo(() => {
     if (!localPolls) return sharedPolls.polls.length > 0 ? sharedPolls.polls : undefined;
     return [...localPolls, ...sharedPolls.polls].sort((a, b) => b.createdAtMillis - a.createdAtMillis);
   }, [localPolls, sharedPolls.polls]);
-  const openVotes = usePollVotes(db, state.classId, inPolls).data;
-  const myBallots = useMyBallots(db, state.classId, state.myUid, inPolls).data;
+  const openVotes = usePollVotes(db, state.classId, true).data;
+  const myBallots = useMyBallots(db, state.classId, state.myUid, true).data;
   const pollVotes = useMemo(
     () => [...(openVotes ?? []), ...(myBallots ?? []), ...sharedPolls.votes],
     [openVotes, myBallots, sharedPolls.votes],
   );
+  const myVotedPollIds = useMemo(
+    () => new Set(pollVotes.filter((v) => v.uid === state.myUid && v.choices.length > 0).map((v) => v.pollId)),
+    [pollVotes, state.myUid],
+  );
   const openPollsCount = useMemo(
-    () => (polls ?? []).filter((p) => (manage || p.shared || state.takes(p.courseId)) && isPollOpen(p, Date.now())).length,
-    [polls, manage, state],
+    () =>
+      (polls ?? []).filter(
+        (p) => (p.shared || state.takes(p.courseId)) && isPollOpen(p, Date.now()) && !myVotedPollIds.has(p.id),
+      ).length,
+    [polls, state, myVotedPollIds],
   );
   const [tag, setTag] = useState('*');
   const posts = allPosts?.filter((p) => tag === '*' || p.courseId === tag);
