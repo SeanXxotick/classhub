@@ -1,7 +1,8 @@
 /*
  * Pure domain logic for Project & Lab Groupings (inside the Members tab).
- * Supports per-group capacities (e.g. 10 and 11 in the same grouping),
- * guest teammates from other sections (G2) or irregulars, and plain-text export.
+ * Supports single-class groupings, cross-class shared groupings (e.g. G1 + G2),
+ * per-group capacities (e.g. 10 and 11 in the same grouping),
+ * guest teammates (Irregulars), and plain-text export.
  */
 
 export const GROUPING_TITLE_MAX = 120;
@@ -10,6 +11,7 @@ export const GROUP_NAME_MAX = 60;
 export const GUEST_NAME_MAX = 60;
 export const GUEST_TAG_MAX = 24;
 export const GROUPING_MAX_GROUPS = 50;
+export const SHARED_MAX_CLASSES = 4;
 
 export interface GuestMember {
   id: string;
@@ -19,19 +21,34 @@ export interface GuestMember {
   addedByUid: string;
 }
 
+export interface MemberMeta {
+  name: string;
+  classId: string;
+  /** Short section label like "G1" or "G2". */
+  tag: string;
+}
+
+export interface SharedClassLink {
+  name: string;
+  tag: string;
+  courseId: string;
+}
+
 export interface GroupSlot {
   id: string;
   name: string;
   /** Maximum total members (ClassHub members + guests). 0 means unlimited. */
   maxSize: number;
   memberUids: string[];
+  /** Stored for shared groupings so partner classes see names & section tags without reading each other's rosters. */
+  memberMeta?: Record<string, MemberMeta>;
   guests: GuestMember[];
 }
 
 export interface Grouping {
   id: string;
   title: string;
-  /** Course id, or '' for the whole class. */
+  /** Course id for the viewing class, or '' for the whole class. */
   courseId: string;
   note: string;
   selfJoin: boolean;
@@ -40,6 +57,12 @@ export interface Grouping {
   createdByUid: string;
   createdAtMillis: number;
   updatedAtMillis: number;
+  /** Present when this grouping is a top-level shared cross-class grouping. */
+  shared?: boolean;
+  hostClassId?: string;
+  shareCode?: string;
+  linkedClassIds?: string[];
+  linkedClasses?: Record<string, SharedClassLink>;
 }
 
 export const newGrouping = (g: Partial<Grouping>): Grouping => ({
@@ -93,13 +116,14 @@ export function ungroupedMemberIds(
 
 /**
  * Places `uid` into `targetGroupId`, removing them from any other group in the same grouping.
- * Throws an Error message if the target group does not exist or is already full (unless `ignoreCap` is true).
+ * Optionally stores `meta` (display name + section tag) for cross-class shared groupings.
  */
 export function moveMemberToGroup(
   groups: GroupSlot[],
   uid: string,
   targetGroupId: string,
   ignoreCap = false,
+  meta?: MemberMeta,
 ): GroupSlot[] {
   const target = groups.find((g) => g.id === targetGroupId);
   if (!target) throw new Error('That group no longer exists.');
@@ -107,18 +131,46 @@ export function moveMemberToGroup(
   if (!ignoreCap && isGroupFull(target)) {
     throw new Error(`${target.name} is already full.`);
   }
+  // Preserve existing meta if moving an already-placed member without new meta
+  let carryMeta = meta;
+  if (!carryMeta) {
+    for (const g of groups) {
+      if (g.memberMeta?.[uid]) {
+        carryMeta = g.memberMeta[uid];
+        break;
+      }
+    }
+  }
   return groups.map((g) => {
     const without = g.memberUids.filter((id) => id !== uid);
-    if (g.id !== targetGroupId) return without.length === g.memberUids.length ? g : { ...g, memberUids: without };
-    return { ...g, memberUids: [...without, uid] };
+    const nextMeta = g.memberMeta ? { ...g.memberMeta } : undefined;
+    if (nextMeta && uid in nextMeta && g.id !== targetGroupId) delete nextMeta[uid];
+    if (g.id !== targetGroupId) {
+      return without.length === g.memberUids.length
+        ? g
+        : { ...g, memberUids: without, ...(nextMeta ? { memberMeta: nextMeta } : {}) };
+    }
+    const targetMeta = carryMeta ? { ...(nextMeta ?? {}), [uid]: carryMeta } : nextMeta;
+    return {
+      ...g,
+      memberUids: [...without, uid],
+      ...(targetMeta ? { memberMeta: targetMeta } : {}),
+    };
   });
 }
 
 /** Removes `uid` from whichever group they belong to. */
 export function removeMemberFromGroups(groups: GroupSlot[], uid: string): GroupSlot[] {
-  return groups.map((g) =>
-    g.memberUids.includes(uid) ? { ...g, memberUids: g.memberUids.filter((id) => id !== uid) } : g,
-  );
+  return groups.map((g) => {
+    if (!g.memberUids.includes(uid)) return g;
+    const nextMeta = g.memberMeta ? { ...g.memberMeta } : undefined;
+    if (nextMeta) delete nextMeta[uid];
+    return {
+      ...g,
+      memberUids: g.memberUids.filter((id) => id !== uid),
+      ...(nextMeta ? { memberMeta: nextMeta } : {}),
+    };
+  });
 }
 
 /** Adds a guest teammate to a specific group, checking duplicates and capacity. */
@@ -158,8 +210,13 @@ export function removeGuestFromGroup(groups: GroupSlot[], groupId: string, guest
 export function autoAssignMembers(
   groups: GroupSlot[],
   uids: string[],
+  metaFor?: (uid: string) => MemberMeta | undefined,
 ): { groups: GroupSlot[]; assigned: number } {
-  const next = groups.map((g) => ({ ...g, memberUids: [...g.memberUids] }));
+  const next = groups.map((g) => ({
+    ...g,
+    memberUids: [...g.memberUids],
+    ...(g.memberMeta ? { memberMeta: { ...g.memberMeta } } : {}),
+  }));
   let assigned = 0;
   for (const uid of uids) {
     if (next.some((g) => g.memberUids.includes(uid))) continue;
@@ -167,6 +224,10 @@ export function autoAssignMembers(
     if (open.length === 0) break;
     open.sort((a, b) => groupSize(a) - groupSize(b));
     open[0].memberUids.push(uid);
+    const meta = metaFor?.(uid);
+    if (meta) {
+      open[0].memberMeta = { ...(open[0].memberMeta ?? {}), [uid]: meta };
+    }
     assigned++;
   }
   return { groups: next, assigned };
@@ -196,7 +257,7 @@ export function buildInitialGroups(
 export function formatGroupingExport(
   grouping: Grouping,
   courseName: string,
-  memberNameOf: (uid: string) => string,
+  memberNameOf: (uid: string, slot: GroupSlot) => string,
 ): string {
   const header = courseName ? `${grouping.title} (${courseName})` : grouping.title;
   const lines: string[] = [header];
@@ -206,7 +267,13 @@ export function formatGroupingExport(
     const cap = g.maxSize > 0 ? `${total}/${g.maxSize}` : `${total}`;
     lines.push('', `${g.name} (${cap})`);
     const roster: string[] = [
-      ...g.memberUids.map((uid) => memberNameOf(uid)).sort((a, b) => a.localeCompare(b)),
+      ...g.memberUids
+        .map((uid) => {
+          const base = memberNameOf(uid, g);
+          const tag = grouping.shared ? g.memberMeta?.[uid]?.tag : '';
+          return tag ? `${base} (${tag})` : base;
+        })
+        .sort((a, b) => a.localeCompare(b)),
       ...g.guests.map((guest) => (guest.tag ? `${guest.name} (${guest.tag})` : guest.name)),
     ];
     if (roster.length === 0) {

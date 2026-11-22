@@ -2844,3 +2844,59 @@ button.helpers-head {
   flex-direction: column;
   gap: 4px;
 }
+.grp-linked-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--ch-surface-2);
+  border: 1px solid var(--ch-border);
+}
+.grp-sec-tag {
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 1px 7px;
+  border-radius: 999px;
+  flex: none;
+}
+.grp-sec-tag.c0 {
+  background: color-mix(in srgb, var(--ch-primary) 15%, transparent);
+  color: var(--ch-primary-text);
+}
+.grp-sec-tag.c1 {
+  background: var(--ch-info-soft);
+  color: var(--ch-info);
+}
+.grp-sec-tag.c2 {
+  background: var(--ch-warning-soft);
+  color: var(--ch-warning);
+}
+.grp-sec-tag.c3 {
+  background: var(--ch-success-soft);
+  color: var(--ch-success);
+}
+.grp-code-pill {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 3px 9px;
+  border-radius: 8px;
+  background: var(--ch-surface);
+  border: 1px solid var(--ch-border-strong);
+  color: var(--ch-text);
+  cursor: pointer;
+}
+.grp-code-hero {
+  text-align: center;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--ch-surface-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}

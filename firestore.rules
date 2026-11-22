@@ -262,6 +262,99 @@ service cloud.firestore {
       allow delete: if can(resource.data.classId, 'MEMBERS_MANAGE');
     }
 
+    // ============================================================ Shared cross-class groupings (G1 + G2, up to 4 classes)
+
+    function isSharedGroupingMember(ids) {
+      return ids is list && (
+        (ids.size() > 0 && isMember(ids[0]))
+        || (ids.size() > 1 && isMember(ids[1]))
+        || (ids.size() > 2 && isMember(ids[2]))
+        || (ids.size() > 3 && isMember(ids[3]))
+      );
+    }
+
+    function isSharedGroupingManager(ids) {
+      return ids is list && (
+        (ids.size() > 0 && can(ids[0], 'MEMBERS_MANAGE'))
+        || (ids.size() > 1 && can(ids[1], 'MEMBERS_MANAGE'))
+        || (ids.size() > 2 && can(ids[2], 'MEMBERS_MANAGE'))
+        || (ids.size() > 3 && can(ids[3], 'MEMBERS_MANAGE'))
+      );
+    }
+
+    match /groupingInvites/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll(['sharedId', 'title', 'hostClassId', 'hostClassName'])
+        && request.resource.data.keys().hasOnly(['sharedId', 'title', 'hostClassId', 'hostClassName'])
+        && isId(request.resource.data.sharedId)
+        && isFilled(request.resource.data.title, 120)
+        && isFilled(request.resource.data.hostClassName, 100)
+        && can(request.resource.data.hostClassId, 'MEMBERS_MANAGE');
+      allow delete: if signedIn() && can(resource.data.hostClassId, 'MEMBERS_MANAGE');
+    }
+
+    match /sharedGroupings/{sharedId} {
+      allow get: if isSharedGroupingMember(resource.data.linkedClassIds);
+      allow list: if false;
+      allow create: if signedIn()
+        && hasFields(request.resource.data, ['title', 'note', 'hostClassId', 'shareCode', 'linkedClassIds', 'linkedClasses', 'selfJoin', 'locked', 'groups', 'createdByUid', 'createdAtMillis', 'updatedAtMillis'])
+        && can(request.resource.data.hostClassId, 'MEMBERS_MANAGE')
+        && isOpen(request.resource.data.hostClassId)
+        && isFilled(request.resource.data.title, 120)
+        && isText(request.resource.data.note, 300)
+        && isId(request.resource.data.shareCode)
+        && request.resource.data.linkedClassIds is list
+        && request.resource.data.linkedClassIds.size() == 1
+        && request.resource.data.linkedClassIds[0] == request.resource.data.hostClassId
+        && request.resource.data.linkedClasses is map
+        && request.resource.data.selfJoin is bool
+        && request.resource.data.locked is bool
+        && request.resource.data.groups is list
+        && request.resource.data.groups.size() >= 1
+        && request.resource.data.groups.size() <= 50
+        && request.resource.data.createdByUid == uid()
+        && isRecentMillis(request.resource.data.createdAtMillis)
+        && isRecentMillis(request.resource.data.updatedAtMillis);
+      allow update: if signedIn() && (
+        // Any officer of a linked class updates details, lock, groups, or unlinks a partner class.
+        (isSharedGroupingManager(resource.data.linkedClassIds)
+          && changesOnly(['title', 'note', 'linkedClassIds', 'linkedClasses', 'selfJoin', 'locked', 'groups', 'updatedAtMillis'])
+          && isFilled(request.resource.data.title, 120)
+          && isText(request.resource.data.note, 300)
+          && request.resource.data.linkedClassIds is list
+          && request.resource.data.linkedClassIds.size() >= 1
+          && request.resource.data.linkedClassIds.size() <= 4
+          && request.resource.data.hostClassId in request.resource.data.linkedClassIds
+          && request.resource.data.linkedClasses is map
+          && request.resource.data.selfJoin is bool
+          && request.resource.data.locked is bool
+          && request.resource.data.groups is list
+          && request.resource.data.groups.size() >= 1
+          && request.resource.data.groups.size() <= 50
+          && isRecentMillis(request.resource.data.updatedAtMillis))
+        // A partner class officer links their own class via the share code.
+        || (changesOnly(['linkedClassIds', 'linkedClasses', 'updatedAtMillis'])
+          && request.resource.data.linkedClassIds is list
+          && request.resource.data.linkedClassIds.size() == resource.data.linkedClassIds.size() + 1
+          && request.resource.data.linkedClassIds.size() <= 4
+          && request.resource.data.linkedClassIds.hasAll(resource.data.linkedClassIds)
+          && can(request.resource.data.linkedClassIds[request.resource.data.linkedClassIds.size() - 1], 'MEMBERS_MANAGE')
+          && request.resource.data.linkedClasses is map
+          && isRecentMillis(request.resource.data.updatedAtMillis))
+        // Any member of a linked class joins/leaves or adds/removes guests while selfJoin is open and unlocked.
+        || (isSharedGroupingMember(resource.data.linkedClassIds)
+          && resource.data.selfJoin == true
+          && resource.data.locked == false
+          && changesOnly(['groups', 'updatedAtMillis'])
+          && request.resource.data.groups is list
+          && request.resource.data.groups.size() == resource.data.groups.size()
+          && isRecentMillis(request.resource.data.updatedAtMillis))
+      );
+      allow delete: if signedIn() && can(resource.data.hostClassId, 'MEMBERS_MANAGE');
+    }
+
     // ============================================================ "My classes"
 
     // The list of a user's classes is a collection-group query on members (and on joinRequests for the
@@ -1320,6 +1413,16 @@ service cloud.firestore {
             && request.resource.data.groups.size() == resource.data.groups.size()
             && isRecentMillis(request.resource.data.updatedAtMillis))
         );
+        allow delete: if can(classId, 'MEMBERS_MANAGE') || isOwnerClosing(classId);
+      }
+
+      // Pointers to top-level /sharedGroupings/{sharedId} linked to this class.
+      match /sharedGroupingLinks/{sharedId} {
+        allow read: if isMember(classId);
+        allow create: if can(classId, 'MEMBERS_MANAGE') && isOpen(classId)
+          && request.resource.data.keys().hasOnly(['sharedId', 'linkedAtMillis'])
+          && request.resource.data.sharedId == sharedId
+          && isRecentMillis(request.resource.data.linkedAtMillis);
         allow delete: if can(classId, 'MEMBERS_MANAGE') || isOwnerClosing(classId);
       }
 
