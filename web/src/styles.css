@@ -2390,6 +2390,11 @@ a.list-row:hover {
 .news-switch button { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; }
 .news-switch button.ch-selected { background: var(--ch-primary-soft); color: var(--ch-primary-text); }
 .news-count { background: var(--ch-danger); color: #fff; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 1px 6px; line-height: 1.4; }
+/* On a phone, equal thirds are narrower than "Announcements" (and its count), which got cut off on both
+   sides: each part takes its label's width plus an equal share of what is left. */
+@media (max-width: 480px) {
+  .ch-segmented.ch-full.news-switch button { flex: 1 1 auto; padding: 0 8px; }
+}
 .forum-search { display: flex; gap: 8px; min-width: 0; }
 .forum-search > :first-child { flex: 1 1 auto; min-width: 0; }
 .forum-tag-select { flex: 0 1 45%; min-width: 0; }
