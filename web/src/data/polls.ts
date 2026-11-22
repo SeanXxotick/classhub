@@ -365,11 +365,17 @@ export async function deletePoll(db: Firestore, actorUid: string, classId: strin
     }
     const batch = writeBatch(db);
     batch.delete(sharedPollRef(db, poll.id));
-    for (const cid of poll.linkedClassIds ?? [classId]) {
-      batch.delete(sharedPollLinkRef(db, cid, poll.id));
-    }
+    batch.delete(sharedPollLinkRef(db, classId, poll.id));
     await logToBatch(batch, db, classId, actorUid, 'POLL_DELETED', `Deleted the shared poll "${poll.question}"`);
     await explainRefusal(db, classId, () => batch.commit());
+    // The partner classes' links one by one, after the poll is gone: a partner class deleted since then
+    // refuses even the delete of a link it no longer has, and that must not keep the poll. A link left
+    // behind points at nothing, and the News tab drops it.
+    await Promise.all(
+      (poll.linkedClassIds ?? [])
+        .filter((cid) => cid !== classId)
+        .map((cid) => deleteDoc(sharedPollLinkRef(db, cid, poll.id)).catch(() => undefined)),
+    );
     return;
   }
   const votes = await getDocs(query(pollVotesCol(db, classId), where('pollId', '==', poll.id)));

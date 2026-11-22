@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app';
 import { collection, collectionGroup, connectFirestoreEmulator, doc, getDoc, getDocs, initializeFirestore, query, setDoc, where, type Firestore } from 'firebase/firestore';
 import { decodeGroups, type Grouping } from '../domain/groupingLogic';
-import { createClass } from './classes';
+import { createClass, deleteClass } from './classes';
 import { resetDataEnv, setDataEnv } from './dataEnv';
 import {
   addGuestTeammate,
@@ -26,7 +26,8 @@ import {
   updateGroupingMeta,
 } from './groupings';
 import { newMember, newRole, type ClassRoom, type Member, type Role } from './models';
-import { castPollVote, createPoll, newPoll, type Poll } from './polls';
+import { newPartnerClass } from './partners';
+import { castPollVote, createPoll, deletePoll, newPoll, type Poll } from './polls';
 import { rolloverClass } from './rollover';
 
 const PROJECT = process.env.EMU_PROJECT || 'demo-classhub';
@@ -207,6 +208,43 @@ describe('anonymous polls', () => {
     expect([p.tally['1'] ?? 0, p.voters]).toEqual([0, 1]);
     await expect(getDoc(doc(as(ANA.uid), 'classes', classId, 'pollBallots', `${pollId}_${BEN.uid}`))).rejects.toMatchObject({ code: 'permission-denied' });
     expect((await getDocs(collection(adminDb, 'classes', classId, 'pollVotes'))).size).toBe(0);
+  });
+});
+
+describe('shared polls', () => {
+  it('the host deletes a shared poll, also after a partner class was deleted', async () => {
+    const HOSTM = { uid: 'gpHostM', name: 'Lara Dizon' };
+    const PARTM = { uid: 'gpPartM', name: 'Joel Tan' };
+    const host = await classWith(HOSTM, 'BSM CS 3A-G1', []);
+    const { shareCode } = await createGrouping(as(HOSTM.uid), HOSTM.uid, host, {
+      title: 'Thesis', courseId: '', note: '', groupCount: 1, defaultMaxSize: 3, selfJoin: true, shared: true, className: 'BSM CS 3A-G1', sectionTag: 'G1',
+    });
+    const partner = await classWith(PARTM, 'BSM CS 3A (G2)', []);
+    await linkSharedGrouping(as(PARTM.uid), PARTM.uid, partner, 'BSM CS 3A (G2)', shareCode!, 'G2', '');
+    const sharedPoll = async (question: string) => {
+      const id = await createPoll(as(HOSTM.uid), HOSTM.uid, host, {
+        question, options: ['Monday', 'Friday'], courseId: '', multi: false, maxChoices: 1, anonymous: false, closesAtMillis: 0,
+        notifyOwnClass: false, notifyPartners: false, hostClassName: 'BSM CS 3A-G1', hostTag: 'G1',
+        partnerClasses: [newPartnerClass({ partnerClassId: partner, name: 'BSM CS 3A (G2)', tag: 'G2' })],
+      });
+      const poll = newPoll({ ...((await getDoc(doc(adminDb, 'sharedPolls', id))).data() as Partial<Poll>), id, shared: true });
+      await castPollVote(as(HOSTM.uid), host, poll, HOSTM.uid, [1], { name: 'Dizon, Lara', tag: 'G1' });
+      return poll;
+    };
+    const exists = (...path: string[]) => getDoc(doc(adminDb, path[0], ...path.slice(1))).then((d) => d.exists());
+
+    const first = await sharedPoll('Defense day?');
+    expect(await exists('classes', partner, 'sharedPollLinks', first.id)).toBe(true);
+    await deletePoll(as(HOSTM.uid), HOSTM.uid, host, first);
+    expect(await exists('sharedPolls', first.id)).toBe(false);
+    expect(await exists('classes', host, 'sharedPollLinks', first.id)).toBe(false);
+    expect(await exists('classes', partner, 'sharedPollLinks', first.id)).toBe(false);
+
+    const second = await sharedPoll('Venue?');
+    await deleteClass(as(PARTM.uid), PARTM.uid, partner);
+    await deletePoll(as(HOSTM.uid), HOSTM.uid, host, second);
+    expect(await exists('sharedPolls', second.id)).toBe(false);
+    expect(await exists('classes', host, 'sharedPollLinks', second.id)).toBe(false);
   });
 });
 
