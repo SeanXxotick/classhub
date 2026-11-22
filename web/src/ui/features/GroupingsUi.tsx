@@ -283,6 +283,7 @@ function GroupingCard({
   const eligibleByUid = useMemo(() => new Map(combinedEligible.map((e) => [e.uid, e])), [combinedEligible]);
 
   const myGroup = findMemberGroup(grouping.groups, state.myUid);
+  const myPendingGroup = grouping.groups.find((g) => (g.joinRequests ?? []).some((r) => r.uid === state.myUid));
   const canSelfEdit = grouping.selfJoin && !grouping.locked;
   const totalMembers = grouping.groups.reduce((sum, g) => sum + g.memberUids.length, 0);
   const totalGuests = grouping.groups.reduce((sum, g) => sum + g.guests.length, 0);
@@ -531,6 +532,7 @@ function GroupingCard({
                   memberById={memberById}
                   isMyGroup={myGroup?.id === slot.id}
                   hasMyGroup={!!myGroup}
+                  myPendingGroupName={myPendingGroup?.name ?? ''}
                   canSelfEdit={canSelfEdit}
                   manage={manage}
                   busy={run.busy}
@@ -736,6 +738,7 @@ function GroupSlotCard({
   memberById,
   isMyGroup,
   hasMyGroup,
+  myPendingGroupName,
   canSelfEdit,
   manage,
   busy,
@@ -760,6 +763,7 @@ function GroupSlotCard({
   memberById: Map<string, ClassState['members'][number]>;
   isMyGroup: boolean;
   hasMyGroup: boolean;
+  myPendingGroupName: string;
   canSelfEdit: boolean;
   manage: boolean;
   busy: boolean;
@@ -837,21 +841,6 @@ function GroupSlotCard({
             {slot.maxSize > 0 ? `${count}/${slot.maxSize}` : `${count}`}
             {full ? ' · Full' : ''}
           </span>
-          {!expanded && canSelfEdit && !isMyGroup && !full && !hasMyGroup && (
-            myPending ? (
-              <button type="button" className="btn outline small" disabled={busy} onClick={onCancelRequest}>
-                Pending
-              </button>
-            ) : needsApproval ? (
-              <button type="button" className="btn solid small" disabled={busy} onClick={onRequestJoin}>
-                Request
-              </button>
-            ) : (
-              <button type="button" className="btn solid small" disabled={busy} onClick={onJoin}>
-                Join
-              </button>
-            )
-          )}
           {expanded && manage && (
             <button
               type="button"
@@ -1038,9 +1027,13 @@ function GroupSlotCard({
                   Requested · Cancel
                 </button>
               ) : needsApproval ? (
-                <button type="button" className="btn solid small" disabled={busy} onClick={onRequestJoin}>
-                  Request to join
-                </button>
+                myPendingGroupName ? (
+                  <span className="tiny muted">{`Request pending in ${myPendingGroupName}`}</span>
+                ) : (
+                  <button type="button" className="btn solid small" disabled={busy} onClick={onRequestJoin}>
+                    Request to join
+                  </button>
+                )
               ) : (
                 <button type="button" className="btn solid small" disabled={busy} onClick={onJoin}>
                   {hasMyGroup ? 'Switch here' : 'Join'}
