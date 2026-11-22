@@ -58,7 +58,8 @@ import { useClass, type ClassState } from '../classroom/ClassContext';
 import { MoreMenu } from '../MoreMenu';
 import { TagBadge, TagSelect } from './ForumUi';
 
-const GUEST_TAG_PRESETS = ['', 'Irregular', 'G2'] as const;
+const GUEST_TAG_PRESETS_LOCAL = ['', 'Irregular', 'G2'] as const;
+const GUEST_TAG_PRESETS_SHARED = ['', 'Irregular', 'Cross-enroll'] as const;
 
 function guessSectionTag(className: string): string {
   const m = className.match(/\b(G\d+|[A-Z]\d+)\b/i);
@@ -125,13 +126,13 @@ export function GroupingsView({ state }: { state: ClassState }) {
             New grouping
           </Button>
           <Button variant="outline" icon="link" onClick={() => setLinking(true)}>
-            Link shared
+            Link with code
           </Button>
         </div>
       )}
       {(groupings ?? []).length > 0 && state.courses.length > 0 && (
         <div className="forum-search">
-          <TagSelect state={state} value={tag} onChange={setTag} label="Course" all />
+          <TagSelect state={state} value={tag} onChange={setTag} label="Course" all allLabel="All courses" />
         </div>
       )}
       {groupings && visible.length === 0 && (
@@ -210,6 +211,7 @@ function GroupingCard({
   const [assigningMember, setAssigningMember] = useState<{ uid: string; name: string; classId: string; tag: string } | null>(null);
   const [sharingOpen, setSharingOpen] = useState(false);
   const [confirmAutoAssign, setConfirmAutoAssign] = useState(false);
+  const [confirmLeaveSlot, setConfirmLeaveSlot] = useState<GroupSlot | null>(null);
   const [confirmUnlinkSelf, setConfirmUnlinkSelf] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<
     | { kind: 'member'; uid: string; name: string; slotName: string }
@@ -284,6 +286,15 @@ function GroupingCard({
   const canSelfEdit = grouping.selfJoin && !grouping.locked;
   const totalMembers = grouping.groups.reduce((sum, g) => sum + g.memberUids.length, 0);
   const totalGuests = grouping.groups.reduce((sum, g) => sum + g.guests.length, 0);
+  const pendingForMeCount = grouping.hasLeader
+    ? grouping.groups.reduce((sum, g) => {
+        const leaderUid = effectiveLeaderUid(g, true);
+        if (manage || (!grouping.locked && leaderUid === state.myUid)) {
+          return sum + (g.joinRequests?.length ?? 0);
+        }
+        return sum;
+      }, 0)
+    : 0;
   const courseName = grouping.courseId ? state.courses.find((c) => c.id === grouping.courseId)?.name ?? '' : '';
   const isHost = !grouping.shared || grouping.hostClassId === state.classId;
   const myName = state.me ? listName(state.me) : 'Member';
@@ -366,6 +377,12 @@ function GroupingCard({
                 {totalGuests > 0 ? ` · ${totalGuests} guest${totalGuests === 1 ? '' : 's'}` : ''}
                 {myGroup ? ` · ${myGroup.name}` : ''}
                 {grouping.locked ? ' · Locked' : ''}
+                {pendingForMeCount > 0 && !cardOpen && (
+                  <>
+                    {' · '}
+                    <span className="grp-req-pill">{`${pendingForMeCount} request${pendingForMeCount === 1 ? '' : 's'}`}</span>
+                  </>
+                )}
               </div>
             </div>
             <span className={'grp-chev' + (cardOpen ? ' open' : '')} aria-hidden>
@@ -373,9 +390,6 @@ function GroupingCard({
             </span>
           </button>
           <div className="ch-row ch-gap-1" style={{ alignItems: 'center', flex: 'none' }}>
-            <button type="button" className="btn outline small" onClick={() => void copyList()}>
-              Copy
-            </button>
             <MoreMenu
               label={`More for "${grouping.title}"`}
               title={grouping.title}
@@ -484,8 +498,16 @@ function GroupingCard({
               </div>
             )}
 
-            {grouping.groups.length > 1 && (
-              <div className="ch-row" style={{ justifyContent: 'flex-end', marginTop: -4 }}>
+            <div className="ch-row ch-gap-2" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: -4 }}>
+              <button
+                type="button"
+                className="btn text small"
+                style={{ padding: '2px 4px', minHeight: 24 }}
+                onClick={() => void copyList()}
+              >
+                Copy list
+              </button>
+              {grouping.groups.length > 1 && (
                 <button
                   type="button"
                   className="btn text small"
@@ -494,8 +516,8 @@ function GroupingCard({
                 >
                   {allOpen ? 'Collapse all' : 'Expand all'}
                 </button>
-              </div>
-            )}
+              )}
+            </div>
 
             <div className="groupings-grid">
               {grouping.groups.map((slot) => (
@@ -537,9 +559,7 @@ function GroupingCard({
                       rejectJoinRequest(db, state.classId, grouping.id, slot.id, state.myUid, uid, manage, grouping.shared),
                     )
                   }
-                  onLeave={() =>
-                    run(`Left ${slot.name}.`, () => leaveGroup(db, state.classId, grouping.id, state.myUid, false, grouping.shared))
-                  }
+                  onLeave={() => setConfirmLeaveSlot(slot)}
                   onRemoveMember={(uid, label) =>
                     setConfirmRemove({ kind: 'member', uid, name: label, slotName: slot.name })
                   }
@@ -600,6 +620,28 @@ function GroupingCard({
           memberUid={assigningMember.uid}
           meta={metaForUid(assigningMember.uid)}
           onClose={() => setAssigningMember(null)}
+        />
+      )}
+      {confirmLeaveSlot && (
+        <ConfirmDialog
+          title={`Leave ${confirmLeaveSlot.name}?`}
+          text={
+            grouping.hasLeader && effectiveLeaderUid(confirmLeaveSlot, true) === state.myUid && confirmLeaveSlot.memberUids.length > 1
+              ? 'Leadership will pass to the next member in this group.'
+              : grouping.hasLeader
+                ? 'You will need leader approval to rejoin this group.'
+                : 'You will be moved back to Ungrouped.'
+          }
+          confirm="Leave"
+          danger
+          onClose={() => setConfirmLeaveSlot(null)}
+          onConfirm={() =>
+            run(
+              `Left ${confirmLeaveSlot.name}.`,
+              () => leaveGroup(db, state.classId, grouping.id, state.myUid, false, grouping.shared),
+              () => setConfirmLeaveSlot(null),
+            )
+          }
         />
       )}
       {confirmAutoAssign && (
@@ -739,6 +781,7 @@ function GroupSlotCard({
   const [guestTag, setGuestTag] = useState(grouping.shared ? 'Irregular' : '');
   const [customTag, setCustomTag] = useState(false);
 
+  const guestPresets = grouping.shared ? GUEST_TAG_PRESETS_SHARED : GUEST_TAG_PRESETS_LOCAL;
   const count = groupSize(slot);
   const full = isGroupFull(slot);
   const leaderUid = effectiveLeaderUid(slot, grouping.hasLeader);
@@ -939,7 +982,7 @@ function GroupSlotCard({
               />
               <div className="ch-row ch-wrap ch-gap-1" style={{ alignItems: 'center' }}>
                 <span className="tiny muted">Tag:</span>
-                {GUEST_TAG_PRESETS.map((preset) => {
+                {guestPresets.map((preset) => {
                   const selected = !customTag && guestTag === preset;
                   return (
                     <button
@@ -962,7 +1005,7 @@ function GroupSlotCard({
                   style={{ minHeight: 28, padding: '2px 10px', fontSize: 12 }}
                   onClick={() => {
                     setCustomTag(true);
-                    if (GUEST_TAG_PRESETS.includes(guestTag as (typeof GUEST_TAG_PRESETS)[number])) setGuestTag('');
+                    if ((guestPresets as readonly string[]).includes(guestTag)) setGuestTag('');
                   }}
                 >
                   Custom
@@ -1207,7 +1250,7 @@ function LinkSharedGroupingDialog({ state, onClose }: { state: ClassState; onClo
 
   return (
     <Dialog
-      title="Link shared grouping"
+      title="Link with code"
       onClose={run.busy ? () => undefined : onClose}
       actions={
         <>

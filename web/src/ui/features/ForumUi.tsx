@@ -83,10 +83,10 @@ export function TagBadge({ state, courseId }: { state: ClassState; courseId: str
 }
 
 /** The tag picker: all tags, General, or one course. */
-export function TagSelect({ state, value, onChange, label, all }: { state: ClassState; value: string; onChange: (v: string) => void; label: string; all?: boolean }) {
+export function TagSelect({ state, value, onChange, label, all, allLabel = 'All tags' }: { state: ClassState; value: string; onChange: (v: string) => void; label: string; all?: boolean; allLabel?: string }) {
   return (
     <select className="input forum-tag-select" aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}>
-      {all && <option value="*">All tags</option>}
+      {all && <option value="*">{allLabel}</option>}
       <option value="">{all ? 'General' : 'General (the whole class)'}</option>
       {state.courses.map((c) => (
         <option key={c.id} value={c.id}>
