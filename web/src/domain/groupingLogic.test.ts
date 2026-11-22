@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   addGuestToGroup,
+  approveGroupJoinRequest,
   autoAssignMembers,
   buildInitialGroups,
+  effectiveLeaderUid,
   findMemberGroup,
   formatGroupingExport,
   groupRemaining,
@@ -10,8 +12,11 @@ import {
   isGroupFull,
   moveMemberToGroup,
   newGrouping,
+  passGroupLeadership,
+  removeGroupJoinRequest,
   removeGuestFromGroup,
   removeMemberFromGroups,
+  requestToJoinGroup,
   ungroupedMemberIds,
 } from './groupingLogic';
 
@@ -91,5 +96,44 @@ describe('groupingLogic', () => {
     expect(text).toContain('  3. Juan Cruz (Irregular)');
     expect(text).toContain('Group 2 (0/10)');
     expect(text).toContain('  (No members yet)');
+  });
+
+  it('auto-assigns first member as leader, allows passing leadership, and promotes next member on leave', () => {
+    let groups = buildInitialGroups(2, 5, (i) => `g${i + 1}`);
+    groups = moveMemberToGroup(groups, 'u1', 'g1');
+    groups = moveMemberToGroup(groups, 'u2', 'g1');
+    expect(effectiveLeaderUid(groups[0], true)).toBe('u1');
+    expect(effectiveLeaderUid(groups[0], false)).toBe('');
+
+    groups = passGroupLeadership(groups, 'g1', 'u2');
+    expect(effectiveLeaderUid(groups[0], true)).toBe('u2');
+
+    // Leaving passes leadership to the remaining member
+    groups = removeMemberFromGroups(groups, 'u2');
+    expect(effectiveLeaderUid(groups[0], true)).toBe('u1');
+
+    const grouping = newGrouping({ id: 'grp', title: 'Lab', hasLeader: true, groups });
+    const exported = formatGroupingExport(grouping, '', (uid) => (uid === 'u1' ? 'Alex' : uid));
+    expect(exported).toContain('1. Alex (Leader)');
+  });
+
+  it('handles leader approval and rejection of join requests', () => {
+    let groups = buildInitialGroups(2, 2, (i) => `g${i + 1}`);
+    groups = moveMemberToGroup(groups, 'u1', 'g1');
+    groups = requestToJoinGroup(groups, 'g1', { uid: 'u2', name: 'Bea', classId: 'c1', tag: 'G1', requestedAtMillis: 100 });
+    groups = requestToJoinGroup(groups, 'g2', { uid: 'u2', name: 'Bea', classId: 'c1', tag: 'G1', requestedAtMillis: 101 });
+    expect(groups[0].joinRequests?.map((r) => r.uid)).toEqual(['u2']);
+
+    // Approve in g1 moves u2 in and clears their pending request in g2 as well
+    groups = approveGroupJoinRequest(groups, 'g1', 'u2');
+    expect(groups[0].memberUids).toEqual(['u1', 'u2']);
+    expect(groups[0].joinRequests).toEqual([]);
+    expect(groups[1].joinRequests).toEqual([]);
+
+    // Reject removes request without adding member
+    groups = requestToJoinGroup(groups, 'g2', { uid: 'u3', name: 'Carl', classId: 'c2', tag: 'G2', requestedAtMillis: 102 });
+    groups = removeGroupJoinRequest(groups, 'g2', 'u3');
+    expect(groups[1].joinRequests).toEqual([]);
+    expect(groups[1].memberUids).toEqual([]);
   });
 });

@@ -20,7 +20,7 @@ export function RolloverCard({ room }: { room: ClassRoom }) {
     <div className="card stack">
       <div className="bold">New semester</div>
       <p className="small muted" style={{ margin: 0 }}>
-        Start next semester in a fresh class with the same classmates, roles and carried-over balances. This class stays intact as an archive.
+        Copy members, roles, and balances into a fresh class. This class stays as an archive.
       </p>
       <button type="button" className="btn outline block" onClick={() => setOpen(true)}>
         Start a new semester
@@ -113,9 +113,6 @@ function RolloverDialog({ room, onClose }: { room: ClassRoom; onClose: () => voi
     >
       {step === 1 && (
         <div className="stack">
-          <p className="small muted" style={{ margin: 0 }}>
-            Your current class ({room.name}) stays untouched for reference. Nothing is deleted.
-          </p>
           <Field label="Class name" help={nameError ? <span className="error-text">{nameError}</span> : undefined}>
             <input value={name} onChange={(e) => setName(e.target.value.slice(0, ClassRules.MAX_NAME))} />
           </Field>
@@ -132,8 +129,7 @@ function RolloverDialog({ room, onClose }: { room: ClassRoom; onClose: () => voi
       {step === 2 && (
         <div className="stack">
           <Switch
-            label={`All ${state.members.length} members and ${state.roles.length} roles`}
-            sub="Everyone joins automatically with their current role — no invite code needed."
+            label={`Copy ${state.members.length} members & ${state.roles.length} roles`}
             checked
             disabled
             onChange={() => undefined}
@@ -142,20 +138,19 @@ function RolloverDialog({ room, onClose }: { room: ClassRoom; onClose: () => voi
             label="Carry over closing balances"
             sub={
               balanceStats.count > 0
-                ? `${balanceStats.count} student${balanceStats.count === 1 ? '' : 's'} with non-zero balances (net ${formatMoney(balanceStats.net)}) start as Opening Balances.`
-                : 'Everyone is currently settled at ₱0.00.'
+                ? `${balanceStats.count} non-zero (net ${formatMoney(balanceStats.net)})`
+                : 'All settled at ₱0.00'
             }
             checked={carryBalances}
             onChange={setCarryBalances}
           />
           <Switch
-            label='Copy "How to pay" & balance visibility'
-            sub="Keeps your payment instructions and who can see balances."
+            label="Copy payment settings"
             checked={carryPaymentSettings}
             onChange={setCarryPaymentSettings}
           />
           <p className="small muted" style={{ margin: 0 }}>
-            Starts fresh: Courses, Weekly timetable, Attendance, Schedule, Contents, and News.
+            Courses, schedule, attendance, contents, and news start fresh.
           </p>
         </div>
       )}

@@ -21,12 +21,18 @@ import {
   GUEST_TAG_MAX,
   SHARED_MAX_CLASSES,
   addGuestToGroup,
+  approveGroupJoinRequest,
   autoAssignMembers,
   buildInitialGroups,
+  effectiveLeaderUid,
   moveMemberToGroup,
   newGrouping,
+  passGroupLeadership,
+  removeGroupJoinRequest,
   removeGuestFromGroup,
   removeMemberFromGroups,
+  requestToJoinGroup,
+  type GroupJoinRequest,
   type GroupSlot,
   type Grouping,
   type MemberMeta,
@@ -47,7 +53,7 @@ export {
   GUEST_TAG_MAX,
   SHARED_MAX_CLASSES,
 };
-export type { GroupSlot, Grouping, MemberMeta, SharedClassLink };
+export type { GroupJoinRequest, GroupSlot, Grouping, MemberMeta, SharedClassLink };
 
 export const groupingsCol = (db: Firestore, classId: string) => collection(db, 'classes', classId, 'groupings');
 export const groupingRef = (db: Firestore, classId: string, groupingId: string) =>
@@ -80,6 +86,7 @@ export interface NewGroupingInput {
   defaultMaxSize: number;
   customSizes?: number[];
   selfJoin: boolean;
+  hasLeader?: boolean;
   /** When true, creates a cross-class shared grouping with a share code. */
   shared?: boolean;
   className?: string;
@@ -120,6 +127,7 @@ export async function createGrouping(
       },
       selfJoin: input.selfJoin,
       locked: false,
+      hasLeader: !!input.hasLeader,
       groups,
       createdByUid: actorUid,
       createdAtMillis: now,
@@ -151,6 +159,7 @@ export async function createGrouping(
     note,
     selfJoin: input.selfJoin,
     locked: false,
+    hasLeader: !!input.hasLeader,
     groups,
     createdByUid: actorUid,
     createdAtMillis: now,
@@ -269,7 +278,7 @@ export async function updateGroupingMeta(
   actorUid: string,
   classId: string,
   grouping: Grouping,
-  patch: { title: string; courseId: string; note: string; selfJoin: boolean },
+  patch: { title: string; courseId: string; note: string; selfJoin: boolean; hasLeader: boolean },
 ): Promise<void> {
   const title = patch.title.trim().slice(0, GROUPING_TITLE_MAX);
   if (!title) throw new UserError('NAME_MISSING', 'Give this grouping a title first.');
@@ -291,6 +300,7 @@ export async function updateGroupingMeta(
             title,
             note,
             selfJoin: patch.selfJoin,
+            hasLeader: patch.hasLeader,
             linkedClasses: nextLinkedClasses,
             updatedAtMillis: now,
           }),
@@ -310,10 +320,57 @@ export async function updateGroupingMeta(
           courseId: patch.courseId,
           note,
           selfJoin: patch.selfJoin,
+          hasLeader: patch.hasLeader,
           updatedAtMillis: now,
         }),
     ),
   );
+}
+
+/** Toggles group leaders on or off anytime (MEMBERS_MANAGE). */
+export async function setGroupingHasLeader(
+  db: Firestore,
+  actorUid: string,
+  classId: string,
+  grouping: Grouping,
+  hasLeader: boolean,
+): Promise<void> {
+  await explainRefusal(db, classId, () =>
+    commitLogged(
+      db,
+      classId,
+      {
+        actorUid,
+        kind: 'GROUPING_UPDATED',
+        text: `${hasLeader ? 'Turned on' : 'Turned off'} group leaders for "${grouping.title}"`,
+      },
+      (b) => b.update(targetRef(db, classId, grouping.id, grouping.shared), { hasLeader, updatedAtMillis: nowMillis() }),
+    ),
+  );
+}
+
+/** Passes leadership of a group to another member (current leader while unlocked, or officer anytime). */
+export async function setGroupLeader(
+  db: Firestore,
+  classId: string,
+  groupingId: string,
+  groupId: string,
+  actorUid: string,
+  newLeaderUid: string,
+  asOfficer = false,
+  shared?: boolean,
+): Promise<void> {
+  await mutateGroups(db, classId, groupingId, shared, (g) => {
+    if (!asOfficer) {
+      if (g.locked) throw new UserError('NO_PERMISSION', 'This grouping is locked by an officer.');
+      if (!g.hasLeader) throw new UserError('NO_PERMISSION', 'Group leaders are turned off.');
+      const slot = g.groups.find((x) => x.id === groupId);
+      if (!slot || effectiveLeaderUid(slot, true) !== actorUid) {
+        throw new UserError('NO_PERMISSION', 'Only the current leader can pass leadership.');
+      }
+    }
+    return passGroupLeadership(g.groups, groupId, newLeaderUid);
+  });
 }
 
 /** Locks or unlocks a grouping (MEMBERS_MANAGE). */
@@ -408,10 +465,113 @@ export async function joinGroup(
   meta?: MemberMeta,
 ): Promise<void> {
   await mutateGroups(db, classId, groupingId, shared, (g) => {
-    if (!asOfficer && (g.locked || !g.selfJoin)) {
-      throw new UserError('NO_PERMISSION', 'This grouping is locked by an officer.');
+    if (!asOfficer) {
+      if (g.locked || !g.selfJoin) {
+        throw new UserError('NO_PERMISSION', 'This grouping is locked by an officer.');
+      }
+      const target = g.groups.find((x) => x.id === targetGroupId);
+      if (g.hasLeader && target && target.memberUids.length > 0) {
+        throw new UserError('NO_PERMISSION', 'Ask the group leader to approve your request.');
+      }
     }
     return moveMemberToGroup(g.groups, targetUid, targetGroupId, asOfficer, meta);
+  });
+}
+
+/** Sends a join request to a group whose leader must approve (when hasLeader is on). */
+export async function requestJoinGroup(
+  db: Firestore,
+  classId: string,
+  groupingId: string,
+  targetGroupId: string,
+  uid: string,
+  name: string,
+  tag: string,
+  shared?: boolean,
+): Promise<void> {
+  await mutateGroups(db, classId, groupingId, shared, (g) => {
+    if (g.locked || !g.selfJoin) {
+      throw new UserError('NO_PERMISSION', 'This grouping is locked.');
+    }
+    const target = g.groups.find((x) => x.id === targetGroupId);
+    // If the group became empty in the meantime, join immediately as leader.
+    if (target && target.memberUids.length === 0) {
+      return moveMemberToGroup(
+        g.groups,
+        uid,
+        targetGroupId,
+        false,
+        shared ? { name, classId, tag } : undefined,
+      );
+    }
+    return requestToJoinGroup(g.groups, targetGroupId, {
+      uid,
+      name,
+      classId,
+      tag: shared ? tag : '',
+      requestedAtMillis: nowMillis(),
+    });
+  });
+}
+
+/** Cancels the signed-in student's own pending join request. */
+export async function cancelJoinRequest(
+  db: Firestore,
+  classId: string,
+  groupingId: string,
+  targetGroupId: string,
+  uid: string,
+  shared?: boolean,
+): Promise<void> {
+  await mutateGroups(db, classId, groupingId, shared, (g) => {
+    if (g.locked) throw new UserError('NO_PERMISSION', 'This grouping is locked.');
+    return removeGroupJoinRequest(g.groups, targetGroupId, uid);
+  });
+}
+
+/** Approves a pending join request (only the group's appointed leader or an officer). */
+export async function approveJoinRequest(
+  db: Firestore,
+  classId: string,
+  groupingId: string,
+  groupId: string,
+  actorUid: string,
+  requesterUid: string,
+  asOfficer = false,
+  shared?: boolean,
+): Promise<void> {
+  await mutateGroups(db, classId, groupingId, shared, (g) => {
+    if (!asOfficer) {
+      if (g.locked) throw new UserError('NO_PERMISSION', 'This grouping is locked.');
+      const slot = g.groups.find((x) => x.id === groupId);
+      if (!slot || effectiveLeaderUid(slot, g.hasLeader) !== actorUid) {
+        throw new UserError('NO_PERMISSION', 'Only the group leader can approve requests.');
+      }
+    }
+    return approveGroupJoinRequest(g.groups, groupId, requesterUid, asOfficer);
+  });
+}
+
+/** Rejects a pending join request (only the group's appointed leader or an officer). */
+export async function rejectJoinRequest(
+  db: Firestore,
+  classId: string,
+  groupingId: string,
+  groupId: string,
+  actorUid: string,
+  requesterUid: string,
+  asOfficer = false,
+  shared?: boolean,
+): Promise<void> {
+  await mutateGroups(db, classId, groupingId, shared, (g) => {
+    if (!asOfficer) {
+      if (g.locked) throw new UserError('NO_PERMISSION', 'This grouping is locked.');
+      const slot = g.groups.find((x) => x.id === groupId);
+      if (!slot || effectiveLeaderUid(slot, g.hasLeader) !== actorUid) {
+        throw new UserError('NO_PERMISSION', 'Only the group leader can reject requests.');
+      }
+    }
+    return removeGroupJoinRequest(g.groups, groupId, requesterUid);
   });
 }
 
@@ -453,6 +613,9 @@ export async function addGuestTeammate(
       if (!slot || !slot.memberUids.includes(actorUid)) {
         throw new UserError('NO_PERMISSION', 'Join this group first to add a guest teammate.');
       }
+      if (g.hasLeader && effectiveLeaderUid(slot, true) !== actorUid) {
+        throw new UserError('NO_PERMISSION', 'Only the group leader can add guests.');
+      }
     }
     return addGuestToGroup(
       g.groups,
@@ -482,6 +645,9 @@ export async function removeGuestTeammate(
       const slot = g.groups.find((x) => x.id === groupId);
       if (!slot || !slot.memberUids.includes(actorUid)) {
         throw new UserError('NO_PERMISSION', 'You can only remove guests from your own group.');
+      }
+      if (g.hasLeader && effectiveLeaderUid(slot, true) !== actorUid) {
+        throw new UserError('NO_PERMISSION', 'Only the group leader can remove guests.');
       }
     }
     return removeGuestFromGroup(g.groups, groupId, guestId);

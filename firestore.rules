@@ -299,7 +299,10 @@ service cloud.firestore {
       allow get: if isSharedGroupingMember(resource.data.linkedClassIds);
       allow list: if false;
       allow create: if signedIn()
-        && hasFields(request.resource.data, ['title', 'note', 'hostClassId', 'shareCode', 'linkedClassIds', 'linkedClasses', 'selfJoin', 'locked', 'groups', 'createdByUid', 'createdAtMillis', 'updatedAtMillis'])
+        && request.resource.data.keys().hasAll(['title', 'note', 'hostClassId', 'shareCode', 'linkedClassIds', 'linkedClasses', 'selfJoin', 'locked', 'groups', 'createdByUid', 'createdAtMillis', 'updatedAtMillis'])
+        && request.resource.data.keys().hasOnly(['title', 'note', 'hostClassId', 'shareCode', 'linkedClassIds', 'linkedClasses', 'selfJoin', 'locked', 'hasLeader', 'groups', 'createdByUid', 'createdAtMillis', 'updatedAtMillis', 'id'])
+        && request.resource.data.get('id', '') == ''
+        && request.resource.data.get('hasLeader', false) is bool
         && can(request.resource.data.hostClassId, 'MEMBERS_MANAGE')
         && isOpen(request.resource.data.hostClassId)
         && isFilled(request.resource.data.title, 120)
@@ -318,9 +321,9 @@ service cloud.firestore {
         && isRecentMillis(request.resource.data.createdAtMillis)
         && isRecentMillis(request.resource.data.updatedAtMillis);
       allow update: if signedIn() && (
-        // Any officer of a linked class updates details, lock, groups, or unlinks a partner class.
+        // Any officer of a linked class updates details, lock, leader mode, groups, or unlinks a partner class.
         (isSharedGroupingManager(resource.data.linkedClassIds)
-          && changesOnly(['title', 'note', 'linkedClassIds', 'linkedClasses', 'selfJoin', 'locked', 'groups', 'updatedAtMillis'])
+          && changesOnly(['title', 'note', 'linkedClassIds', 'linkedClasses', 'selfJoin', 'locked', 'hasLeader', 'groups', 'updatedAtMillis'])
           && isFilled(request.resource.data.title, 120)
           && isText(request.resource.data.note, 300)
           && request.resource.data.linkedClassIds is list
@@ -330,6 +333,7 @@ service cloud.firestore {
           && request.resource.data.linkedClasses is map
           && request.resource.data.selfJoin is bool
           && request.resource.data.locked is bool
+          && request.resource.data.get('hasLeader', false) is bool
           && request.resource.data.groups is list
           && request.resource.data.groups.size() >= 1
           && request.resource.data.groups.size() <= 50
@@ -343,9 +347,9 @@ service cloud.firestore {
           && can(request.resource.data.linkedClassIds[request.resource.data.linkedClassIds.size() - 1], 'MEMBERS_MANAGE')
           && request.resource.data.linkedClasses is map
           && isRecentMillis(request.resource.data.updatedAtMillis))
-        // Any member of a linked class joins/leaves or adds/removes guests while selfJoin is open and unlocked.
+        // Any member of a linked class joins/leaves, adds/removes guests, or passes leadership while unlocked.
         || (isSharedGroupingMember(resource.data.linkedClassIds)
-          && resource.data.selfJoin == true
+          && (resource.data.selfJoin == true || resource.data.get('hasLeader', false) == true)
           && resource.data.locked == false
           && changesOnly(['groups', 'updatedAtMillis'])
           && request.resource.data.groups is list
@@ -1381,7 +1385,10 @@ service cloud.firestore {
       match /groupings/{groupingId} {
         allow read: if isMember(classId);
         allow create: if can(classId, 'MEMBERS_MANAGE') && isOpen(classId)
-          && hasFields(request.resource.data, ['title', 'courseId', 'note', 'selfJoin', 'locked', 'groups', 'createdByUid', 'createdAtMillis', 'updatedAtMillis'])
+          && request.resource.data.keys().hasAll(['title', 'courseId', 'note', 'selfJoin', 'locked', 'groups', 'createdByUid', 'createdAtMillis', 'updatedAtMillis'])
+          && request.resource.data.keys().hasOnly(['title', 'courseId', 'note', 'selfJoin', 'locked', 'hasLeader', 'groups', 'createdByUid', 'createdAtMillis', 'updatedAtMillis', 'id'])
+          && request.resource.data.get('id', '') == ''
+          && request.resource.data.get('hasLeader', false) is bool
           && isFilled(request.resource.data.title, 120)
           && isText(request.resource.data.courseId, 128)
           && isText(request.resource.data.note, 300)
@@ -1395,18 +1402,19 @@ service cloud.firestore {
           && isRecentMillis(request.resource.data.updatedAtMillis);
         allow update: if isOpen(classId) && (
           (can(classId, 'MEMBERS_MANAGE')
-            && changesOnly(['title', 'courseId', 'note', 'selfJoin', 'locked', 'groups', 'updatedAtMillis'])
+            && changesOnly(['title', 'courseId', 'note', 'selfJoin', 'locked', 'hasLeader', 'groups', 'updatedAtMillis'])
             && isFilled(request.resource.data.title, 120)
             && isText(request.resource.data.courseId, 128)
             && isText(request.resource.data.note, 300)
             && request.resource.data.selfJoin is bool
             && request.resource.data.locked is bool
+            && request.resource.data.get('hasLeader', false) is bool
             && request.resource.data.groups is list
             && request.resource.data.groups.size() >= 1
             && request.resource.data.groups.size() <= 50
             && isRecentMillis(request.resource.data.updatedAtMillis))
           || (isMember(classId)
-            && resource.data.selfJoin == true
+            && (resource.data.selfJoin == true || resource.data.get('hasLeader', false) == true)
             && resource.data.locked == false
             && changesOnly(['groups', 'updatedAtMillis'])
             && request.resource.data.groups is list

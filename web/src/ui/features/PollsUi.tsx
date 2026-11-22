@@ -332,7 +332,6 @@ function NewPollDialog({ state, onClose }: { state: ClassState; onClose: () => v
           checked={anonymous}
           onChange={setAnonymous}
           label="Anonymous votes"
-          description="Only vote counts are shown. Officers can still see who has not voted yet."
         />
         <Field label="Close automatically after (optional)">
           <input type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />

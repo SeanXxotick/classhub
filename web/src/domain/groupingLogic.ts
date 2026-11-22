@@ -34,6 +34,14 @@ export interface SharedClassLink {
   courseId: string;
 }
 
+export interface GroupJoinRequest {
+  uid: string;
+  name: string;
+  classId: string;
+  tag: string;
+  requestedAtMillis: number;
+}
+
 export interface GroupSlot {
   id: string;
   name: string;
@@ -42,6 +50,10 @@ export interface GroupSlot {
   memberUids: string[];
   /** Stored for shared groupings so partner classes see names & section tags without reading each other's rosters. */
   memberMeta?: Record<string, MemberMeta>;
+  /** UID of the group leader (first to join by default; can be passed anytime). */
+  leaderUid?: string;
+  /** Pending join requests awaiting leader approval (used when hasLeader is on). */
+  joinRequests?: GroupJoinRequest[];
   guests: GuestMember[];
 }
 
@@ -53,6 +65,8 @@ export interface Grouping {
   note: string;
   selfJoin: boolean;
   locked: boolean;
+  /** Optional group leader mode — can be toggled on/off anytime. */
+  hasLeader?: boolean;
   groups: GroupSlot[];
   createdByUid: string;
   createdAtMillis: number;
@@ -72,12 +86,20 @@ export const newGrouping = (g: Partial<Grouping>): Grouping => ({
   note: '',
   selfJoin: true,
   locked: false,
+  hasLeader: false,
   groups: [],
   createdByUid: '',
   createdAtMillis: 0,
   updatedAtMillis: 0,
   ...g,
 });
+
+/** Active leader UID for a group when `hasLeader` is enabled (defaults to the first member). */
+export function effectiveLeaderUid(group: GroupSlot, hasLeader?: boolean): string {
+  if (!hasLeader) return '';
+  if (group.leaderUid && group.memberUids.includes(group.leaderUid)) return group.leaderUid;
+  return group.memberUids[0] ?? '';
+}
 
 /** Total headcount of a group (ClassHub members + guest teammates). */
 export function groupSize(group: GroupSlot): number {
@@ -145,32 +167,99 @@ export function moveMemberToGroup(
     const without = g.memberUids.filter((id) => id !== uid);
     const nextMeta = g.memberMeta ? { ...g.memberMeta } : undefined;
     if (nextMeta && uid in nextMeta && g.id !== targetGroupId) delete nextMeta[uid];
+    const nextReqs = g.joinRequests ? g.joinRequests.filter((r) => r.uid !== uid) : undefined;
     if (g.id !== targetGroupId) {
-      return without.length === g.memberUids.length
-        ? g
-        : { ...g, memberUids: without, ...(nextMeta ? { memberMeta: nextMeta } : {}) };
+      if (without.length === g.memberUids.length && (!nextReqs || nextReqs.length === g.joinRequests?.length)) return g;
+      const nextLeader = g.leaderUid === uid ? (without[0] ?? '') : g.leaderUid;
+      return {
+        ...g,
+        memberUids: without,
+        ...(nextMeta ? { memberMeta: nextMeta } : {}),
+        ...(nextLeader !== undefined ? { leaderUid: nextLeader } : {}),
+        ...(nextReqs ? { joinRequests: nextReqs } : {}),
+      };
     }
     const targetMeta = carryMeta ? { ...(nextMeta ?? {}), [uid]: carryMeta } : nextMeta;
+    const nextUids = [...without, uid];
+    const hasValidLeader = !!g.leaderUid && nextUids.includes(g.leaderUid);
     return {
       ...g,
-      memberUids: [...without, uid],
+      memberUids: nextUids,
+      leaderUid: hasValidLeader ? g.leaderUid : uid,
       ...(targetMeta ? { memberMeta: targetMeta } : {}),
+      ...(nextReqs ? { joinRequests: nextReqs } : {}),
     };
   });
 }
 
-/** Removes `uid` from whichever group they belong to. */
+/** Removes `uid` from whichever group they belong to, passing leadership to the next member if needed. */
 export function removeMemberFromGroups(groups: GroupSlot[], uid: string): GroupSlot[] {
   return groups.map((g) => {
     if (!g.memberUids.includes(uid)) return g;
+    const remaining = g.memberUids.filter((id) => id !== uid);
     const nextMeta = g.memberMeta ? { ...g.memberMeta } : undefined;
     if (nextMeta) delete nextMeta[uid];
+    const nextLeader = g.leaderUid === uid ? (remaining[0] ?? '') : g.leaderUid;
     return {
       ...g,
-      memberUids: g.memberUids.filter((id) => id !== uid),
+      memberUids: remaining,
       ...(nextMeta ? { memberMeta: nextMeta } : {}),
+      ...(nextLeader !== undefined ? { leaderUid: nextLeader } : {}),
     };
   });
+}
+
+/** Passes leadership of `groupId` to another ClassHub member already in that group. */
+export function passGroupLeadership(groups: GroupSlot[], groupId: string, newLeaderUid: string): GroupSlot[] {
+  const target = groups.find((g) => g.id === groupId);
+  if (!target) throw new Error('That group no longer exists.');
+  if (!target.memberUids.includes(newLeaderUid)) {
+    throw new Error('Only a member of this group can be its leader.');
+  }
+  return groups.map((g) => (g.id === groupId ? { ...g, leaderUid: newLeaderUid } : g));
+}
+
+/** Submits a pending join request to `groupId` for leader approval. */
+export function requestToJoinGroup(
+  groups: GroupSlot[],
+  groupId: string,
+  req: GroupJoinRequest,
+): GroupSlot[] {
+  const target = groups.find((g) => g.id === groupId);
+  if (!target) throw new Error('That group no longer exists.');
+  if (target.memberUids.includes(req.uid)) return groups;
+  if (isGroupFull(target)) throw new Error(`${target.name} is already full.`);
+  const existing = target.joinRequests ?? [];
+  if (existing.some((r) => r.uid === req.uid)) return groups;
+  return groups.map((g) =>
+    g.id === groupId ? { ...g, joinRequests: [...existing, req] } : g,
+  );
+}
+
+/** Cancels or rejects a pending join request from `groupId`. */
+export function removeGroupJoinRequest(groups: GroupSlot[], groupId: string, uid: string): GroupSlot[] {
+  return groups.map((g) =>
+    g.id === groupId && g.joinRequests
+      ? { ...g, joinRequests: g.joinRequests.filter((r) => r.uid !== uid) }
+      : g,
+  );
+}
+
+/** Approves a pending join request in `groupId`, moving the student in and clearing their pending requests. */
+export function approveGroupJoinRequest(
+  groups: GroupSlot[],
+  groupId: string,
+  uid: string,
+  ignoreCap = false,
+): GroupSlot[] {
+  const target = groups.find((g) => g.id === groupId);
+  if (!target) throw new Error('That group no longer exists.');
+  const req = (target.joinRequests ?? []).find((r) => r.uid === uid);
+  if (!req) throw new Error('That join request is no longer pending.');
+  const meta: MemberMeta | undefined = req.tag || req.classId
+    ? { name: req.name, classId: req.classId, tag: req.tag }
+    : undefined;
+  return moveMemberToGroup(groups, uid, groupId, ignoreCap, meta);
 }
 
 /** Adds a guest teammate to a specific group, checking duplicates and capacity. */
@@ -223,6 +312,9 @@ export function autoAssignMembers(
     const open = next.filter((g) => !isGroupFull(g));
     if (open.length === 0) break;
     open.sort((a, b) => groupSize(a) - groupSize(b));
+    if (!open[0].leaderUid || !open[0].memberUids.includes(open[0].leaderUid)) {
+      open[0].leaderUid = uid;
+    }
     open[0].memberUids.push(uid);
     const meta = metaFor?.(uid);
     if (meta) {
@@ -265,15 +357,23 @@ export function formatGroupingExport(
   for (const g of grouping.groups) {
     const total = groupSize(g);
     const cap = g.maxSize > 0 ? `${total}/${g.maxSize}` : `${total}`;
+    const leaderId = effectiveLeaderUid(g, grouping.hasLeader);
     lines.push('', `${g.name} (${cap})`);
     const roster: string[] = [
       ...g.memberUids
         .map((uid) => {
           const base = memberNameOf(uid, g);
-          const tag = grouping.shared ? g.memberMeta?.[uid]?.tag : '';
-          return tag ? `${base} (${tag})` : base;
+          const tags: string[] = [];
+          if (grouping.shared && g.memberMeta?.[uid]?.tag) tags.push(g.memberMeta[uid].tag);
+          if (leaderId && uid === leaderId) tags.push('Leader');
+          return { uid, label: tags.length ? `${base} (${tags.join(', ')})` : base };
         })
-        .sort((a, b) => a.localeCompare(b)),
+        .sort((a, b) => {
+          if (a.uid === leaderId) return -1;
+          if (b.uid === leaderId) return 1;
+          return a.label.localeCompare(b.label);
+        })
+        .map((x) => x.label),
       ...g.guests.map((guest) => (guest.tag ? `${guest.name} (${guest.tag})` : guest.name)),
     ];
     if (roster.length === 0) {

@@ -1,9 +1,8 @@
 /*
  * Project & Lab Groupings (inside the Members tab):
- * Supports single-class groupings and cross-class shared groupings (e.g. G1 + G2),
- * per-group capacities (e.g. 10 and 11 in the same grouping),
- * guest teammates (Irregulars), self-join with officer lock,
- * ungrouped tracking, auto-assign, and one-tap plain-text export.
+ * Supports single-class and cross-class shared groupings (G1 + G2),
+ * per-group capacities, optional group leaders (first to join, passable,
+ * leader-only join approval), guest teammates, and plain-text export.
  */
 import { useMemo, useRef, useState } from 'react';
 import { db } from '../../data/firebase';
@@ -19,7 +18,9 @@ import {
   SHARED_MAX_CLASSES,
   addGroupSlot,
   addGuestTeammate,
+  approveJoinRequest,
   autoAssignUngrouped,
+  cancelJoinRequest,
   createGrouping,
   deleteGroupSlot,
   deleteGrouping,
@@ -27,7 +28,11 @@ import {
   joinGroup,
   leaveGroup,
   linkSharedGrouping,
+  rejectJoinRequest,
   removeGuestTeammate,
+  requestJoinGroup,
+  setGroupLeader,
+  setGroupingHasLeader,
   setGroupingLocked,
   unlinkSharedGrouping,
   updateGroupingMeta,
@@ -37,6 +42,7 @@ import {
   type MemberMeta,
 } from '../../data/groupings';
 import {
+  effectiveLeaderUid,
   findMemberGroup,
   formatGroupingExport,
   groupSize,
@@ -51,7 +57,6 @@ import { TagBadge, TagSelect } from './ForumUi';
 
 const GUEST_TAG_PRESETS = ['', 'Irregular', 'G2'] as const;
 
-/** Extracts a short default section label from a class name (e.g. "BSCS 3A-G1" -> "G1"). */
 function guessSectionTag(className: string): string {
   const m = className.match(/\b(G\d+|[A-Z]\d+)\b/i);
   if (m) return m[1].toUpperCase();
@@ -103,7 +108,7 @@ export function GroupingsView({ state }: { state: ClassState }) {
             New grouping
           </Button>
           <Button variant="outline" icon="link" onClick={() => setLinking(true)}>
-            Link shared grouping
+            Link shared
           </Button>
         </div>
       )}
@@ -113,13 +118,7 @@ export function GroupingsView({ state }: { state: ClassState }) {
         </div>
       )}
       {groupings && visible.length === 0 && (
-        <Notice tone="info">
-          {tag === '*'
-            ? manage
-              ? 'No groupings yet. Create one for a project or lab, or link a shared grouping from another section.'
-              : 'No groupings yet.'
-            : 'No groupings for this course.'}
-        </Notice>
+        <Notice tone="info">{tag === '*' ? 'No groupings yet.' : 'No groupings for this course.'}</Notice>
       )}
       {visible.map((grouping) => (
         <GroupingCard
@@ -134,6 +133,12 @@ export function GroupingsView({ state }: { state: ClassState }) {
               () => setGroupingLocked(db, state.myUid, state.classId, grouping, !grouping.locked),
             )
           }
+          onToggleLeader={() =>
+            run(
+              grouping.hasLeader ? 'Group leaders turned off.' : 'Group leaders turned on.',
+              () => setGroupingHasLeader(db, state.myUid, state.classId, grouping, !grouping.hasLeader),
+            )
+          }
           onDelete={() => setDeleting(grouping)}
         />
       ))}
@@ -143,11 +148,7 @@ export function GroupingsView({ state }: { state: ClassState }) {
       {deleting && (
         <ConfirmDialog
           title={`Delete "${deleting.title}"?`}
-          text={
-            deleting.shared
-              ? 'This shared grouping will be deleted for all linked classes.'
-              : 'All groups and guest teammates in this grouping will be removed for everyone in the class.'
-          }
+          text={deleting.shared ? 'Deletes this grouping for all linked classes.' : 'Removes this grouping for everyone.'}
           confirm="Delete"
           danger
           onClose={() => setDeleting(null)}
@@ -166,6 +167,7 @@ function GroupingCard({
   manage,
   onEdit,
   onToggleLock,
+  onToggleLeader,
   onDelete,
 }: {
   state: ClassState;
@@ -173,6 +175,7 @@ function GroupingCard({
   manage: boolean;
   onEdit: () => void;
   onToggleLock: () => void;
+  onToggleLeader: () => void;
   onDelete: () => void;
 }) {
   const { actions } = useClass();
@@ -181,6 +184,7 @@ function GroupingCard({
   const [addingSlot, setAddingSlot] = useState(false);
   const [editingSlot, setEditingSlot] = useState<GroupSlot | null>(null);
   const [assigningSlot, setAssigningSlot] = useState<GroupSlot | null>(null);
+  const [passingSlot, setPassingSlot] = useState<GroupSlot | null>(null);
   const [assigningMemberUid, setAssigningMemberUid] = useState<string | null>(null);
   const [sharingOpen, setSharingOpen] = useState(false);
 
@@ -210,12 +214,13 @@ function GroupingCard({
   const courseName = grouping.courseId ? state.courses.find((c) => c.id === grouping.courseId)?.name ?? '' : '';
   const isHost = !grouping.shared || grouping.hostClassId === state.classId;
   const mySectionTag = grouping.linkedClasses?.[state.classId]?.tag ?? guessSectionTag(state.room?.name ?? '');
+  const myName = state.me ? listName(state.me) : 'Member';
 
   const metaForUid = (uid: string): MemberMeta | undefined => {
     if (!grouping.shared) return undefined;
     const m = memberById.get(uid);
     return {
-      name: m ? listName(m) : state.me?.name ?? 'Member',
+      name: m ? listName(m) : myName,
       classId: state.classId,
       tag: mySectionTag,
     };
@@ -252,17 +257,16 @@ function GroupingCard({
             <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
               <TagBadge state={state} courseId={grouping.courseId} />
               {grouping.shared && (
-                <Badge tone="info">
-                  {`Shared: ${linkedList.map((c) => c.tag).join(' + ')}`}
-                </Badge>
+                <Badge tone="info">{`Shared: ${linkedList.map((c) => c.tag).join(' + ')}`}</Badge>
               )}
               {grouping.locked ? (
                 <Badge tone="warning">Locked</Badge>
               ) : grouping.selfJoin ? (
-                <Badge tone="success">Self-join open</Badge>
+                <Badge tone="success">{grouping.hasLeader ? 'Leader approval' : 'Self-join'}</Badge>
               ) : (
                 <Badge tone="neutral">Officer-assigned</Badge>
               )}
+              {grouping.hasLeader && <Badge tone="neutral">Leaders on</Badge>}
               {myGroup && <Badge tone="primary">{`You: ${myGroup.name}`}</Badge>}
             </div>
             <div className="bold" style={{ fontSize: 17, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
@@ -284,6 +288,7 @@ function GroupingCard({
               items={[
                 { label: 'Copy group list', icon: 'list', onClick: () => void copyList() },
                 manage && grouping.shared && { label: 'Share code & linked classes', icon: 'link', onClick: () => setSharingOpen(true) },
+                manage && { label: grouping.hasLeader ? 'Turn off leaders' : 'Turn on leaders', icon: 'shield', onClick: onToggleLeader },
                 manage && { label: grouping.locked ? 'Unlock grouping' : 'Lock grouping', icon: 'lock', onClick: onToggleLock },
                 manage && { label: 'Add a group', icon: 'plus', onClick: () => setAddingSlot(true) },
                 manage && { label: 'Edit details', icon: 'edit', onClick: onEdit },
@@ -293,7 +298,7 @@ function GroupingCard({
                   icon: 'logout',
                   danger: true,
                   onClick: () =>
-                    run('Unlinked grouping from this class.', () =>
+                    run('Unlinked grouping.', () =>
                       unlinkSharedGrouping(db, state.myUid, state.classId, grouping, state.classId),
                     ),
                 },
@@ -313,12 +318,7 @@ function GroupingCard({
               ))}
             </div>
             {manage && grouping.shareCode && (
-              <button
-                type="button"
-                className="grp-code-pill"
-                title="Tap to view share code & linked classes"
-                onClick={() => setSharingOpen(true)}
-              >
+              <button type="button" className="grp-code-pill" onClick={() => setSharingOpen(true)}>
                 {grouping.shareCode}
               </button>
             )}
@@ -372,7 +372,6 @@ function GroupingCard({
                       key={m.id}
                       type="button"
                       className="poll-name-chip grp-assignable"
-                      title={`Assign ${m.name} to a group`}
                       onClick={() => setAssigningMemberUid(m.id)}
                     >
                       {listName(m)} +
@@ -407,6 +406,26 @@ function GroupingCard({
                   joinGroup(db, state.classId, grouping.id, state.myUid, slot.id, false, grouping.shared, metaForUid(state.myUid)),
                 )
               }
+              onRequestJoin={() =>
+                run(`Requested to join ${slot.name}.`, () =>
+                  requestJoinGroup(db, state.classId, grouping.id, slot.id, state.myUid, myName, mySectionTag, grouping.shared),
+                )
+              }
+              onCancelRequest={() =>
+                run('Request cancelled.', () =>
+                  cancelJoinRequest(db, state.classId, grouping.id, slot.id, state.myUid, grouping.shared),
+                )
+              }
+              onApproveRequest={(uid, name) =>
+                run(`Approved ${name}.`, () =>
+                  approveJoinRequest(db, state.classId, grouping.id, slot.id, state.myUid, uid, manage, grouping.shared),
+                )
+              }
+              onRejectRequest={(uid, name) =>
+                run(`Rejected ${name}.`, () =>
+                  rejectJoinRequest(db, state.classId, grouping.id, slot.id, state.myUid, uid, manage, grouping.shared),
+                )
+              }
               onLeave={() =>
                 run(`Left ${slot.name}.`, () => leaveGroup(db, state.classId, grouping.id, state.myUid, false, grouping.shared))
               }
@@ -421,10 +440,11 @@ function GroupingCard({
                 )
               }
               onRemoveGuest={(guestId) =>
-                run('Removed guest teammate.', () =>
+                run('Removed guest.', () =>
                   removeGuestTeammate(db, state.classId, grouping.id, slot.id, guestId, state.myUid, manage, grouping.shared),
                 )
               }
+              onPassLeader={() => setPassingSlot(slot)}
               onEditSlot={() => setEditingSlot(slot)}
               onAssign={() => setAssigningSlot(slot)}
             />
@@ -440,6 +460,16 @@ function GroupingCard({
       )}
       {editingSlot && (
         <EditSlotDialog classId={state.classId} grouping={grouping} slot={editingSlot} onClose={() => setEditingSlot(null)} />
+      )}
+      {passingSlot && (
+        <PassLeaderDialog
+          state={state}
+          grouping={grouping}
+          slot={passingSlot}
+          memberById={memberById}
+          manage={manage}
+          onClose={() => setPassingSlot(null)}
+        />
       )}
       {assigningSlot && (
         <AssignToSlotDialog
@@ -477,10 +507,15 @@ function GroupSlotCard({
   manage,
   busy,
   onJoin,
+  onRequestJoin,
+  onCancelRequest,
+  onApproveRequest,
+  onRejectRequest,
   onLeave,
   onRemoveMember,
   onAddGuest,
   onRemoveGuest,
+  onPassLeader,
   onEditSlot,
   onAssign,
 }: {
@@ -495,10 +530,15 @@ function GroupSlotCard({
   manage: boolean;
   busy: boolean;
   onJoin: () => void;
+  onRequestJoin: () => void;
+  onCancelRequest: () => void;
+  onApproveRequest: (uid: string, name: string) => void;
+  onRejectRequest: (uid: string, name: string) => void;
   onLeave: () => void;
   onRemoveMember: (uid: string) => void;
   onAddGuest: (name: string, tag: string, onDone: () => void) => void;
   onRemoveGuest: (guestId: string) => void;
+  onPassLeader: () => void;
   onEditSlot: () => void;
   onAssign: () => void;
 }) {
@@ -509,7 +549,14 @@ function GroupSlotCard({
 
   const count = groupSize(slot);
   const full = isGroupFull(slot);
-  const canManageGuests = manage || (canSelfEdit && isMyGroup);
+  const leaderUid = effectiveLeaderUid(slot, grouping.hasLeader);
+  const amLeader = !!leaderUid && leaderUid === state.myUid;
+  const canDecideRequests = !!grouping.hasLeader && (manage || (!grouping.locked && amLeader));
+  const canPassLeader = !!grouping.hasLeader && slot.memberUids.length > 1 && (manage || (!grouping.locked && amLeader));
+  const canManageGuests = manage || (canSelfEdit && (grouping.hasLeader ? amLeader : isMyGroup));
+  const needsApproval = !!grouping.hasLeader && slot.memberUids.length > 0;
+  const pendingReqs = slot.joinRequests ?? [];
+  const myPending = pendingReqs.some((r) => r.uid === state.myUid);
 
   const nameOf = (uid: string) => {
     const m = memberById.get(uid);
@@ -518,8 +565,12 @@ function GroupSlotCard({
   };
 
   const sortedUids = useMemo(() => {
-    return [...slot.memberUids].sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
-  }, [slot.memberUids, memberById, slot.memberMeta]);
+    return [...slot.memberUids].sort((a, b) => {
+      if (leaderUid && a === leaderUid) return -1;
+      if (leaderUid && b === leaderUid) return 1;
+      return nameOf(a).localeCompare(nameOf(b));
+    });
+  }, [slot.memberUids, memberById, slot.memberMeta, leaderUid]);
 
   function submitGuest() {
     if (!guestName.trim()) return;
@@ -549,7 +600,6 @@ function GroupSlotCard({
               className="btn text small"
               style={{ padding: '2px 6px', minHeight: 28 }}
               aria-label={`Edit ${slot.name}`}
-              title="Rename or change max size"
               onClick={onEditSlot}
             >
               Edit
@@ -565,11 +615,13 @@ function GroupSlotCard({
         {sortedUids.map((uid) => {
           const label = nameOf(uid);
           const isMe = uid === state.myUid;
+          const isLeader = !!leaderUid && uid === leaderUid;
           const meta = slot.memberMeta?.[uid];
           const secIdx = meta ? Math.max(0, linkedIds.indexOf(meta.classId)) : 0;
           return (
             <span key={uid} className={'grp-chip' + (isMe ? ' me' : '')}>
               <span className="ellipsis">{isMe ? `${label} (you)` : label}</span>
+              {isLeader && <span className="grp-leader-tag">★ Leader</span>}
               {grouping.shared && meta?.tag && (
                 <span className={`grp-sec-tag c${secIdx % 4}`}>{meta.tag}</span>
               )}
@@ -606,13 +658,48 @@ function GroupSlotCard({
         ))}
       </div>
 
+      {canDecideRequests && pendingReqs.length > 0 && (
+        <div className="grp-requests">
+          <span className="tiny bold muted">{`Join requests (${pendingReqs.length})`}</span>
+          {pendingReqs.map((r) => {
+            const secIdx = Math.max(0, linkedIds.indexOf(r.classId));
+            return (
+              <div key={r.uid} className="grp-req-row">
+                <span className="ch-row ch-gap-1 ellipsis-box" style={{ alignItems: 'center' }}>
+                  <span className="small semibold ellipsis">{r.name}</span>
+                  {grouping.shared && r.tag && <span className={`grp-sec-tag c${secIdx % 4}`}>{r.tag}</span>}
+                </span>
+                <span className="ch-row ch-gap-1" style={{ flex: 'none' }}>
+                  <button
+                    type="button"
+                    className="btn text small"
+                    disabled={busy}
+                    onClick={() => onRejectRequest(r.uid, r.name)}
+                  >
+                    Reject
+                  </button>
+                  <button
+                    type="button"
+                    className="btn solid small"
+                    disabled={busy || (full && !manage)}
+                    onClick={() => onApproveRequest(r.uid, r.name)}
+                  >
+                    Approve
+                  </button>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {addingGuest && (
         <div className="grp-guest-form">
           <input
             className="input"
             value={guestName}
             maxLength={GUEST_NAME_MAX}
-            placeholder="Teammate name (e.g. Maria Santos)"
+            placeholder="Teammate name"
             autoFocus
             onChange={(e) => setGuestName(e.target.value)}
             onKeyDown={(e) => {
@@ -658,7 +745,7 @@ function GroupSlotCard({
               className="input"
               value={guestTag}
               maxLength={GUEST_TAG_MAX}
-              placeholder="e.g. G3 or Cross-enroll"
+              placeholder="Custom tag"
               onChange={(e) => setGuestTag(e.target.value)}
             />
           )}
@@ -667,7 +754,7 @@ function GroupSlotCard({
               Cancel
             </button>
             <button type="button" className="btn solid small" disabled={busy || !guestName.trim()} onClick={submitGuest}>
-              Add guest
+              Add
             </button>
           </div>
         </div>
@@ -675,18 +762,33 @@ function GroupSlotCard({
 
       <div className="grp-slot-actions">
         {canSelfEdit && !isMyGroup && !full && (
-          <button type="button" className="btn solid small" disabled={busy} onClick={onJoin}>
-            {hasMyGroup ? 'Switch here' : 'Join'}
-          </button>
+          myPending ? (
+            <button type="button" className="btn outline small" disabled={busy} onClick={onCancelRequest}>
+              Requested · Cancel
+            </button>
+          ) : needsApproval ? (
+            <button type="button" className="btn solid small" disabled={busy} onClick={onRequestJoin}>
+              Request to join
+            </button>
+          ) : (
+            <button type="button" className="btn solid small" disabled={busy} onClick={onJoin}>
+              {hasMyGroup ? 'Switch here' : 'Join'}
+            </button>
+          )
         )}
         {canSelfEdit && isMyGroup && (
           <button type="button" className="btn text small" disabled={busy} onClick={onLeave}>
             Leave
           </button>
         )}
+        {canPassLeader && (
+          <button type="button" className="btn outline small" disabled={busy} onClick={onPassLeader}>
+            {amLeader ? 'Pass leader' : 'Set leader'}
+          </button>
+        )}
         {canManageGuests && (!full || manage) && !addingGuest && (
           <button type="button" className="btn outline small" disabled={busy} onClick={() => setAddingGuest(true)}>
-            + Add guest
+            + Guest
           </button>
         )}
         {manage && (
@@ -695,7 +797,7 @@ function GroupSlotCard({
           </button>
         )}
         {!canSelfEdit && !manage && grouping.locked && isMyGroup && (
-          <span className="tiny muted">Locked by officer</span>
+          <span className="tiny muted">Locked</span>
         )}
       </div>
     </div>
@@ -714,6 +816,7 @@ function NewGroupingDialog({ state, onClose }: { state: ClassState; onClose: () 
   const [customizeSizes, setCustomizeSizes] = useState(false);
   const [customSizes, setCustomSizes] = useState<number[]>([10, 10, 10, 10]);
   const [selfJoin, setSelfJoin] = useState(true);
+  const [hasLeader, setHasLeader] = useState(false);
   const [shared, setShared] = useState(false);
   const [sectionTag, setSectionTag] = useState(() => guessSectionTag(state.room?.name ?? ''));
 
@@ -732,7 +835,7 @@ function NewGroupingDialog({ state, onClose }: { state: ClassState; onClose: () 
   function save() {
     if (!title.trim()) return;
     run(
-      shared ? 'Shared grouping created. Share its code with your partner class!' : 'Grouping created.',
+      shared ? 'Shared grouping created.' : 'Grouping created.',
       () =>
         createGrouping(db, state.myUid, state.classId, {
           title,
@@ -742,6 +845,7 @@ function NewGroupingDialog({ state, onClose }: { state: ClassState; onClose: () 
           defaultMaxSize: Math.max(0, Math.trunc(defaultMax) || 0),
           customSizes: customizeSizes ? alignedSizes : undefined,
           selfJoin,
+          hasLeader,
           shared,
           className: state.room?.name ?? '',
           sectionTag,
@@ -760,7 +864,7 @@ function NewGroupingDialog({ state, onClose }: { state: ClassState; onClose: () 
             Cancel
           </button>
           <button type="button" className="btn solid" disabled={!title.trim() || run.busy} onClick={save}>
-            {run.busy ? 'Creating…' : 'Create grouping'}
+            {run.busy ? 'Creating…' : 'Create'}
           </button>
         </>
       }
@@ -770,7 +874,7 @@ function NewGroupingDialog({ state, onClose }: { state: ClassState; onClose: () 
           <input
             value={title}
             maxLength={GROUPING_TITLE_MAX}
-            placeholder="e.g. Final Project Teams or Lab Partners"
+            placeholder="e.g. Final Project Teams"
             onChange={(e) => setTitle(e.target.value)}
           />
         </Field>
@@ -783,12 +887,12 @@ function NewGroupingDialog({ state, onClose }: { state: ClassState; onClose: () 
           <input
             value={note}
             maxLength={GROUPING_NOTE_MAX}
-            placeholder="e.g. Combined G1 + G2 · Groups of 10–11"
+            placeholder="Optional note"
             onChange={(e) => setNote(e.target.value)}
           />
         </Field>
         <div className="row" style={{ gap: 10 }}>
-          <Field label="Number of groups">
+          <Field label="Groups">
             <input
               type="number"
               min={1}
@@ -817,8 +921,7 @@ function NewGroupingDialog({ state, onClose }: { state: ClassState; onClose: () 
             setCustomizeSizes(on);
             if (on) setCustomSizes(Array.from({ length: safeCount }, () => defaultMax));
           }}
-          label="Set different max sizes per group"
-          description="Handy for uneven totals (e.g. 42 students → two groups of 11 and two of 10)."
+          label="Custom size per group"
         />
         {customizeSizes && (
           <div className="grp-size-grid">
@@ -837,14 +940,16 @@ function NewGroupingDialog({ state, onClose }: { state: ClassState; onClose: () 
             ))}
           </div>
         )}
+        <Switch checked={selfJoin} onChange={setSelfJoin} label="Allow self-join" />
         <Switch
-          checked={shared}
-          onChange={setShared}
-          label="Share with another class (e.g. G1 + G2)"
-          description={`Generates a share code so up to ${SHARED_MAX_CLASSES} classes can collaborate on this grouping without sharing ledgers or rosters.`}
+          checked={hasLeader}
+          onChange={setHasLeader}
+          label="Group leaders"
+          description="First to join leads and approves new members."
         />
+        <Switch checked={shared} onChange={setShared} label="Share with another class" />
         {shared && (
-          <Field label="This class's short section tag">
+          <Field label="Section tag">
             <input
               value={sectionTag}
               maxLength={GUEST_TAG_MAX}
@@ -853,12 +958,6 @@ function NewGroupingDialog({ state, onClose }: { state: ClassState; onClose: () 
             />
           </Field>
         )}
-        <Switch
-          checked={selfJoin}
-          onChange={setSelfJoin}
-          label="Let students join and add guests"
-          description="Students can join a group and add irregular teammates to their own group until you lock it."
-        />
       </div>
     </Dialog>
   );
@@ -885,7 +984,7 @@ function LinkSharedGroupingDialog({ state, onClose }: { state: ClassState; onClo
             disabled={!code.trim() || run.busy}
             onClick={() =>
               run(
-                'Shared grouping linked to this class.',
+                'Shared grouping linked.',
                 () =>
                   linkSharedGrouping(
                     db,
@@ -900,15 +999,12 @@ function LinkSharedGroupingDialog({ state, onClose }: { state: ClassState; onClo
               )
             }
           >
-            {run.busy ? 'Linking…' : 'Link grouping'}
+            {run.busy ? 'Linking…' : 'Link'}
           </button>
         </>
       }
     >
       <div className="stack">
-        <p className="small muted" style={{ margin: 0 }}>
-          Enter the share code from the host class officer (e.g. <b>GRP-4829</b>). Students in this class will see the grouping right here in <b>Groups</b>.
-        </p>
         <Field label="Share code">
           <input
             value={code}
@@ -918,7 +1014,7 @@ function LinkSharedGroupingDialog({ state, onClose }: { state: ClassState; onClo
             onChange={(e) => setCode(e.target.value)}
           />
         </Field>
-        <Field label="Section tag (shown beside this class's students)">
+        <Field label="Section tag">
           <input
             value={sectionTag}
             maxLength={GUEST_TAG_MAX}
@@ -927,7 +1023,7 @@ function LinkSharedGroupingDialog({ state, onClose }: { state: ClassState; onClo
           />
         </Field>
         {state.courses.length > 0 && (
-          <Field label="Matching course in this class (optional)">
+          <Field label="Course (optional)">
             <TagSelect state={state} value={courseId} onChange={setCourseId} label="Course" />
           </Field>
         )}
@@ -983,13 +1079,8 @@ function ShareLinkedDialog({
       }
     >
       <div className="stack">
-        <p className="small muted" style={{ margin: 0 }}>
-          Share this code with another class's officer so they can link it from <b>Members → Groups → Link shared grouping</b>.
-        </p>
         {grouping.shareCode && <div className="grp-code-hero">{grouping.shareCode}</div>}
-        <div className="small bold">
-          {`Linked classes (${linked.length} of ${SHARED_MAX_CLASSES})`}
-        </div>
+        <div className="small bold">{`Linked (${linked.length}/${SHARED_MAX_CLASSES})`}</div>
         <div className="stack" style={{ gap: 6 }}>
           {linked.map((c) => (
             <div key={c.classId} className="row" style={{ justifyContent: 'space-between', padding: '8px 10px', borderRadius: 10, background: 'var(--ch-surface-2)' }}>
@@ -1021,12 +1112,75 @@ function ShareLinkedDialog({
   );
 }
 
+function PassLeaderDialog({
+  state,
+  grouping,
+  slot,
+  memberById,
+  manage,
+  onClose,
+}: {
+  state: ClassState;
+  grouping: Grouping;
+  slot: GroupSlot;
+  memberById: Map<string, ClassState['members'][number]>;
+  manage: boolean;
+  onClose: () => void;
+}) {
+  const run = useRun();
+  const currentLeader = effectiveLeaderUid(slot, true);
+  const candidates = slot.memberUids.filter((uid) => uid !== currentLeader);
+  const nameOf = (uid: string) => {
+    const m = memberById.get(uid);
+    return m ? listName(m) : slot.memberMeta?.[uid]?.name ?? 'Member';
+  };
+
+  return (
+    <Dialog
+      title={`Leader for ${slot.name}`}
+      onClose={run.busy ? () => undefined : onClose}
+      actions={
+        <button type="button" className="btn text" onClick={onClose}>
+          Cancel
+        </button>
+      }
+    >
+      <div className="stack" style={{ gap: 8 }}>
+        {candidates.map((uid) => {
+          const name = nameOf(uid);
+          return (
+            <button
+              key={uid}
+              type="button"
+              className="option-card"
+              disabled={run.busy}
+              onClick={() =>
+                run(
+                  `${name} is now leader of ${slot.name}.`,
+                  () => setGroupLeader(db, state.classId, grouping.id, slot.id, state.myUid, uid, manage, grouping.shared),
+                  onClose,
+                )
+              }
+            >
+              <span className="grow bold">{name}</span>
+              <span className="small semibold" style={{ color: 'var(--primary)' }}>
+                Make leader
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </Dialog>
+  );
+}
+
 function EditGroupingDialog({ state, grouping, onClose }: { state: ClassState; grouping: Grouping; onClose: () => void }) {
   const run = useRun();
   const [title, setTitle] = useState(grouping.title);
   const [courseId, setCourseId] = useState(grouping.courseId);
   const [note, setNote] = useState(grouping.note);
   const [selfJoin, setSelfJoin] = useState(grouping.selfJoin);
+  const [hasLeader, setHasLeader] = useState(!!grouping.hasLeader);
 
   return (
     <Dialog
@@ -1044,7 +1198,7 @@ function EditGroupingDialog({ state, grouping, onClose }: { state: ClassState; g
             onClick={() =>
               run(
                 'Grouping updated.',
-                () => updateGroupingMeta(db, state.myUid, state.classId, grouping, { title, courseId, note, selfJoin }),
+                () => updateGroupingMeta(db, state.myUid, state.classId, grouping, { title, courseId, note, selfJoin, hasLeader }),
                 onClose,
               )
             }
@@ -1059,14 +1213,20 @@ function EditGroupingDialog({ state, grouping, onClose }: { state: ClassState; g
           <input value={title} maxLength={GROUPING_TITLE_MAX} onChange={(e) => setTitle(e.target.value)} />
         </Field>
         {state.courses.length > 0 && (
-          <Field label={grouping.shared ? 'Matching course in this class' : 'Course'}>
+          <Field label="Course">
             <TagSelect state={state} value={courseId} onChange={setCourseId} label="Course" />
           </Field>
         )}
         <Field label="Note (optional)">
           <input value={note} maxLength={GROUPING_NOTE_MAX} onChange={(e) => setNote(e.target.value)} />
         </Field>
-        <Switch checked={selfJoin} onChange={setSelfJoin} label="Let students join and add guests" />
+        <Switch checked={selfJoin} onChange={setSelfJoin} label="Allow self-join" />
+        <Switch
+          checked={hasLeader}
+          onChange={setHasLeader}
+          label="Group leaders"
+          description="First to join leads and approves new members."
+        />
       </div>
     </Dialog>
   );
@@ -1095,7 +1255,7 @@ function AddSlotDialog({ classId, grouping, onClose }: { classId: string; groupi
               run(`Added ${name.trim()}.`, () => addGroupSlot(db, classId, grouping.id, name, maxSize, grouping.shared), onClose)
             }
           >
-            Add group
+            Add
           </button>
         </>
       }
@@ -1143,7 +1303,7 @@ function EditSlotDialog({
                 run(`Removed ${slot.name}.`, () => deleteGroupSlot(db, classId, grouping.id, slot.id, grouping.shared), onClose)
               }
             >
-              Delete group
+              Delete
             </button>
           )}
           <button type="button" className="btn text" disabled={run.busy} onClick={onClose}>
@@ -1221,7 +1381,7 @@ function AssignToSlotDialog({
       <div className="stack">
         <SearchInput aria-label="Search students" placeholder="Search students" value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="scroll-list">
-          {candidates.length === 0 && <p className="empty" style={{ padding: 16 }}>No students left to assign.</p>}
+          {candidates.length === 0 && <p className="empty" style={{ padding: 16 }}>No students left.</p>}
           {candidates.map((m) => {
             const current = findMemberGroup(grouping.groups, m.id);
             return (
@@ -1239,7 +1399,7 @@ function AssignToSlotDialog({
                 <span className="grow ellipsis-box">
                   <span className="title ellipsis">{listName(m)}</span>
                   <span className="sub ellipsis">
-                    {current ? `Currently in ${current.name} (will move)` : 'Ungrouped'}
+                    {current ? `In ${current.name}` : 'Ungrouped'}
                   </span>
                 </span>
                 <span className="small semibold" style={{ color: 'var(--primary)' }}>
