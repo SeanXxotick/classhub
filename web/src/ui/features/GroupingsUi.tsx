@@ -51,7 +51,7 @@ import {
   isGroupFull,
   ungroupedMemberIds,
 } from '../../domain/groupingLogic';
-import { Badge, Button, Card, Notice, SearchInput, Switch } from '../../design';
+import { Button, Card, Notice, SearchInput, Switch } from '../../design';
 import { ConfirmDialog, Dialog, Field, hexColor } from '../common';
 import { myAccent } from '../settings';
 import { useClass, type ClassState } from '../classroom/ClassContext';
@@ -351,20 +351,11 @@ function GroupingCard({
             onClick={() => setCardOpen(!cardOpen)}
           >
             <div className="stack" style={{ gap: 6, minWidth: 0, flex: 1 }}>
-              <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
-                <TagBadge state={state} courseId={grouping.courseId} />
-                {grouping.shared && (
-                  <Badge tone="info">{`Shared: ${linkedList.map((c) => c.tag).join(' + ')}`}</Badge>
-                )}
-                {grouping.locked ? (
-                  <Badge tone="warning">Locked</Badge>
-                ) : grouping.selfJoin ? (
-                  <Badge tone="success">{grouping.hasLeader ? 'Leader approval' : 'Self-join'}</Badge>
-                ) : (
-                  <Badge tone="neutral">Officer-assigned</Badge>
-                )}
-                {myGroup && <Badge tone="primary">{`You: ${myGroup.name}`}</Badge>}
-              </div>
+              {grouping.courseId && (
+                <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
+                  <TagBadge state={state} courseId={grouping.courseId} />
+                </div>
+              )}
               <div className="bold" style={{ fontSize: 17, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
                 {grouping.title}
               </div>
@@ -372,6 +363,8 @@ function GroupingCard({
               <div className="ch-small ch-muted">
                 {`${grouping.groups.length} group${grouping.groups.length === 1 ? '' : 's'} · ${totalMembers} member${totalMembers === 1 ? '' : 's'}`}
                 {totalGuests > 0 ? ` · ${totalGuests} guest${totalGuests === 1 ? '' : 's'}` : ''}
+                {myGroup ? ` · ${myGroup.name}` : ''}
+                {grouping.locked ? ' · Locked' : ''}
               </div>
             </div>
             <span className={'grp-chev' + (cardOpen ? ' open' : '')} aria-hidden>
