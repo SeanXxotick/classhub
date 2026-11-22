@@ -1028,66 +1028,109 @@ export function useLocalGroupings(db: Firestore, classId: string, enabled: boole
 
 /** Shared cross-class groupings linked to this class, live via per-doc listeners. */
 export function useSharedGroupings(db: Firestore, classId: string, enabled: boolean): Grouping[] | undefined {
-  const links = useQueryList<{ id: string; sharedId: string }>(
-    `v2/sharedGroupingLinks/${classId}/${enabled}`,
-    enabled ? sharedGroupingLinksCol(db, classId) : null,
-    (d) => ({ id: d.id, sharedId: String(d.data()?.sharedId ?? d.id) }),
-  );
-  const linkKey = (links.data ?? []).map((l) => l.sharedId).sort().join(',');
-  const [docs, setDocs] = useState<Map<string, Grouping | null>>(() => new Map());
+  const [result, setResult] = useState<Grouping[] | undefined>(undefined);
 
   useEffect(() => {
-    if (!enabled || !links.data) return;
-    const ids = links.data.map((l) => l.sharedId);
-    if (ids.length === 0) {
-      setDocs(new Map());
+    if (!enabled || !classId) {
+      setResult(undefined);
       return;
     }
-    const unsubs = ids.map((sharedId) =>
-      onSnapshot(
+    const docUnsubs = new Map<string, () => void>();
+    const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    const retryCounts = new Map<string, number>();
+    const docsMap = new Map<string, Grouping>();
+    let disposed = false;
+
+    const emit = () => {
+      if (disposed) return;
+      setResult(Array.from(docsMap.values()));
+    };
+
+    const subscribeShared = (sharedId: string) => {
+      if (disposed || docUnsubs.has(sharedId)) return;
+      const unsub = onSnapshot(
         sharedGroupingRef(db, sharedId),
         (snap) => {
-          setDocs((prev) => {
-            const next = new Map(prev);
-            if (!snap.exists()) {
-              next.set(sharedId, null);
+          retryCounts.delete(sharedId);
+          if (!snap.exists()) {
+            docsMap.delete(sharedId);
+          } else {
+            const raw = groupingFrom(snap);
+            if (!(raw.linkedClassIds ?? []).includes(classId)) {
+              docsMap.delete(sharedId);
             } else {
-              const raw = groupingFrom(snap);
-              if (!(raw.linkedClassIds ?? []).includes(classId)) {
-                next.set(sharedId, null);
-              } else {
-                const myLink = raw.linkedClasses?.[classId];
-                next.set(sharedId, {
-                  ...raw,
-                  shared: true,
-                  courseId: myLink?.courseId ?? '',
-                });
-              }
+              const myLink = raw.linkedClasses?.[classId];
+              docsMap.set(sharedId, {
+                ...raw,
+                shared: true,
+                courseId: myLink?.courseId ?? '',
+              });
             }
-            return next;
-          });
+          }
+          emit();
         },
         () => {
-          // Unlinked or deleted shared grouping: hide gracefully.
-          setDocs((prev) => {
-            const next = new Map(prev);
-            next.set(sharedId, null);
-            return next;
-          });
+          unsub();
+          docUnsubs.delete(sharedId);
+          const attempts = retryCounts.get(sharedId) ?? 0;
+          if (!disposed && attempts < 2) {
+            retryCounts.set(sharedId, attempts + 1);
+            const timer = setTimeout(() => {
+              retryTimers.delete(sharedId);
+              subscribeShared(sharedId);
+            }, 800 * (attempts + 1));
+            retryTimers.set(sharedId, timer);
+          } else {
+            docsMap.delete(sharedId);
+            emit();
+          }
         },
-      ),
-    );
-    return () => {
-      for (const u of unsubs) u();
+      );
+      docUnsubs.set(sharedId, unsub);
     };
-  }, [db, classId, enabled, linkKey]);
 
-  if (!enabled || links.data === undefined) return undefined;
-  const result: Grouping[] = [];
-  for (const l of links.data) {
-    const g = docs.get(l.sharedId);
-    if (g) result.push(g);
-  }
+    const unsubLinks = onSnapshot(
+      sharedGroupingLinksCol(db, classId),
+      { includeMetadataChanges: true },
+      (snap) => {
+        // Wait until a newly created link doc is committed on the server before attaching a
+        // per-doc listener to /sharedGroupings/{id}; otherwise a racing LISTEN can hit PERMISSION_DENIED.
+        const activeIds = new Set(
+          snap.docs
+            .filter((d) => !d.metadata.hasPendingWrites)
+            .map((d) => String(d.data()?.sharedId ?? d.id)),
+        );
+        for (const [id, unsub] of docUnsubs) {
+          if (!activeIds.has(id)) {
+            unsub();
+            docUnsubs.delete(id);
+            const timer = retryTimers.get(id);
+            if (timer) {
+              clearTimeout(timer);
+              retryTimers.delete(id);
+            }
+            retryCounts.delete(id);
+            docsMap.delete(id);
+          }
+        }
+        for (const id of activeIds) {
+          if (!docUnsubs.has(id) && !retryTimers.has(id)) {
+            subscribeShared(id);
+          }
+        }
+        emit();
+      },
+      () => setResult([]),
+    );
+
+    return () => {
+      disposed = true;
+      unsubLinks();
+      for (const unsub of docUnsubs.values()) unsub();
+      for (const timer of retryTimers.values()) clearTimeout(timer);
+    };
+  }, [db, classId, enabled]);
+
   return result;
 }
 

@@ -16,6 +16,7 @@ import {
   createPoll,
   deletePoll,
   setPollClosed,
+  updatePoll,
   type Poll,
   type PollVote,
 } from '../../data/polls';
@@ -67,6 +68,7 @@ export function PollsView({ state, polls, votes }: { state: ClassState; polls: P
   const manage = state.can('ANNOUNCEMENTS_MANAGE');
   const [tag, setTag] = useState('*');
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<{ poll: Poll; hasVotes: boolean } | null>(null);
   const [deleting, setDeleting] = useState<Poll | null>(null);
   const run = useRun();
 
@@ -98,6 +100,7 @@ export function PollsView({ state, polls, votes }: { state: ClassState; polls: P
           poll={poll}
           votes={votes.filter((v) => v.pollId === poll.id)}
           manage={manage}
+          onEdit={(hasVotes) => setEditing({ poll, hasVotes })}
           onToggleClosed={() => {
             const currentlyOpen = isPollOpen(poll, Date.now());
             run(
@@ -109,6 +112,14 @@ export function PollsView({ state, polls, votes }: { state: ClassState; polls: P
         />
       ))}
       {creating && <NewPollDialog state={state} onClose={() => setCreating(false)} />}
+      {editing && (
+        <EditPollDialog
+          state={state}
+          poll={editing.poll}
+          hasVotes={editing.hasVotes}
+          onClose={() => setEditing(null)}
+        />
+      )}
       {deleting && (
         <ConfirmDialog
           title={`Delete "${deleting.question}"?`}
@@ -132,6 +143,7 @@ function PollCard({
   poll,
   votes,
   manage,
+  onEdit,
   onToggleClosed,
   onDelete,
 }: {
@@ -139,10 +151,12 @@ function PollCard({
   poll: Poll;
   votes: PollVote[];
   manage: boolean;
+  onEdit: (hasVotes: boolean) => void;
   onToggleClosed: () => void;
   onDelete: () => void;
 }) {
   const { actions } = useClass();
+  const [showVoters, setShowVoters] = useState(false);
   const [showUnvoted, setShowUnvoted] = useState(false);
   const [saving, setSaving] = useState(false);
   const open = isPollOpen(poll, Date.now());
@@ -181,7 +195,13 @@ function PollCard({
     }
     setSaving(true);
     try {
-      await castPollVote(db, state.classId, poll, state.myUid, next);
+      const voterMeta = poll.shared
+        ? {
+            name: state.me ? listName(state.me) : 'Member',
+            tag: poll.linkedClasses?.[state.classId]?.tag ?? guessSectionTag(state.room?.name ?? ''),
+          }
+        : undefined;
+      await castPollVote(db, state.classId, poll, state.myUid, next, voterMeta);
     } catch (e) {
       actions.showNotice(friendlyMessage(e));
     } finally {
@@ -217,7 +237,7 @@ function PollCard({
                 {linkedList.map((c) => (
                   <span
                     key={c.classId}
-                    className="grouping-class-tag"
+                    className="grp-sec-tag"
                     style={classTintStyle(state, c.classId, c.accentColor)}
                   >
                     {c.name}
@@ -230,6 +250,7 @@ function PollCard({
             label={`More for "${poll.question}"`}
             title={poll.question}
             items={[
+              manage && isHost && { label: 'Edit poll', icon: 'edit', onClick: () => onEdit(tally.totalVoters > 0) },
               manage && { label: open ? 'Close poll' : 'Reopen poll', icon: 'lock', onClick: onToggleClosed },
               manage && isHost && { label: 'Delete', icon: 'trash', danger: true, onClick: onDelete },
             ]}
@@ -241,20 +262,50 @@ function PollCard({
             const chosen = myChoices.includes(idx);
             const count = tally.counts[idx] ?? 0;
             const pct = tally.totalVoters > 0 ? Math.round((count / denom) * 100) : 0;
+            const optionVoters = !poll.anonymous && showVoters
+              ? votes
+                  .filter((v) => v.choices.includes(idx))
+                  .map((v) => {
+                    const local = state.members.find((m) => m.id === v.uid);
+                    const name = local ? listName(local) : v.name || 'Classmate';
+                    const cid = v.classId || (local ? state.classId : '');
+                    const tag = poll.shared ? (v.tag || (cid ? poll.linkedClasses?.[cid]?.tag : '')) : '';
+                    return { uid: v.uid, name, classId: cid, tag };
+                  })
+                  .sort((a, b) => a.name.localeCompare(b.name))
+              : [];
             return (
-              <button
-                key={idx}
-                type="button"
-                className={'poll-opt' + (poll.multi ? ' multi' : '') + (chosen ? ' chosen' : '')}
-                disabled={!open || saving}
-                aria-pressed={chosen}
-                onClick={() => void pick(idx)}
-              >
-                <span className="poll-bar" style={{ width: `${pct}%` }} aria-hidden />
-                <span className="poll-radio" aria-hidden>{chosen ? '✓' : ''}</span>
-                <span className="poll-label">{label}</span>
-                <span className="poll-pct">{`${pct}% (${count})`}</span>
-              </button>
+              <div key={idx} className="stack" style={{ gap: 6 }}>
+                <button
+                  type="button"
+                  className={'poll-opt' + (poll.multi ? ' multi' : '') + (chosen ? ' chosen' : '')}
+                  disabled={!open || saving}
+                  aria-pressed={chosen}
+                  onClick={() => void pick(idx)}
+                >
+                  <span className="poll-bar" style={{ width: `${pct}%` }} aria-hidden />
+                  <span className="poll-radio" aria-hidden>{chosen ? '✓' : ''}</span>
+                  <span className="poll-label">{label}</span>
+                  <span className="poll-pct">{`${pct}% (${count})`}</span>
+                </button>
+                {optionVoters.length > 0 && (
+                  <div className="poll-chips" style={{ paddingLeft: 6 }}>
+                    {optionVoters.map((v) => (
+                      <span key={v.uid} className="poll-name-chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        <span>{v.uid === state.myUid ? `${v.name} (you)` : v.name}</span>
+                        {v.tag && (
+                          <span
+                            className="grp-sec-tag"
+                            style={classTintStyle(state, v.classId, poll.linkedClasses?.[v.classId]?.accentColor)}
+                          >
+                            {v.tag}
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
@@ -266,13 +317,20 @@ function PollCard({
               : `${tally.totalVoters} of ${eligibleMembers.length} voted`}
             {poll.anonymous ? ' · Anonymous' : ''}
           </span>
-          {manage && unvotedMembers.length > 0 && (
-            <button type="button" className="btn text small" onClick={() => setShowUnvoted(!showUnvoted)}>
-              {poll.shared
-                ? `Not voted in this class (${unvotedMembers.length}) ${showUnvoted ? '▴' : '▾'}`
-                : `Not voted yet (${unvotedMembers.length}) ${showUnvoted ? '▴' : '▾'}`}
-            </button>
-          )}
+          <div className="ch-row ch-wrap ch-gap-1" style={{ alignItems: 'center' }}>
+            {!poll.anonymous && tally.totalVoters > 0 && (
+              <button type="button" className="btn text small" onClick={() => setShowVoters(!showVoters)}>
+                {showVoters ? 'Hide voters ▴' : 'Show voters ▾'}
+              </button>
+            )}
+            {manage && unvotedMembers.length > 0 && (
+              <button type="button" className="btn text small" onClick={() => setShowUnvoted(!showUnvoted)}>
+                {poll.shared
+                  ? `Not voted in this class (${unvotedMembers.length}) ${showUnvoted ? '▴' : '▾'}`
+                  : `Not voted yet (${unvotedMembers.length}) ${showUnvoted ? '▴' : '▾'}`}
+              </button>
+            )}
+          </div>
         </div>
 
         {manage && showUnvoted && unvotedMembers.length > 0 && (
@@ -434,6 +492,7 @@ function NewPollDialog({ state, onClose }: { state: ClassState; onClose: () => v
           checked={anonymous}
           onChange={setAnonymous}
           label="Anonymous votes"
+          description="Hide who voted for each choice. When off, members can see who voted for what."
         />
         <Field label="Close automatically after (optional)">
           <input type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
@@ -455,6 +514,160 @@ function NewPollDialog({ state, onClose }: { state: ClassState; onClose: () => v
             />
           )}
         </div>
+      </div>
+    </Dialog>
+  );
+}
+
+function toManilaDateInput(ms: number): string {
+  if (!ms || ms <= 0) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(ms));
+  const y = parts.find((p) => p.type === 'year')?.value ?? '';
+  const m = parts.find((p) => p.type === 'month')?.value ?? '';
+  const d = parts.find((p) => p.type === 'day')?.value ?? '';
+  return y && m && d ? `${y}-${m}-${d}` : '';
+}
+
+function EditPollDialog({
+  state,
+  poll,
+  hasVotes,
+  onClose,
+}: {
+  state: ClassState;
+  poll: Poll;
+  hasVotes: boolean;
+  onClose: () => void;
+}) {
+  const run = useRun();
+  const initialCount = poll.options.length;
+  const [question, setQuestion] = useState(poll.question);
+  const [options, setOptions] = useState<string[]>(() => [...poll.options]);
+  const [courseId, setCourseId] = useState(poll.courseId);
+  const [multi, setMulti] = useState(poll.multi);
+  const [maxChoices, setMaxChoices] = useState(Math.max(2, poll.maxChoices));
+  const [closeDate, setCloseDate] = useState(() => toManilaDateInput(poll.closesAtMillis));
+
+  const filledOptions = options.map((o) => o.trim()).filter(Boolean);
+  const existingKept = !hasVotes || options.slice(0, initialCount).every((o) => o.trim().length > 0);
+  const valid = !!question.trim() && filledOptions.length >= 2 && existingKept;
+  const updateOption = (i: number, value: string) =>
+    setOptions((prev) => prev.map((x, idx) => (idx === i ? value.slice(0, POLL_OPTION_MAX) : x)));
+  const canRemoveOption = (i: number) => options.length > 2 && (!hasVotes || i >= initialCount);
+  const removeOption = (i: number) => {
+    if (!canRemoveOption(i)) return;
+    setOptions((prev) => prev.filter((_, idx) => idx !== i));
+  };
+
+  function save() {
+    if (!valid) return;
+    const closesAtMillis = closeDate ? new Date(`${closeDate}T23:59:59+08:00`).getTime() : 0;
+    run(
+      'Poll updated.',
+      () =>
+        updatePoll(db, state.myUid, state.classId, poll, {
+          question,
+          options,
+          courseId: poll.shared ? '' : courseId,
+          multi,
+          maxChoices,
+          closesAtMillis,
+        }),
+      onClose,
+    );
+  }
+
+  return (
+    <Dialog
+      title="Edit poll"
+      onClose={run.busy ? () => undefined : onClose}
+      actions={
+        <>
+          <button type="button" className="btn text" disabled={run.busy} onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="btn solid" disabled={!valid || run.busy} onClick={save}>
+            {run.busy ? 'Saving…' : 'Save'}
+          </button>
+        </>
+      }
+    >
+      <div className="stack">
+        <Field label="Question">
+          <input
+            value={question}
+            maxLength={POLL_QUESTION_MAX}
+            placeholder="Poll question"
+            onChange={(e) => setQuestion(e.target.value)}
+          />
+        </Field>
+        <div className="stack" style={{ gap: 8 }}>
+          <span className="small semibold muted">Choices</span>
+          {hasVotes && (
+            <span className="tiny muted">
+              Existing choices cannot be removed after votes have been cast. You can still rename them or add new choices.
+            </span>
+          )}
+          {options.map((opt, i) => (
+            <div key={i} className="row" style={{ gap: 6 }}>
+              <input
+                className="input grow"
+                value={opt}
+                maxLength={POLL_OPTION_MAX}
+                placeholder={`Choice ${i + 1}`}
+                onChange={(e) => updateOption(i, e.target.value)}
+              />
+              {canRemoveOption(i) && (
+                <button
+                  type="button"
+                  className="btn text small danger"
+                  aria-label={`Remove choice ${i + 1}`}
+                  onClick={() => removeOption(i)}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+          {options.length < POLL_MAX_OPTIONS && (
+            <button
+              type="button"
+              className="btn outline small"
+              style={{ alignSelf: 'flex-start' }}
+              onClick={() => setOptions([...options, ''])}
+            >
+              + Add choice
+            </button>
+          )}
+        </div>
+        {!poll.shared && state.courses.length > 0 && (
+          <Field label="Who votes">
+            <TagSelect state={state} value={courseId} onChange={setCourseId} label="Who votes" />
+          </Field>
+        )}
+        <Switch checked={multi} onChange={setMulti} label="Allow multiple choices" />
+        {multi && (
+          <Field label="Maximum choices per student">
+            <select
+              value={Math.min(maxChoices, Math.max(2, filledOptions.length))}
+              onChange={(e) => setMaxChoices(Number(e.target.value))}
+            >
+              {Array.from({ length: Math.max(1, filledOptions.length - 1) }, (_, i) => i + 2).map((n) => (
+                <option key={n} value={n}>
+                  Up to {n}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        <Field label="Close automatically after (optional)">
+          <input type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
+        </Field>
       </div>
     </Dialog>
   );

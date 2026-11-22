@@ -57,6 +57,7 @@ const LOOK: Record<HistoryKind, [IconName, Tone]> = {
   CONTENT_EDITED: ['contents', 'neutral'],
   CONTENT_DELETED: ['trash', 'danger'],
   POLL_CREATED: ['list', 'primary'],
+  POLL_UPDATED: ['edit', 'neutral'],
   POLL_CLOSED: ['lock', 'warning'],
   POLL_DELETED: ['trash', 'danger'],
   GROUPING_CREATED: ['members', 'primary'],

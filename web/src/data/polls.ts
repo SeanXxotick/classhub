@@ -86,6 +86,9 @@ export interface PollVote {
   uid: string;
   choices: number[];
   votedAtMillis: number;
+  name?: string;
+  classId?: string;
+  tag?: string;
 }
 
 export const newPollVote = (v: Partial<PollVote>): PollVote => ({
@@ -248,7 +251,14 @@ export async function createPoll(db: Firestore, actorUid: string, classId: strin
  * Saves or clears (when choices is empty) a member's vote on an open poll. On an anonymous poll the ballot is
  * private and the poll's counts move with it in the same write, so nobody can see who chose what.
  */
-export async function castPollVote(db: Firestore, classId: string, poll: Poll, uid: string, choices: number[]): Promise<void> {
+export async function castPollVote(
+  db: Firestore,
+  classId: string,
+  poll: Poll,
+  uid: string,
+  choices: number[],
+  voterMeta?: { name: string; tag: string },
+): Promise<void> {
   const pollId = poll.id;
   if (poll.anonymous) {
     const ballotRef = poll.shared
@@ -280,8 +290,52 @@ export async function castPollVote(db: Firestore, classId: string, poll: Poll, u
     await explainRefusal(db, classId, () => deleteDoc(ref));
     return;
   }
+  const payload = poll.shared && voterMeta
+    ? {
+        pollId,
+        uid,
+        choices,
+        votedAtMillis: nowMillis(),
+        name: voterMeta.name.trim().slice(0, 100),
+        classId,
+        tag: voterMeta.tag.trim().slice(0, 24),
+      }
+    : { pollId, uid, choices, votedAtMillis: nowMillis() };
+  await explainRefusal(db, classId, () => setDoc(ref, payload));
+}
+
+/** Updates a poll's question, choices, settings, or close date (ANNOUNCEMENTS_MANAGE). */
+export async function updatePoll(
+  db: Firestore,
+  actorUid: string,
+  classId: string,
+  poll: Poll,
+  input: {
+    question: string;
+    options: string[];
+    courseId: string;
+    multi: boolean;
+    maxChoices: number;
+    closesAtMillis: number;
+  },
+): Promise<void> {
+  const question = input.question.trim().slice(0, POLL_QUESTION_MAX);
+  if (!question) throw new UserError('NAME_MISSING', 'Write the poll question first.');
+  const options = input.options.map((o) => o.trim().slice(0, POLL_OPTION_MAX)).filter(Boolean).slice(0, POLL_MAX_OPTIONS);
+  if (options.length < 2) throw new UserError('NAME_MISSING', 'Add at least two choices.');
+  const maxChoices = input.multi ? Math.min(options.length, Math.max(2, Math.trunc(input.maxChoices))) : 1;
+  const closesAtMillis = input.closesAtMillis > 0 ? input.closesAtMillis : 0;
+  const target = poll.shared ? sharedPollRef(db, poll.id) : doc(pollsCol(db, classId), poll.id);
+  const patch = poll.shared
+    ? { question, options, multi: input.multi, maxChoices, closesAtMillis }
+    : { question, options, courseId: input.courseId, multi: input.multi, maxChoices, closesAtMillis };
   await explainRefusal(db, classId, () =>
-    setDoc(ref, { pollId, uid, choices, votedAtMillis: nowMillis() }),
+    commitLogged(
+      db,
+      classId,
+      { actorUid, kind: 'POLL_UPDATED', text: `Edited the poll "${question}"` },
+      (b) => b.update(target, patch),
+    ),
   );
 }
 
@@ -361,10 +415,14 @@ export function useSharedPolls(db: Firestore, classId: string, uid: string, enab
     }
     const pollUnsubs = new Map<string, () => void>();
     const voteUnsubs = new Map<string, () => void>();
+    const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    const retryCounts = new Map<string, number>();
     const pollAnonState = new Map<string, boolean>();
     const pollsMap = new Map<string, Poll>();
+    let disposed = false;
 
     const emitPolls = () => {
+      if (disposed) return;
       setPolls(Array.from(pollsMap.values()).sort((a, b) => b.createdAtMillis - a.createdAtMillis));
     };
 
@@ -402,14 +460,62 @@ export function useSharedPolls(db: Firestore, classId: string, uid: string, enab
       }
     };
 
+    const subscribePoll = (id: string) => {
+      if (disposed || pollUnsubs.has(id)) return;
+      const unsub = onSnapshot(
+        sharedPollRef(db, id),
+        (docSnap) => {
+          retryCounts.delete(id);
+          if (!docSnap.exists()) {
+            pollsMap.delete(id);
+            voteUnsubs.get(id)?.();
+            voteUnsubs.delete(id);
+            pollAnonState.delete(id);
+          } else {
+            const parsed = fromDoc(newPoll({}), docSnap);
+            parsed.shared = true;
+            pollsMap.set(id, parsed);
+            syncVoteSub(id, parsed.anonymous);
+          }
+          emitPolls();
+        },
+        () => {
+          unsub();
+          pollUnsubs.delete(id);
+          const attempts = retryCounts.get(id) ?? 0;
+          if (!disposed && attempts < 2) {
+            retryCounts.set(id, attempts + 1);
+            const timer = setTimeout(() => {
+              retryTimers.delete(id);
+              subscribePoll(id);
+            }, 800 * (attempts + 1));
+            retryTimers.set(id, timer);
+          } else {
+            pollsMap.delete(id);
+            emitPolls();
+          }
+        },
+      );
+      pollUnsubs.set(id, unsub);
+    };
+
     const unsubLinks = onSnapshot(
       sharedPollLinksCol(db, classId),
+      { includeMetadataChanges: true },
       (snap) => {
-        const activeIds = new Set(snap.docs.map((d) => d.id));
+        // Wait until a newly created link doc is committed on the server before attaching a
+        // per-doc listener to /sharedPolls/{id}; otherwise a racing LISTEN can hit PERMISSION_DENIED.
+        const activeIds = new Set(snap.docs.filter((d) => !d.metadata.hasPendingWrites).map((d) => d.id));
         for (const [id, unsub] of pollUnsubs) {
           if (!activeIds.has(id)) {
             unsub();
             pollUnsubs.delete(id);
+            const timer = retryTimers.get(id);
+            if (timer) {
+              clearTimeout(timer);
+              retryTimers.delete(id);
+            }
+            retryCounts.delete(id);
             voteUnsubs.get(id)?.();
             voteUnsubs.delete(id);
             pollAnonState.delete(id);
@@ -423,29 +529,9 @@ export function useSharedPolls(db: Firestore, classId: string, uid: string, enab
           }
         }
         for (const id of activeIds) {
-          if (pollUnsubs.has(id)) continue;
-          const unsub = onSnapshot(
-            sharedPollRef(db, id),
-            (docSnap) => {
-              if (!docSnap.exists()) {
-                pollsMap.delete(id);
-                voteUnsubs.get(id)?.();
-                voteUnsubs.delete(id);
-                pollAnonState.delete(id);
-              } else {
-                const parsed = fromDoc(newPoll({}), docSnap);
-                parsed.shared = true;
-                pollsMap.set(id, parsed);
-                syncVoteSub(id, parsed.anonymous);
-              }
-              emitPolls();
-            },
-            () => {
-              pollsMap.delete(id);
-              emitPolls();
-            },
-          );
-          pollUnsubs.set(id, unsub);
+          if (!pollUnsubs.has(id) && !retryTimers.has(id)) {
+            subscribePoll(id);
+          }
         }
         emitPolls();
       },
@@ -456,9 +542,11 @@ export function useSharedPolls(db: Firestore, classId: string, uid: string, enab
     );
 
     return () => {
+      disposed = true;
       unsubLinks();
       for (const unsub of pollUnsubs.values()) unsub();
       for (const unsub of voteUnsubs.values()) unsub();
+      for (const timer of retryTimers.values()) clearTimeout(timer);
     };
   }, [db, classId, uid, enabled, loadVotes]);
 

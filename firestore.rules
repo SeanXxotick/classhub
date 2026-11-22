@@ -550,6 +550,19 @@ service cloud.firestore {
           && changesOnly(['closed', 'closesAtMillis'])
           && request.resource.data.closed is bool
           && request.resource.data.closesAtMillis is int)
+        || (can(resource.data.hostClassId, 'ANNOUNCEMENTS_MANAGE')
+          && isOpen(resource.data.hostClassId)
+          && changesOnly(['question', 'options', 'multi', 'maxChoices', 'closed', 'closesAtMillis'])
+          && isFilled(request.resource.data.question, 150)
+          && request.resource.data.options is list
+          && request.resource.data.options.size() >= 2
+          && request.resource.data.options.size() <= 10
+          && request.resource.data.multi is bool
+          && request.resource.data.maxChoices is int
+          && request.resource.data.maxChoices >= 1
+          && request.resource.data.maxChoices <= request.resource.data.options.size()
+          && request.resource.data.closed is bool
+          && request.resource.data.closesAtMillis is int)
         || (isSharedGroupingMember(resource.data.linkedClassIds)
           && resource.data.get('anonymous', false) == true
           && changesOnly(['tally', 'voters'])
@@ -563,7 +576,11 @@ service cloud.firestore {
           && get(sharedPollPath(pollId)).data.get('anonymous', false) == false
           && isSharedPollOpen(pollId)
           && voterUid == uid()
-          && hasFields(request.resource.data, ['pollId', 'uid', 'choices', 'votedAtMillis'])
+          && request.resource.data.keys().hasAll(['pollId', 'uid', 'choices', 'votedAtMillis'])
+          && request.resource.data.keys().hasOnly(['pollId', 'uid', 'choices', 'votedAtMillis', 'name', 'classId', 'tag'])
+          && isText(request.resource.data.get('name', ''), 100)
+          && isText(request.resource.data.get('classId', ''), 128)
+          && isText(request.resource.data.get('tag', ''), 24)
           && request.resource.data.pollId == pollId
           && request.resource.data.uid == uid()
           && request.resource.data.choices is list
@@ -864,7 +881,7 @@ service cloud.firestore {
           || (d.kind in ['COURSE_ADDED', 'COURSE_EDITED', 'COURSE_DELETED']
             && (officer || 'CLASS_SETTINGS' in role.permissions))
           || (d.kind in ['ANNOUNCEMENT_POSTED', 'ANNOUNCEMENT_PINNED', 'COMMENT_REMOVED', 'FORUM_MODERATED',
-                         'FORUM_QUESTION_DELETED', 'FORUM_ANSWER_REMOVED', 'POLL_CREATED', 'POLL_CLOSED', 'POLL_DELETED']
+                         'FORUM_QUESTION_DELETED', 'FORUM_ANSWER_REMOVED', 'POLL_CREATED', 'POLL_UPDATED', 'POLL_CLOSED', 'POLL_DELETED']
             && (officer || 'ANNOUNCEMENTS_MANAGE' in role.permissions))
           || (d.kind in ['GROUPING_CREATED', 'GROUPING_UPDATED', 'GROUPING_DELETED']
             && (officer || 'MEMBERS_MANAGE' in role.permissions))
@@ -1643,7 +1660,16 @@ service cloud.firestore {
           && request.resource.data.createdByUid == uid()
           && isRecentMillis(request.resource.data.createdAtMillis);
         allow update: if (can(classId, 'ANNOUNCEMENTS_MANAGE') && isOpen(classId)
-            && changesOnly(['closed', 'closesAtMillis'])
+            && changesOnly(['question', 'options', 'courseId', 'multi', 'maxChoices', 'closed', 'closesAtMillis'])
+            && isFilled(request.resource.data.question, 150)
+            && request.resource.data.options is list
+            && request.resource.data.options.size() >= 2
+            && request.resource.data.options.size() <= 10
+            && isText(request.resource.data.courseId, 128)
+            && request.resource.data.multi is bool
+            && request.resource.data.maxChoices is int
+            && request.resource.data.maxChoices >= 1
+            && request.resource.data.maxChoices <= request.resource.data.options.size()
             && request.resource.data.closed is bool
             && request.resource.data.closesAtMillis is int)
           || (isMember(classId) && isOpen(classId)

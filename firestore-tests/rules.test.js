@@ -2314,6 +2314,9 @@ async function main() {
     await assertFails(updateDoc(doc(db('ann'), 'classes/grp/polls/expired'), { closed: false, closesAtMillis: 0 }));
     await assertSucceeds(updateDoc(doc(db('gmayor'), 'classes/grp/polls/expired'), { closed: false, closesAtMillis: 0 }));
     await assertSucceeds(setDoc(doc(db('ann'), 'classes/grp/pollVotes/expired_ann'), { ...ballot('ann', [0]), pollId: 'expired' }));
+    // Officer can edit a poll's question and choices; a member cannot.
+    await assertFails(updateDoc(doc(db('ann'), 'classes/grp/polls/expired'), { question: 'Hacked?', options: ['A', 'B'] }));
+    await assertSucceeds(updateDoc(doc(db('gmayor'), 'classes/grp/polls/expired'), { question: 'Updated?', options: ['Yes', 'No', 'Maybe'], maxChoices: 1 }));
   });
 
   // ---- Semester rollover
@@ -2377,8 +2380,12 @@ async function main() {
     await assertFails(getDoc(doc(db('eve'), 'sharedPolls/sp_open')));
     await assertSucceeds(getDoc(doc(db('pam'), 'sharedPolls/sp_open')));
     await assertFails(setDoc(doc(db('eve'), 'sharedPolls/sp_open/votes/eve'), { pollId: 'sp_open', uid: 'eve', choices: [0], votedAtMillis: now() }));
-    await assertSucceeds(setDoc(doc(db('pam'), 'sharedPolls/sp_open/votes/pam'), { pollId: 'sp_open', uid: 'pam', choices: [1], votedAtMillis: now() }));
+    await assertSucceeds(setDoc(doc(db('pam'), 'sharedPolls/sp_open/votes/pam'), { pollId: 'sp_open', uid: 'pam', choices: [1], votedAtMillis: now(), name: 'Pam', classId: 'grp2', tag: 'G2' }));
     await assertSucceeds(setDoc(doc(db('ann'), 'sharedPolls/sp_open/votes/ann'), { pollId: 'sp_open', uid: 'ann', choices: [0], votedAtMillis: now() }));
+    // Host officer can edit a shared poll; partner officer and students cannot edit its question/options.
+    await assertFails(updateDoc(doc(db('pmayor'), 'sharedPolls/sp_open'), { question: 'Partner edit?', options: ['Fri', 'Sat'] }));
+    await assertFails(updateDoc(doc(db('ann'), 'sharedPolls/sp_open'), { question: 'Student edit?', options: ['Fri', 'Sat'] }));
+    await assertSucceeds(updateDoc(doc(db('gmayor'), 'sharedPolls/sp_open'), { question: 'Joint schedule (updated)?', options: ['Fri', 'Sat', 'Sun'] }));
 
     // Anonymous shared poll: create and cast a private ballot with matched tally.
     await assertSucceeds(setDoc(doc(db('gmayor'), 'sharedPolls/sp_anon'), {
