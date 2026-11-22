@@ -34,6 +34,7 @@ import { db } from '../../data/firebase';
 import { friendlyMessage } from '../../data/errors';
 import { setLockedRoleColor } from '../../data/membership';
 import { useClass } from './ClassContext';
+import { RolloverCard } from './RolloverDialog';
 import { NoAccess, SubPage } from './SubPage';
 
 /** The title and description of each permission, as in the role editor. */
@@ -745,6 +746,7 @@ function ClassSettingsContent({ room }: { room: ClassRoom }) {
         {actions.busy ? <Spinner small /> : 'Save settings'}
       </button>
 
+      {room.ownerUid === state.myUid && <RolloverCard room={room} />}
       {room.ownerUid === state.myUid && <DeleteClassCard room={room} />}
 
       {pickingSchedule && (

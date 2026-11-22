@@ -2631,3 +2631,74 @@ button.helpers-head {
   .history-filters > input[type="date"] { flex: 0 1 170px; }
   .history-show .ch-chips { flex-wrap: wrap; overflow-x: visible; }
 }
+
+/* Class Polls (inside News tab) */
+.poll-opt {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--ch-border);
+  background: var(--ch-bg);
+  color: var(--ch-text);
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 140ms;
+}
+.poll-opt:hover:not(:disabled) { border-color: var(--ch-border-strong); }
+.poll-opt:disabled { cursor: default; }
+.poll-opt.chosen { border-color: var(--ch-primary); }
+.poll-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in srgb, var(--ch-primary) 15%, transparent);
+  transition: width 260ms var(--ch-ease);
+  pointer-events: none;
+}
+.poll-opt.chosen .poll-bar {
+  background: color-mix(in srgb, var(--ch-primary) 26%, transparent);
+}
+.poll-radio {
+  position: relative;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--ch-border-strong);
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.poll-opt.multi .poll-radio { border-radius: 5px; }
+.poll-opt.chosen .poll-radio {
+  border-color: var(--ch-primary);
+  background: var(--ch-primary);
+  color: var(--ch-on-primary);
+  font-size: 11px;
+  font-weight: 900;
+}
+.poll-label { position: relative; z-index: 1; flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 500; }
+.poll-opt.chosen .poll-label { font-weight: 700; }
+.poll-pct { position: relative; z-index: 1; flex: none; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ch-text-muted); }
+.poll-opt.chosen .poll-pct { color: var(--ch-primary-text); }
+.poll-unvoted {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--ch-surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.poll-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.poll-name-chip {
+  font-size: 12.5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--ch-surface);
+  border: 1px solid var(--ch-border);
+}

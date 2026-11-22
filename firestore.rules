@@ -409,6 +409,28 @@ service cloud.firestore {
         && isRecentMillis(d.joinedAtMillis);
     }
 
+    // Copying existing members when the Mayor starts a new semester class (within 5 minutes of creating it).
+    function isRolloverMember(c, memberId) {
+      let d = request.resource.data;
+      let room = get(classPath(c)).data;
+      return isOwner(c)
+        && isOpen(c)
+        && memberId != uid()
+        && (request.time.toMillis() - room.createdAtMillis) < 300000
+        && d.keys().hasAll(['uid', 'name', 'roleId', 'joinedAtMillis', 'excludedCourseIds', 'approvedByUid'])
+        && d.keys().hasOnly(['uid', 'name', 'sortName', 'roleId', 'joinedAtMillis', 'excludedCourseIds', 'approvedByUid', 'id'])
+        && d.get('id', '') == ''
+        && d.uid == memberId
+        && isFilled(d.name, 90)
+        && isText(d.get('sortName', ''), 100)
+        && d.excludedCourseIds is list
+        && d.excludedCourseIds.size() == 0
+        && d.approvedByUid == uid()
+        && isRecentMillis(d.joinedAtMillis)
+        && exists(rolePath(c, d.roleId))
+        && get(rolePath(c, d.roleId)).data.get('locked', false) != true;
+    }
+
     // A members manager gives someone else a role (never the locked Mayor role, never their own, never the owner's).
     function isRoleChangeByManager(c, memberId) {
       let newRole = request.resource.data.roleId;
@@ -503,7 +525,7 @@ service cloud.firestore {
           || (d.kind in ['COURSE_ADDED', 'COURSE_EDITED', 'COURSE_DELETED']
             && (officer || 'CLASS_SETTINGS' in role.permissions))
           || (d.kind in ['ANNOUNCEMENT_POSTED', 'ANNOUNCEMENT_PINNED', 'COMMENT_REMOVED', 'FORUM_MODERATED',
-                         'FORUM_QUESTION_DELETED', 'FORUM_ANSWER_REMOVED']
+                         'FORUM_QUESTION_DELETED', 'FORUM_ANSWER_REMOVED', 'POLL_CREATED', 'POLL_CLOSED', 'POLL_DELETED']
             && (officer || 'ANNOUNCEMENTS_MANAGE' in role.permissions))
           // A member who leaves on their own: only in the batch that deletes their own member entry.
           || (d.kind == 'MEMBER_LEFT' && !existsAfter(memberPath(c, uid())))
@@ -1030,8 +1052,9 @@ service cloud.firestore {
         allow get: if (signedIn() && memberId == uid()) || isMember(classId);
         allow list: if isMember(classId);
 
-        // Nobody adds themselves: the creator joins as Mayor with the new class, everyone else is approved.
-        allow create: if isCreatorJoining(classId, memberId) || isApproval(classId, memberId);
+        // Nobody adds themselves: the creator joins as Mayor with the new class, everyone else is approved
+        // (or copied by the Mayor right after creating a new semester class).
+        allow create: if isCreatorJoining(classId, memberId) || isApproval(classId, memberId) || isRolloverMember(classId, memberId);
 
         // No update changes uid or approvedByUid.
         allow update: if isRoleChangeByManager(classId, memberId)
@@ -1211,6 +1234,51 @@ service cloud.firestore {
         allow delete: if can(classId, 'ANNOUNCEMENTS_MANAGE') || isOwnerClosing(classId)
           || (signedIn() && resource.data.uid == uid())
           || (isMember(classId) && !exists(forumPath(classId, resource.data.questionId)));
+      }
+
+      // ---- Polls (in News). Created and closed/deleted by News officers; every member may vote.
+      match /polls/{pollId} {
+        allow read: if isMember(classId);
+        allow create: if can(classId, 'ANNOUNCEMENTS_MANAGE') && isOpen(classId)
+          && hasFields(request.resource.data, ['question', 'options', 'courseId', 'multi', 'maxChoices', 'anonymous', 'closesAtMillis', 'closed', 'createdByUid', 'createdAtMillis'])
+          && isFilled(request.resource.data.question, 150)
+          && request.resource.data.options is list
+          && request.resource.data.options.size() >= 2
+          && request.resource.data.options.size() <= 10
+          && isText(request.resource.data.courseId, 128)
+          && request.resource.data.multi is bool
+          && request.resource.data.maxChoices is int
+          && request.resource.data.maxChoices >= 1
+          && request.resource.data.maxChoices <= request.resource.data.options.size()
+          && request.resource.data.anonymous is bool
+          && request.resource.data.closesAtMillis is int
+          && request.resource.data.closed == false
+          && request.resource.data.createdByUid == uid()
+          && isRecentMillis(request.resource.data.createdAtMillis);
+        allow update: if can(classId, 'ANNOUNCEMENTS_MANAGE') && isOpen(classId)
+          && changesOnly(['closed'])
+          && request.resource.data.closed is bool;
+        allow delete: if can(classId, 'ANNOUNCEMENTS_MANAGE') || isOwnerClosing(classId);
+      }
+
+      // One vote document per member per poll: id is {pollId}_{uid}.
+      match /pollVotes/{voteId} {
+        allow read: if isMember(classId);
+        allow create, update: if isMember(classId) && isOpen(classId)
+          && hasFields(request.resource.data, ['pollId', 'uid', 'choices', 'votedAtMillis'])
+          && request.resource.data.uid == uid()
+          && voteId == request.resource.data.pollId + '_' + uid()
+          && isFilled(request.resource.data.pollId, 128)
+          && request.resource.data.choices is list
+          && request.resource.data.choices.size() >= 1
+          && request.resource.data.choices.size() <= get(/databases/$(database)/documents/classes/$(classId)/polls/$(request.resource.data.pollId)).data.maxChoices
+          && get(/databases/$(database)/documents/classes/$(classId)/polls/$(request.resource.data.pollId)).data.closed == false
+          && (get(/databases/$(database)/documents/classes/$(classId)/polls/$(request.resource.data.pollId)).data.closesAtMillis == 0
+              || get(/databases/$(database)/documents/classes/$(classId)/polls/$(request.resource.data.pollId)).data.closesAtMillis > request.time.toMillis())
+          && isRecentMillis(request.resource.data.votedAtMillis);
+        allow delete: if (isMember(classId) && resource.data.uid == uid())
+          || can(classId, 'ANNOUNCEMENTS_MANAGE')
+          || isOwnerClosing(classId);
       }
 
       // Each member's up and down votes on announcements and comments: one document per member holding

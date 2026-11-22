@@ -63,8 +63,11 @@ import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, SearchInp
 import { useClass, type ClassState } from '../classroom/ClassContext';
 import { useSearchParams } from 'react-router-dom';
 import { useForum, useForumAnswersSince, useForumAuthors } from '../../data/forum';
+import { usePolls, usePollVotes } from '../../data/polls';
+import { isPollOpen } from '../../domain/pollLogic';
 import { forumUnseen } from '../../domain/forumUnseen';
 import { ForumView, TagBadge, TagSelect } from './ForumUi';
+import { PollsView } from './PollsUi';
 import { MoreMenu } from '../MoreMenu';
 
 /**
@@ -482,14 +485,22 @@ export function StatementCard({ state }: { state: ClassState }) {
 export function NewsTab({ state }: { state: ClassState }) {
   const manage = state.can('ANNOUNCEMENTS_MANAGE');
   const allPosts = useAnnouncements(db, state.classId, true).data;
-  // ?forum=all opens the Forum, ?forum=<id> one question (links from notifications use these).
+  // ?forum=all opens the Forum, ?forum=<id> one question, ?polls=1 opens Polls.
   const [params, setParams] = useSearchParams();
   const forumParam = params.get('forum');
   const inForum = forumParam !== null;
+  const inPolls = !inForum && params.get('polls') !== null;
   const openForum = (id: string) => setParams({ tab: 'NEWS', forum: id || 'all' }, { replace: !id });
+  const openPolls = () => setParams({ tab: 'NEWS', polls: '1' }, { replace: true });
   const showAnnouncements = () => setParams({ tab: 'NEWS' }, { replace: true });
   const questions = useForum(db, state.classId, manage, true).data;
   const authors = useForumAuthors(db, state.classId, state.myUid, manage, true).data ?? [];
+  const polls = usePolls(db, state.classId, true).data;
+  const pollVotes = usePollVotes(db, state.classId, inPolls).data ?? [];
+  const openPollsCount = useMemo(
+    () => (polls ?? []).filter((p) => (manage || state.takes(p.courseId)) && isPollOpen(p, Date.now())).length,
+    [polls, manage, state],
+  );
   const [tag, setTag] = useState('*');
   const posts = allPosts?.filter((p) => tag === '*' || p.courseId === tag);
   const seen = useSeen(db, state.classId, true).data ?? [];
@@ -502,7 +513,7 @@ export function NewsTab({ state }: { state: ClassState }) {
   const [deleting, setDeleting] = useState<Announcement | null>(null);
   const mine = seen.find((s) => s.id === state.myUid);
   const mySeen = mine?.announcements ?? {};
-  const unseen = inForum ? '' : (allPosts ?? []).filter((p) => !mySeen[p.id]).map((p) => p.id).join(',');
+  const unseen = inForum || inPolls ? '' : (allPosts ?? []).filter((p) => !mySeen[p.id]).map((p) => p.id).join(',');
   const unseenPosts = (allPosts ?? []).filter((p) => !mySeen[p.id] && p.createdByUid !== state.myUid).length;
   // What is new in the Forum since this member last opened it: questions, and answers or replies to them.
   const myPostIds = new Set(authors.filter((a) => a.uid === state.myUid).map((a) => a.id));
@@ -517,16 +528,29 @@ export function NewsTab({ state }: { state: ClassState }) {
 
   const switcher = (
     <div className="ch-segmented ch-full news-switch" role="group" aria-label="News">
-      <button type="button" className={inForum ? '' : 'ch-selected'} aria-pressed={!inForum} onClick={showAnnouncements}>
+      <button type="button" className={!inForum && !inPolls ? 'ch-selected' : ''} aria-pressed={!inForum && !inPolls} onClick={showAnnouncements}>
         Announcements
-        {inForum && unseenPosts > 0 && <span className="news-count">{unseenPosts}</span>}
+        {(inForum || inPolls) && unseenPosts > 0 && <span className="news-count">{unseenPosts}</span>}
       </button>
       <button type="button" className={inForum ? 'ch-selected' : ''} aria-pressed={inForum} onClick={() => openForum('')}>
         Forum
         {!inForum && newQuestions > 0 && <span className="news-count">{newQuestions}</span>}
       </button>
+      <button type="button" className={inPolls ? 'ch-selected' : ''} aria-pressed={inPolls} onClick={openPolls}>
+        Polls
+        {!inPolls && openPollsCount > 0 && <span className="news-count">{openPollsCount}</span>}
+      </button>
     </div>
   );
+
+  if (inPolls) {
+    return (
+      <div className="stack news-feed">
+        {switcher}
+        <PollsView state={state} polls={polls} votes={pollVotes} />
+      </div>
+    );
+  }
 
   if (inForum) {
     return (

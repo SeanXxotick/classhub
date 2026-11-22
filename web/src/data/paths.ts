@@ -70,7 +70,7 @@ export const openingBalanceRef = (db: Firestore, classId: string, uid: string) =
  * them. outbox is not listed: only the sender may delete its notices, and it clears them within minutes.
  */
 export const CLASS_SUBCOLLECTIONS = [
-  'records', 'charges', 'summary', 'openingBalances', 'joinRequests', 'claims', 'comments', 'votes', 'announcements', 'forumAnswers', 'forumAuthors', 'forum', 'seen', 'meetings', 'noClass', 'attendance', 'attendanceTotals', 'schedule', 'contents', 'courses', 'progress', 'history', 'members', 'roles',
+  'records', 'charges', 'summary', 'openingBalances', 'joinRequests', 'claims', 'comments', 'votes', 'announcements', 'polls', 'pollVotes', 'forumAnswers', 'forumAuthors', 'forum', 'seen', 'meetings', 'noClass', 'attendance', 'attendanceTotals', 'schedule', 'contents', 'courses', 'progress', 'history', 'members', 'roles',
 ] as const;
 export const classSubCol = (db: Firestore, classId: string, name: (typeof CLASS_SUBCOLLECTIONS)[number]): CollectionReference<DocumentData> =>
   sub(db, classId, name);
