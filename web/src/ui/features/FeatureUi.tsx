@@ -276,9 +276,10 @@ export function RemindersCard({ state }: { state: ClassState }) {
     <Section title="Payment reminders">
       <Card>
         {owing.length === 0 ? (
-          <p className="small muted" style={{ margin: 0 }}>
-            Nobody owes the class fund right now.
-          </p>
+          <div className="empty-quiet">
+            <span className="empty-check" aria-hidden>✓</span>
+            <span>Nobody owes the class fund right now.</span>
+          </div>
         ) : (
           <div className="stack" style={{ gap: 10 }}>
             <p style={{ margin: 0 }}>
@@ -596,7 +597,7 @@ export function NewsTab({ state }: { state: ClassState }) {
             <div className="bold" style={{ fontSize: 18, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
               {p.title}
             </div>
-            {p.body && <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.55, overflowWrap: 'anywhere' }}>{p.body}</div>}
+            {p.body && <div className="prose">{p.body}</div>}
             <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
               <VoteBar state={state} votes={votes} memberIds={memberIds} targetId={p.id} />
               {(!p.commentsOff || p.commentCount > 0) && (

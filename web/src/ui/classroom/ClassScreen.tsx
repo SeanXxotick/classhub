@@ -387,7 +387,12 @@ function HomeTab({
               }
             />
             <div className="card flush">
-              {upcoming.length === 0 && <p className="muted" style={{ margin: 0, padding: '6px 16px' }}>Nothing due soon. You are all caught up.</p>}
+              {upcoming.length === 0 && (
+                <div className="empty-quiet" style={{ padding: '6px 16px' }}>
+                  <span className="empty-check" aria-hidden>✓</span>
+                  <span>Nothing due soon. You are all caught up.</span>
+                </div>
+              )}
               {upcoming.map((item) => (
                 <ScheduleRow key={item.id} item={item} state={state} now={now} showDate onToggleDone={onToggleDone} />
               ))}
@@ -401,13 +406,16 @@ function HomeTab({
         {room.ledgerEnabled && (
           <section className="home-section home-order-3">
             <LedgerSummaryCard state={state} />
-            {ledgerOfficer && (
-              // Officers see the class fund above, so their own balance goes under it.
-              <div className="card balance-strip">
-                <span className="grow muted semibold">Your balance</span>
-                <span className="bold money">{myBalanceValue(state.balanceOf(state.myUid))}</span>
-              </div>
-            )}
+            {ledgerOfficer && (() => {
+              const myBal = state.balanceOf(state.myUid);
+              return (
+                // Officers see the class fund above, so their own balance goes under it.
+                <div className={'card balance-strip' + (myBal < 0 ? ' owes' : '')}>
+                  <span className="grow muted semibold">Your balance</span>
+                  <span className="bold money">{myBalanceValue(myBal)}</span>
+                </div>
+              );
+            })()}
           </section>
         )}
 
@@ -451,13 +459,30 @@ function HomeTab({
         )}
 
         <section className="home-section home-order-7">
-          <SectionHead title="What you can do" />
-          <div className="card">
-            {/* Every permission, named as in the role editor, so a new one shows here too. Those of a module that is turned off are left out. */}
-            {PERMISSIONS.filter((p) => moduleOn(state, p)).map((p) => (
-              <PermissionLine key={p} label={permissionLabel(p)[0]} allowed={state.can(p)} />
-            ))}
-          </div>
+          {(() => {
+            const activePerms = PERMISSIONS.filter((p) => moduleOn(state, p));
+            const hasAny = activePerms.some((p) => state.can(p));
+            if (!hasAny) {
+              return (
+                <div className="card" style={{ padding: '14px 16px' }}>
+                  <p className="small muted" style={{ margin: 0 }}>
+                    <b style={{ color: 'var(--on-surface)' }}>{state.myRole?.name ?? 'Member'}</b> · View-only access. Officers manage the ledger, schedule, contents and news.
+                  </p>
+                </div>
+              );
+            }
+            return (
+              <>
+                <SectionHead title="What you can do" />
+                <div className="card">
+                  {/* Every permission, named as in the role editor, so a new one shows here too. Those of a module that is turned off are left out. */}
+                  {activePerms.map((p) => (
+                    <PermissionLine key={p} label={permissionLabel(p)[0]} allowed={state.can(p)} />
+                  ))}
+                </div>
+              </>
+            );
+          })()}
         </section>
       </div>
 

@@ -419,9 +419,21 @@ export function LedgerTab({
   return (
     <div className="ledger-tab">
       <div className="split">
-        <div className="stack">
-          <LedgerSummaryCard state={state} />
-          {state.can('RECORDS_MANAGE') && <div className="semibold muted">{myBalanceLine(state.balanceOf(state.myUid))}</div>}
+        <div className="stack ledger-side">
+          <div className="stack">
+            <LedgerSummaryCard state={state} />
+            {state.can('RECORDS_MANAGE') && (() => {
+              const myBal = state.balanceOf(state.myUid);
+              return (
+                <div className={'card balance-strip' + (myBal < 0 ? ' owes' : '')}>
+                  <span className={myBal < 0 ? 'grow bold money' : 'grow muted semibold'}>
+                    {myBal < 0 ? myBalanceLine(myBal) : 'Your balance'}
+                  </span>
+                  {myBal >= 0 && <span className="bold money">{myBalanceValue(myBal)}</span>}
+                </div>
+              );
+            })()}
+          </div>
           {extras}
           {state.can('RECORDS_MANAGE') && <LedgerSettingsCard key={`${state.room?.balanceVisibility}|${state.room?.paymentInfo}`} state={state} onSave={onSaveSettings} />}
         </div>

@@ -349,7 +349,7 @@ function QuestionPage({ state, q, authors, onBack, onPromote }: {
               ]}
             />
           </div>
-          {q.body && <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.55, overflowWrap: 'anywhere' }}>{q.body}</div>}
+          {q.body && <div className="prose">{q.body}</div>}
           <Who state={state} uid={q.uid} name={q.name} anonymous={q.anonymous} realUid={askerUid} when={q.createdAtMillis} size={36} />
         </div>
       </Card>
