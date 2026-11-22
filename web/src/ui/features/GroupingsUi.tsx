@@ -209,6 +209,7 @@ function GroupingCard({
   const [passingSlot, setPassingSlot] = useState<GroupSlot | null>(null);
   const [assigningMember, setAssigningMember] = useState<{ uid: string; name: string; classId: string; tag: string } | null>(null);
   const [sharingOpen, setSharingOpen] = useState(false);
+  const [confirmAutoAssign, setConfirmAutoAssign] = useState(false);
   const [confirmUnlinkSelf, setConfirmUnlinkSelf] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<
     | { kind: 'member'; uid: string; name: string; slotName: string }
@@ -437,22 +438,7 @@ function GroupingCard({
                       type="button"
                       className="btn outline small"
                       disabled={run.busy}
-                      onClick={() =>
-                        run(
-                          'Assigned ungrouped members.',
-                          async () => {
-                            const n = await autoAssignUngrouped(
-                              db,
-                              state.classId,
-                              grouping.id,
-                              ungroupedIds,
-                              grouping.shared,
-                              metaForUid,
-                            );
-                            if (n === 0) throw new Error('All groups are already full.');
-                          },
-                        )
-                      }
+                      onClick={() => setConfirmAutoAssign(true)}
                     >
                       Auto-assign
                     </button>
@@ -614,6 +600,31 @@ function GroupingCard({
           memberUid={assigningMember.uid}
           meta={metaForUid(assigningMember.uid)}
           onClose={() => setAssigningMember(null)}
+        />
+      )}
+      {confirmAutoAssign && (
+        <ConfirmDialog
+          title={`Auto-assign ${ungroupedEntries.length} ungrouped student${ungroupedEntries.length === 1 ? '' : 's'}?`}
+          text="They will be evenly placed into groups with open spots."
+          confirm="Auto-assign"
+          onClose={() => setConfirmAutoAssign(false)}
+          onConfirm={() =>
+            run(
+              'Assigned ungrouped members.',
+              async () => {
+                const n = await autoAssignUngrouped(
+                  db,
+                  state.classId,
+                  grouping.id,
+                  ungroupedIds,
+                  grouping.shared,
+                  metaForUid,
+                );
+                if (n === 0) throw new Error('All groups are already full.');
+              },
+              () => setConfirmAutoAssign(false),
+            )
+          }
         />
       )}
       {confirmUnlinkSelf && (
