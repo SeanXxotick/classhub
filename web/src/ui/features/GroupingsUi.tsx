@@ -421,6 +421,12 @@ function GroupingCard({
                 {totalGuests > 0 ? ` · ${totalGuests} guest${totalGuests === 1 ? '' : 's'}` : ''}
                 {myGroup ? ` · ${myGroup.name}` : ''}
                 {grouping.locked ? ' · Locked' : ''}
+                {!myGroup && state.takes(grouping.courseId) && (
+                  <>
+                    {' · '}
+                    <span className="grp-req-pill">{myPendingGroup ? 'No group yet · Pending' : 'No group yet'}</span>
+                  </>
+                )}
                 {pendingForMeCount > 0 && !cardOpen && (
                   <>
                     {' · '}
@@ -458,6 +464,13 @@ function GroupingCard({
 
         {cardOpen && (
           <>
+            {!myGroup && state.takes(grouping.courseId) && (
+              <Notice tone="danger">
+                {myPendingGroup
+                  ? `You do not have a group yet. Waiting for ${myPendingGroup.name} to approve your request.`
+                  : 'You do not have a group yet.'}
+              </Notice>
+            )}
             {grouping.shared && (
               <div className="grp-linked-strip">
                 <div className="ch-row ch-wrap ch-gap-1" style={{ alignItems: 'center', minWidth: 0 }}>

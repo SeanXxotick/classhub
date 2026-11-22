@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countLabel, unseenCounts, type CountInput } from './tabCounts';
+import { countLabel, groupingAttentionCount, unseenCounts, type CountInput, type GroupingCountItem } from './tabCounts';
 
 const ME = 'me';
 const base = (over: Partial<CountInput> = {}): CountInput => ({
@@ -69,6 +69,53 @@ describe('unseenCounts', () => {
     ];
     const counts = unseenCounts(base({ schedule, contents, takes }));
     expect([counts.SCHEDULE, counts.CONTENTS]).toEqual([1, 1]);
+  });
+
+  it('counts new polls on News for courses I take and shared polls, skipping my own and older polls', () => {
+    const takes = (id: string) => id !== 'pe';
+    const polls = [
+      { courseId: '', createdByUid: 'x', createdAtMillis: 150 },
+      { courseId: 'or', createdByUid: 'x', createdAtMillis: 160 },
+      { courseId: 'pe', createdByUid: 'x', createdAtMillis: 170 }, // skipped course
+      { courseId: '', createdByUid: ME, createdAtMillis: 180 }, // own poll
+      { courseId: '', createdByUid: 'x', createdAtMillis: 90 }, // seen already
+      { courseId: '', createdByUid: 'partner', createdAtMillis: 190, shared: true },
+    ];
+    expect(unseenCounts(base({ polls, takes })).NEWS).toBe(3);
+  });
+
+  it('includes groupActions in the Members tab count', () => {
+    expect(unseenCounts(base({ joinRequests: 1, groupActions: 2 })).MEMBERS).toBe(3);
+    expect(unseenCounts(base({ seen: null, joinRequests: 0, groupActions: 2 })).MEMBERS).toBe(2);
+  });
+});
+
+describe('groupingAttentionCount', () => {
+  const mk = (over: Partial<GroupingCountItem> = {}): GroupingCountItem => ({
+    courseId: '',
+    locked: false,
+    hasLeader: true,
+    groups: [
+      { memberUids: [ME], leaderUid: ME, joinRequests: [{ uid: 'a' }, { uid: 'b' }] },
+      { memberUids: ['other'], leaderUid: 'other', joinRequests: [{ uid: 'c' }] },
+    ],
+    ...over,
+  });
+
+  it('counts pending requests for a group leader and unassigned open groupings for a member', () => {
+    const takes = (id: string) => id !== 'pe';
+    const groupings: GroupingCountItem[] = [
+      mk(), // I lead group 1 (2 requests), already in a group
+      mk({ groups: [{ memberUids: ['other'], leaderUid: 'other', joinRequests: [{ uid: 'c' }] }] }), // unassigned open grouping (+1)
+      mk({ locked: true, groups: [{ memberUids: ['other'] }] }), // locked: does not count
+      mk({ courseId: 'pe', groups: [{ memberUids: ['other'] }] }), // skipped course: does not count
+    ];
+    expect(groupingAttentionCount(groupings, ME, false, takes)).toBe(3);
+  });
+
+  it('counts all pending requests across groups for an officer with MEMBERS_MANAGE', () => {
+    const groupings: GroupingCountItem[] = [mk()];
+    expect(groupingAttentionCount(groupings, ME, true, () => true)).toBe(3);
   });
 });
 

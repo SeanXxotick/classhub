@@ -5,9 +5,11 @@ import type { JoinRequest, Member, Permission, ScheduleItem } from '../../data/m
 import { db } from '../../data/firebase';
 import { useAnnouncements, useCommentsSince, useMyComments } from '../../data/features';
 import { useForum, useForumAnswersSince, useForumAuthors } from '../../data/forum';
+import { useGroupings } from '../../data/groupings';
+import { usePolls, useSharedPolls } from '../../data/polls';
 import { forumUnseen } from '../../domain/forumUnseen';
 import { markTabsSeen, useTabsSeen } from '../../data/tabsSeen';
-import { countLabel, SEEN_TABS, unseenCounts, type SeenTab } from '../../domain/tabCounts';
+import { countLabel, groupingAttentionCount, SEEN_TABS, unseenCounts, type SeenTab } from '../../domain/tabCounts';
 import { AttendanceCard, ClaimsCard, NewsTab, RemindersCard, StatementCard, TimetableCard, TodayCard } from '../features/FeatureUi';
 import { GroupingsView } from '../features/GroupingsUi';
 import { InviteDialog } from './InviteDialog';
@@ -115,6 +117,11 @@ function ClassScreen() {
   const seen = useTabsSeen(db, state.myUid, state.classId);
   const newsOn = hasMe && tabs.some((t) => t.id === 'NEWS');
   const posts = useAnnouncements(db, state.classId, newsOn).data ?? [];
+  const localPolls = usePolls(db, state.classId, newsOn).data ?? [];
+  const sharedPolls = useSharedPolls(db, state.classId, state.myUid, newsOn, false);
+  const allPolls = [...localPolls, ...sharedPolls.polls];
+  const groupings = useGroupings(db, state.classId, hasMe).data ?? [];
+  const groupActions = groupingAttentionCount(groupings, state.myUid, state.can('MEMBERS_MANAGE'), state.takes);
   const newComments = useCommentsSince(db, state.classId, seen?.NEWS ?? 0, newsOn && !!seen).data ?? [];
   const myComments = useMyComments(db, state.classId, state.myUid, newsOn && !!seen).data ?? [];
   // The Forum counts on the News tab too: new questions, and answers or replies to this member's posts.
@@ -129,9 +136,11 @@ function ClassScreen() {
     schedule: state.schedule,
     contents: state.contents,
     posts,
+    polls: allPolls,
     comments: newComments,
     myCommentIds: new Set(myComments.map((c) => c.id)),
     joinRequests: state.can('MEMBERS_MANAGE') ? state.joinRequests.length : 0,
+    groupActions,
     takes: state.takes,
   });
   const counts = { ...tabCounts, NEWS: tabCounts.NEWS + forumNew };
@@ -139,7 +148,7 @@ function ClassScreen() {
   const countOf = (id: ClassTabId) => (id === tab || id === 'HOME' ? 0 : counts[id]);
   const tabLabel = (id: ClassTabId, label: string) => {
     const n = countOf(id);
-    return n === 0 ? undefined : `${label}, ${n} ${id === 'MEMBERS' ? 'waiting to join' : 'new'}`;
+    return n === 0 ? undefined : `${label}, ${n} ${id === 'MEMBERS' ? 'need attention' : 'new'}`;
   };
   // The first visit since counts began starts every tab at zero, so old posts never count.
   const firstVisit = seen === null;
@@ -218,7 +227,7 @@ function ClassScreen() {
         ) : tab === 'NEWS' ? (
           <NewsTab state={state} />
         ) : tab === 'MEMBERS' ? (
-          <MembersTab state={state} onApprove={actions.approveRequest} onReject={actions.rejectRequest} onOpenMember={(id) => navigate(`${base}/member/${id}`)} />
+          <MembersTab state={state} groupActions={groupActions} onApprove={actions.approveRequest} onReject={actions.rejectRequest} onOpenMember={(id) => navigate(`${base}/member/${id}`)} />
         ) : tab === 'LEDGER' ? (
           <LedgerTab
             state={state}
@@ -546,11 +555,13 @@ function PermissionLine({ label, allowed }: { label: string; allowed: boolean })
 
 function MembersTab({
   state,
+  groupActions,
   onOpenMember,
   onApprove,
   onReject,
 }: {
   state: ClassState;
+  groupActions: number;
   onOpenMember: (id: string) => void;
   onApprove: (request: JoinRequest) => void;
   onReject: (request: JoinRequest) => void;
@@ -560,15 +571,18 @@ function MembersTab({
   const inGroups = params.get('view') === 'groups';
   const setView = (view: 'members' | 'groups') =>
     setParams(view === 'groups' ? { tab: 'MEMBERS', view: 'groups' } : { tab: 'MEMBERS' }, { replace: true });
+  const joinCount = canManage ? state.joinRequests.length : 0;
 
   return (
     <div className="stack">
       <div className="ch-segmented ch-full news-switch" role="group" aria-label="Members">
         <button type="button" className={!inGroups ? 'ch-selected' : ''} aria-pressed={!inGroups} onClick={() => setView('members')}>
           Members ({state.members.length})
+          {inGroups && joinCount > 0 && <span className="news-count">{countLabel(joinCount)}</span>}
         </button>
         <button type="button" className={inGroups ? 'ch-selected' : ''} aria-pressed={inGroups} onClick={() => setView('groups')}>
           Groups
+          {!inGroups && groupActions > 0 && <span className="news-count">{countLabel(groupActions)}</span>}
         </button>
       </div>
       {inGroups ? (
