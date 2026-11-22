@@ -532,30 +532,31 @@ export async function updateGroupingMeta(
 
   if (grouping.shared) {
     const curLink = grouping.linkedClasses?.[classId];
-    const nextLinkedClasses = curLink
-      ? {
-          ...(grouping.linkedClasses ?? {}),
-          [classId]: {
-            ...curLink,
-            courseId: patch.courseId,
-            ...(patch.roster ? { roster: patch.roster } : {}),
-          },
-        }
-      : grouping.linkedClasses ?? {};
+    // Only this class's own entry: writing the whole map from this screen's copy would drop a class that
+    // linked since it loaded.
+    const ownLink: unknown[] = curLink
+      ? [new FieldPath('linkedClasses', classId), { ...curLink, courseId: patch.courseId, ...(patch.roster ? { roster: patch.roster } : {}) }]
+      : [];
     await explainRefusal(db, classId, () =>
       commitLogged(
         db,
         classId,
         { actorUid, kind: 'GROUPING_UPDATED', text: `Updated the shared grouping "${title}"` },
         (b) =>
-          b.update(sharedGroupingRef(db, grouping.id), {
+          b.update(
+            sharedGroupingRef(db, grouping.id),
+            new FieldPath('title'),
             title,
+            new FieldPath('note'),
             note,
-            selfJoin: patch.selfJoin,
-            hasLeader: patch.hasLeader,
-            linkedClasses: nextLinkedClasses,
-            updatedAtMillis: now,
-          }),
+            new FieldPath('selfJoin'),
+            patch.selfJoin,
+            new FieldPath('hasLeader'),
+            patch.hasLeader,
+            new FieldPath('updatedAtMillis'),
+            now,
+            ...ownLink,
+          ),
       ),
     );
     return;
@@ -636,18 +637,15 @@ export async function syncSharedRoster(
   if (!grouping.shared) return;
   const curLink = grouping.linkedClasses?.[classId];
   if (!curLink) return;
+  // Only this class's own entry, so a class that linked since this screen loaded keeps its own.
   const batch = writeBatch(db);
-  batch.update(sharedGroupingRef(db, grouping.id), {
-    linkedClasses: {
-      ...(grouping.linkedClasses ?? {}),
-      [classId]: {
-        ...curLink,
-        roster,
-        ...(accentColor ? { accentColor } : {}),
-      },
-    },
-    updatedAtMillis: nowMillis(),
-  });
+  batch.update(
+    sharedGroupingRef(db, grouping.id),
+    new FieldPath('linkedClasses', classId),
+    { ...curLink, roster, ...(accentColor ? { accentColor } : {}) },
+    new FieldPath('updatedAtMillis'),
+    nowMillis(),
+  );
   await batch.commit();
 }
 

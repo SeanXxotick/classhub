@@ -20,6 +20,8 @@ import {
   linkSharedGrouping,
   requestJoinGroup,
   setGroupingLocked,
+  syncSharedRoster,
+  updateGroupingMeta,
 } from './groupings';
 import { newMember, newRole, type ClassRoom, type Member, type Role } from './models';
 import { castPollVote, createPoll, newPoll, type Poll } from './polls';
@@ -70,6 +72,7 @@ const ANA = { uid: 'gpAna', name: 'Ana Reyes' };
 const BEN = { uid: 'gpBen', name: 'Ben Cruz' };
 const PARTNER = { uid: 'gpPartner', name: 'Joel Tan' };
 const PARTNER_STU = { uid: 'gpPam', name: 'Pam Uy' };
+const THIRD = { uid: 'gpThird', name: 'Mia Lim' };
 
 /** A class made through the app, with members added directly (rules off). */
 async function classWith(mayor: { uid: string; name: string }, name: string, members: { uid: string; name: string }[]): Promise<string> {
@@ -138,6 +141,23 @@ describe('groupings', () => {
     expect(after.groups[1].memberUids).toEqual([PARTNER_STU.uid]);
     expect(after.groups[1].memberMeta?.[PARTNER_STU.uid]?.tag).toBe('G2');
     await expect(linkSharedGrouping(as(PARTNER.uid), PARTNER.uid, partnerClass, 'BSIT 3D', shareCode!, 'G2', '')).rejects.toBeTruthy();
+  });
+
+  it('an officer saving from an older copy keeps a class that linked in the meantime', async () => {
+    const { id, shareCode } = await createGrouping(as(MAYOR.uid), MAYOR.uid, classId, {
+      title: 'Lab pairs', courseId: '', note: '', groupCount: 2, defaultMaxSize: 2, selfJoin: true, shared: true, className: 'BSIT 3C', sectionTag: 'G1',
+    });
+    // The host's screen still shows the grouping as it was before the partner linked.
+    const stale = { ...(await stored(['sharedGroupings', id])), shared: true };
+    const third = await classWith(THIRD, 'BSIT 3E', []);
+    await linkSharedGrouping(as(THIRD.uid), THIRD.uid, third, 'BSIT 3E', shareCode!, 'G3', '');
+    await updateGroupingMeta(as(MAYOR.uid), MAYOR.uid, classId, stale, { title: 'Lab pairs (final)', courseId: '', note: '', selfJoin: true, hasLeader: false });
+    await syncSharedRoster(as(MAYOR.uid), classId, stale, [{ uid: MAYOR.uid, name: 'Castro, Rina' }], '#0F766E');
+    const g = await stored(['sharedGroupings', id]);
+    expect(g.title).toBe('Lab pairs (final)');
+    expect(Object.keys(g.linkedClasses ?? {}).sort()).toEqual([classId, third].sort());
+    expect(g.linkedClasses?.[third]).toMatchObject({ name: 'BSIT 3E', tag: 'G3' });
+    expect(g.linkedClasses?.[classId]).toMatchObject({ name: 'BSIT 3C', roster: [{ uid: MAYOR.uid, name: 'Castro, Rina' }], accentColor: '#0F766E' });
   });
 });
 
