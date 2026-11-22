@@ -688,6 +688,35 @@ async function main() {
     await assertFails(getDocs(collection(db('student'), H)));
     await assertFails(updateDoc(doc(db('mayor'), `${H}/h-pay`), { text: 'Nothing happened' }));
     await assertFails(deleteDoc(doc(db('mayor'), `${H}/h-pay`)));
+
+    // Nov 22 kinds: each only with the permission behind the action (sec: schedule, contents, news, attendance;
+    // maria: ledger only; clerk: settings and members).
+    for (const kind of ['ATTENDANCE_TAKEN', 'ATTENDANCE_REPLACED', 'ATTENDANCE_REMOVED', 'NO_CLASS_MARKED', 'NO_CLASS_REMOVED',
+      'MEETING_ADDED', 'MEETING_EDITED', 'MEETING_DELETED', 'SCHEDULE_EDITED', 'SCHEDULE_DELETED', 'CONTENT_EDITED', 'CONTENT_DELETED',
+      'ANNOUNCEMENT_POSTED', 'ANNOUNCEMENT_PINNED', 'COMMENT_REMOVED', 'FORUM_MODERATED', 'FORUM_QUESTION_DELETED', 'FORUM_ANSWER_REMOVED']) {
+      await assertSucceeds(add('sec', { kind, text: `Did ${kind}` }));
+      await assertSucceeds(add('mayor', { kind, text: `Did ${kind}` }));
+      await assertFails(add('maria', { kind, text: `Did ${kind}` }));
+      await assertFails(add('clerk', { kind, text: `Did ${kind}` }));
+      await assertFails(add('student', { kind, text: `Did ${kind}` }));
+    }
+    for (const kind of ['COURSE_ADDED', 'COURSE_EDITED', 'COURSE_DELETED']) {
+      await assertSucceeds(add('clerk', { kind, text: `Did ${kind}` }));
+      await assertFails(add('sec', { kind, text: `Did ${kind}` }));
+      await assertFails(add('student', { kind, text: `Did ${kind}` }));
+    }
+    // Leaving: only in the batch that deletes the member's own entry, never as a free-standing entry.
+    await assertFails(add('student', { kind: 'MEMBER_LEFT', text: 'Left the class' }));
+    await assertFails(add('mayor', { kind: 'MEMBER_LEFT', text: 'Left the class' }));
+    await admin(async (a) => {
+      const student = (await getDoc(doc(a, `classes/${CLASS}/members/student`))).data();
+      await setDoc(doc(a, `classes/${CLASS}/members/leaver`), { ...student, name: 'Leaving Student' });
+    });
+    const leaver = db('leaver');
+    const leave = writeBatch(leaver);
+    leave.delete(doc(leaver, `classes/${CLASS}/members/leaver`));
+    leave.set(doc(collection(leaver, H)), { kind: 'MEMBER_LEFT', text: 'Left the class', actorUid: 'leaver', actorName: 'Leaving Student', atMillis: Date.now() });
+    await assertSucceeds(leave.commit());
   });
 
   await test('Comments: members comment under their own name, one level of replies, count kept by the same batch', async () => {

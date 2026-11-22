@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LEGEND, attendanceExportSheets } from './attendanceExport';
+import { LEGEND, attendanceExportSheets, untakenMeetings } from './attendanceExport';
 
 const courses = [
   { id: 'or', name: 'Operations Research' },
@@ -100,7 +100,7 @@ describe('attendanceExportSheets', () => {
       todayKey: '2026-07-20',
     });
     expect(table(out[0].rows)).toEqual([
-      ['Name', 'Summary', '07/01/26', '07/08/26'],
+      ['Name', 'Summary', '07/01/26 (NC)', '07/08/26'],
       ['Lim, Ana', 0, 0, 'NC'],
       ['Garcia, Paolo', 1, 1, 'NC'],
     ]);
@@ -108,5 +108,40 @@ describe('attendanceExportSheets', () => {
 
   it('is empty when no attendance was taken', () => {
     expect(attendanceExportSheets(courses, students, [])).toEqual([]);
+  });
+});
+
+describe('untakenMeetings', () => {
+  // 2026-07-01 is a Wednesday. OR meets Wednesdays (ends 10:00), SE meets Wednesdays (ends 15:00) and Fridays.
+  const meetings = [
+    { id: 'orW', courseId: 'or', dayOfWeek: 3, endMinutes: 600 },
+    { id: 'seW', courseId: 'se', dayOfWeek: 3, endMinutes: 900 },
+    { id: 'seF', courseId: 'se', dayOfWeek: 5, endMinutes: 600 },
+  ];
+
+  it('lists meetings without a sheet since the first sheet, earliest first', () => {
+    const out = untakenMeetings(meetings, [{ dateKey: '2026-07-01', meetingId: 'orW' }], [], '2026-07-03', 24 * 60);
+    expect(out).toEqual([
+      { dateKey: '2026-07-01', meetingId: 'seW', courseId: 'se' },
+      { dateKey: '2026-07-03', meetingId: 'seF', courseId: 'se' },
+    ]);
+  });
+
+  it('leaves out No classes days, for the whole day or one course', () => {
+    const sheets = [{ dateKey: '2026-07-01', meetingId: 'orW' }];
+    const noClass = [
+      { dateKey: '2026-07-01', courseId: 'se' },
+      { dateKey: '2026-07-08', courseId: '' },
+    ];
+    expect(untakenMeetings(meetings, sheets, noClass, '2026-07-08', 24 * 60)).toEqual([{ dateKey: '2026-07-03', meetingId: 'seF', courseId: 'se' }]);
+  });
+
+  it('counts a meeting today only once it has ended', () => {
+    const sheets = [{ dateKey: '2026-07-01', meetingId: 'orW' }, { dateKey: '2026-07-01', meetingId: 'seW' }, { dateKey: '2026-07-03', meetingId: 'seF' }];
+    expect(untakenMeetings(meetings, sheets, [], '2026-07-08', 700)).toEqual([{ dateKey: '2026-07-08', meetingId: 'orW', courseId: 'or' }]);
+  });
+
+  it('is empty when attendance was never taken', () => {
+    expect(untakenMeetings(meetings, [], [], '2026-07-08', 0)).toEqual([]);
   });
 });

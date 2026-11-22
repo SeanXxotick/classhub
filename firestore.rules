@@ -492,6 +492,21 @@ service cloud.firestore {
           // Nov 16: edits and deletes of announcements, by whoever may manage them.
           || (d.kind in ['ANNOUNCEMENT_EDITED', 'ANNOUNCEMENT_DELETED']
             && (officer || role.permissions.hasAny(['ANNOUNCEMENTS_MANAGE'])))
+          // Nov 22 (docs/HISTORY-PLAN.md): each kind only by those with the permission behind the action.
+          || (d.kind in ['ATTENDANCE_TAKEN', 'ATTENDANCE_REPLACED', 'ATTENDANCE_REMOVED']
+            && (officer || 'ATTENDANCE_MANAGE' in role.permissions))
+          || (d.kind in ['NO_CLASS_MARKED', 'NO_CLASS_REMOVED', 'MEETING_ADDED', 'MEETING_EDITED', 'MEETING_DELETED',
+                         'SCHEDULE_EDITED', 'SCHEDULE_DELETED']
+            && (officer || 'SCHEDULE_MANAGE' in role.permissions))
+          || (d.kind in ['CONTENT_EDITED', 'CONTENT_DELETED']
+            && (officer || 'CONTENTS_MANAGE' in role.permissions))
+          || (d.kind in ['COURSE_ADDED', 'COURSE_EDITED', 'COURSE_DELETED']
+            && (officer || 'CLASS_SETTINGS' in role.permissions))
+          || (d.kind in ['ANNOUNCEMENT_POSTED', 'ANNOUNCEMENT_PINNED', 'COMMENT_REMOVED', 'FORUM_MODERATED',
+                         'FORUM_QUESTION_DELETED', 'FORUM_ANSWER_REMOVED']
+            && (officer || 'ANNOUNCEMENTS_MANAGE' in role.permissions))
+          // A member who leaves on their own: only in the batch that deletes their own member entry.
+          || (d.kind == 'MEMBER_LEFT' && !existsAfter(memberPath(c, uid())))
         )
         && isFilled(d.text, 300)
         && isFilled(d.actorName, 90)

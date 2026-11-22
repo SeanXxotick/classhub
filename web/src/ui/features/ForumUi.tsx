@@ -251,6 +251,14 @@ function QuestionPage({ state, q, authors, onBack, onPromote }: {
   const isAskerPost = (a: ForumAnswer) => a.anonymous || (!!askerUid && a.uid === askerUid);
   const pickable = (a: ForumAnswer) => canPick && !a.parentId && !a.removedAtMillis && !a.anonymous && !!a.uid && a.uid !== askerUid;
 
+  // History entries for officer moderation. Anonymous writers stay anonymous in the log too.
+  const writerName = (p: { anonymous: boolean; uid: string; name: string }) =>
+    p.anonymous ? 'an anonymous classmate' : (state.members.find((m) => m.id === p.uid)?.name ?? (p.name || 'a former member'));
+  const cut = (t: string, max = 60) => (t.length > max ? `${t.slice(0, max - 1)}…` : t);
+  const modNote = (text: string) => ({ actorUid: state.myUid, kind: 'FORUM_MODERATED' as const, text });
+  const setFlags = (flags: { closed?: boolean; hidden?: boolean }, done: string, what: string) =>
+    run(done, () => setQuestionFlags(db, state.classId, q.id, flags, modNote(`${what} the Forum question "${cut(q.title, 80)}" by ${writerName(q)}`)));
+
   const promote = () =>
     onPromote(
       newAnnouncement({
@@ -321,8 +329,8 @@ function QuestionPage({ state, q, authors, onBack, onPromote }: {
               title={q.title}
               items={[
                 isAsker && { label: 'Edit', icon: 'edit', onClick: () => setEditing(true) },
-                manage && { label: q.closed ? 'Reopen' : 'Close', icon: 'lock', onClick: () => run(q.closed ? 'Open to new answers.' : 'Closed to new answers.', () => setQuestionFlags(db, state.classId, q.id, { closed: !q.closed })) },
-                manage && { label: q.hidden ? 'Show' : 'Hide', icon: 'eye', onClick: () => run(q.hidden ? 'Shown to the class.' : 'Hidden from the class.', () => setQuestionFlags(db, state.classId, q.id, { hidden: !q.hidden })) },
+                manage && { label: q.closed ? 'Reopen' : 'Close', icon: 'lock', onClick: () => setFlags({ closed: !q.closed }, q.closed ? 'Open to new answers.' : 'Closed to new answers.', q.closed ? 'Reopened' : 'Closed') },
+                manage && { label: q.hidden ? 'Show' : 'Hide', icon: 'eye', onClick: () => setFlags({ hidden: !q.hidden }, q.hidden ? 'Shown to the class.' : 'Hidden from the class.', q.hidden ? 'Showed' : 'Hid') },
                 manage && best && !best.removedAtMillis && { label: 'Post as announcement', icon: 'bell', onClick: promote },
                 (isAsker || manage) && { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleting(true) },
               ]}
@@ -403,7 +411,17 @@ function QuestionPage({ state, q, authors, onBack, onPromote }: {
           confirm="Delete"
           danger
           onClose={() => setDeleting(false)}
-          onConfirm={() => run('Question deleted.', () => deleteQuestion(db, state.classId, q.id), onBack)}
+          onConfirm={() =>
+            run(
+              'Question deleted.',
+              () =>
+                deleteQuestion(
+                  db, state.classId, q.id,
+                  isAsker ? undefined : { actorUid: state.myUid, kind: 'FORUM_QUESTION_DELETED', text: `Deleted the Forum question "${cut(q.title, 80)}" by ${writerName(q)} (${plural(q.answerCount, 'answer')})` },
+                ),
+              onBack,
+            )
+          }
         />
       )}
       {removing && (
@@ -413,7 +431,20 @@ function QuestionPage({ state, q, authors, onBack, onPromote }: {
           confirm="Remove"
           danger
           onClose={() => setRemoving(null)}
-          onConfirm={() => run('Removed.', () => removeAnswer(db, state.classId, removing, q))}
+          onConfirm={() =>
+            run('Removed.', () =>
+              removeAnswer(
+                db, state.classId, removing, q,
+                writerOf(authors, removing.id, removing.uid) === state.myUid
+                  ? undefined
+                  : {
+                      actorUid: state.myUid,
+                      kind: 'FORUM_ANSWER_REMOVED',
+                      text: `Removed ${removing.parentId ? 'a reply' : 'an answer'} by ${writerName(removing)} on "${cut(q.title, 60)}": "${cut(removing.text)}"`,
+                    },
+              ),
+            )
+          }
         />
       )}
     </div>

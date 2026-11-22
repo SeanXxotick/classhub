@@ -9,6 +9,7 @@ import { UserError } from './errors';
 import { fromDoc, useQueryList } from './live';
 import { queueNotice } from './notify';
 import { explainRefusal, withoutId } from './paths';
+import { commitLogged, logToBatch, type LogNote } from './history';
 
 export const QUESTION_TITLE_MAX = 150;
 export const QUESTION_BODY_MAX = 2000;
@@ -111,10 +112,11 @@ export async function editQuestion(db: Firestore, classId: string, questionId: s
 }
 
 /** Deletes a question (its asker or a News officer), then its answers and author records. */
-export async function deleteQuestion(db: Firestore, classId: string, questionId: string): Promise<void> {
+export async function deleteQuestion(db: Firestore, classId: string, questionId: string, log?: LogNote): Promise<void> {
   const first = writeBatch(db);
   first.delete(doc(forumCol(db, classId), questionId));
   first.delete(doc(forumAuthorsCol(db, classId), questionId));
+  if (log) await logToBatch(first, db, classId, log.actorUid, log.kind, log.text);
   await explainRefusal(db, classId, () => first.commit());
   // What is left belongs to a question that no longer exists, so anyone in the class may clear it.
   const answers = await getDocs(query(forumAnswersCol(db, classId), where('questionId', '==', questionId)));
@@ -129,8 +131,8 @@ export async function deleteQuestion(db: Firestore, classId: string, questionId:
 }
 
 /** News officers: close to new answers, or hide from the class. */
-export const setQuestionFlags = (db: Firestore, classId: string, questionId: string, flags: { closed?: boolean; hidden?: boolean }) =>
-  explainRefusal(db, classId, () => updateDoc(doc(forumCol(db, classId), questionId), flags));
+export const setQuestionFlags = (db: Firestore, classId: string, questionId: string, flags: { closed?: boolean; hidden?: boolean }, log?: LogNote) =>
+  explainRefusal(db, classId, () => commitLogged(db, classId, log, (b) => b.update(doc(forumCol(db, classId), questionId), flags)));
 
 /** Picks the best answer (null clears it). The asker's pick says so; a News officer's pick says it was an officer. */
 export function pickBest(db: Firestore, classId: string, questionId: string, answer: ForumAnswer | null, byAsker: boolean): Promise<void> {
@@ -180,8 +182,9 @@ export async function addAnswer(
  * Removes an answer's text (its writer or a News officer); it keeps its place. A removed best answer
  * stops being the best answer in the same batch.
  */
-export async function removeAnswer(db: Firestore, classId: string, answer: ForumAnswer, question: ForumQuestion): Promise<void> {
+export async function removeAnswer(db: Firestore, classId: string, answer: ForumAnswer, question: ForumQuestion, log?: LogNote): Promise<void> {
   const batch = writeBatch(db);
+  if (log) await logToBatch(batch, db, classId, log.actorUid, log.kind, log.text);
   batch.update(doc(forumAnswersCol(db, classId), answer.id), { text: '', removedAtMillis: nowMillis() });
   if (question.bestAnswerId === answer.id) {
     batch.update(doc(forumCol(db, classId), question.id), { bestAnswerId: '', bestAnswerUid: '', pickedBy: '', pickedAtMillis: 0 });

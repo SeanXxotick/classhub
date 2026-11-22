@@ -2561,3 +2561,23 @@ button.helpers-head {
   align-self: flex-start;
   margin: 2px 0 0 -8px;
 }
+
+/* Attendance: No classes on a meeting, removing a taken sheet, and the export warning */
+.att-dot.nc { position: relative; border-color: var(--ch-danger); }
+.att-dot.nc::after { content: ''; position: absolute; left: -3px; right: -3px; top: 50%; height: 1.5px; background: var(--ch-danger); transform: translateY(-50%) rotate(-45deg); }
+.att-status .ch-badge { margin-top: 2px; white-space: normal; overflow-wrap: anywhere; }
+.att-nc-tag { margin-left: 8px; display: inline-flex; vertical-align: middle; }
+.att-banner.taken { display: flex; align-items: center; gap: 8px; }
+.att-hold { display: flex; justify-content: center; padding: 8px 0; }
+.att-untaken { display: flex; flex-direction: column; gap: 4px; }
+
+/* History log filters: search, who, up to which day */
+.history-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.history-filters > :first-child { flex: 1 1 100%; min-width: 0; }
+.history-filters > select, .history-filters > input[type="date"] { flex: 1 1 140px; min-width: 0; }
+@media (min-width: 600px) {
+  .history-filters > :first-child { flex-basis: 200px; }
+  .history-filters > select { flex: 0 1 220px; }
+  .history-filters > input[type="date"] { flex: 0 1 170px; }
+  .history-show .ch-chips { flex-wrap: wrap; overflow-x: visible; }
+}

@@ -1,5 +1,6 @@
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocFromServer, getDocs, getDocsFromServer, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
+import { commitLogged, type LogNote } from './history';
 import {
   ROLE_MAYOR,
   ROLE_MEMBER,
@@ -257,23 +258,23 @@ export async function deleteRole(classId: string, role: Role, defaultRoleId: str
 
 // ---- Courses ----
 
-export async function addCourse(classId: string, name: string): Promise<void> {
-  await addDoc(coursesOf(classId), { id: '', name: name.trim() });
+export async function addCourse(classId: string, name: string, log?: LogNote): Promise<void> {
+  await commitLogged(db, classId, log, (b) => b.set(doc(coursesOf(classId)), { id: '', name: name.trim() }));
 }
 
-export function renameCourse(classId: string, courseId: string, name: string): Promise<void> {
-  return updateDoc(doc(coursesOf(classId), courseId), { name: name.trim() });
+export function renameCourse(classId: string, courseId: string, name: string, log?: LogNote): Promise<void> {
+  return commitLogged(db, classId, log, (b) => b.update(doc(coursesOf(classId), courseId), { name: name.trim() }));
 }
 
-export function setCourseColor(classId: string, courseId: string, color: string): Promise<void> {
-  return updateDoc(doc(coursesOf(classId), courseId), { color });
+export function setCourseColor(classId: string, courseId: string, color: string, log?: LogNote): Promise<void> {
+  return commitLogged(db, classId, log, (b) => b.update(doc(coursesOf(classId), courseId), { color }));
 }
 
 /**
  * Deletes a course. Its timetable meetings go with it when the person may edit the timetable
  * (the rules ask for that permission); otherwise they stay in the data and the screens hide them.
  */
-export async function deleteCourse(classId: string, courseId: string, withMeetings = false): Promise<void> {
+export async function deleteCourse(classId: string, courseId: string, withMeetings = false, log?: LogNote): Promise<void> {
   if (withMeetings) {
     const meetings = await getDocs(query(collection(db, 'classes', classId, 'meetings'), where('courseId', '==', courseId)));
     for (let i = 0; i < meetings.docs.length; i += 400) {
@@ -282,5 +283,5 @@ export async function deleteCourse(classId: string, courseId: string, withMeetin
       await batch.commit();
     }
   }
-  await deleteDoc(doc(coursesOf(classId), courseId));
+  await commitLogged(db, classId, log, (b) => b.delete(doc(coursesOf(classId), courseId)));
 }

@@ -111,8 +111,37 @@ test('claims, statement, announcements and the timetable', async ({ browser }) =
   await page.getByRole('button', { name: 'Remove' }).click();
   await page.getByRole('dialog', { name: 'Classes are back on?' }).getByRole('button', { name: 'Cancel' }).click();
 
+  // The taken class is tagged as marked No classes. Removing its attendance takes it back to not taken,
+  // and a No classes class then opens without the student list until "Take attendance anyway".
+  await page.getByRole('button', { name: 'Take attendance' }).click();
+  await expect(sheet.getByText('Marked No classes')).toBeVisible();
+  await sheet.getByRole('button', { name: 'Remove' }).click();
+  await page.getByRole('dialog', { name: 'Remove this attendance?' }).getByRole('button', { name: 'Remove' }).click();
+  await expectNotice(page, 'Attendance removed.');
+  await expect(sheet.getByText('No classes: Holiday')).toBeVisible();
+  await expect(sheet.getByRole('radiogroup', { name: 'Attendance of Nina Castro' })).toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await sheet.getByRole('button', { name: 'Take attendance anyway' }).click();
+  await expect(sheet.getByRole('radiogroup', { name: 'Attendance of Nina Castro' })).toBeVisible();
+  await sheet.getByRole('button', { name: 'Cancel' }).click();
+
   await openTab(page, 'Home');
   await expect(page.getByText('No classes: Holiday')).toBeVisible();
+
+  // The History log has the attendance and No classes entries, and its filters narrow them down in Firestore.
+  await page.goto(`${classUrl}/history`);
+  await expect(page.getByText(/^Took attendance for Operations Research/).first()).toBeVisible();
+  await expect(page.getByText(/^Removed the attendance for Operations Research/)).toBeVisible();
+  await expect(page.getByText(/^Marked No classes: .*whole day.*Reason: Holiday/)).toBeVisible();
+  await page.getByRole('button', { name: 'Money', exact: true }).click();
+  await expect(page.getByText(/^Took attendance/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Attendance', exact: true }).click();
+  await expect(page.getByText(/^Marked No classes/)).toHaveCount(0);
+  await expect(page.getByText(/^Removed the attendance/)).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Search the history log' }).fill('removed');
+  await expect(page.getByText(/^Took attendance/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Clear' }).click();
+  await expect(page.getByText(/^Marked No classes/)).toBeVisible();
 
   expect(realErrors(mayor.errors, mayor.failedRequests), mayor.failedRequests.join(', ')).toEqual([]);
   await mayor.context.close();

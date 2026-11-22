@@ -2,6 +2,7 @@
  * The class attendance export: a sheet per course, a line per student and a column per day attendance was
  * taken. A cell is 1 for present, 0 for absent, L for late and E for excused; Summary counts the days attended
  * (present or late). A meeting cancelled with a "No classes" mark gets its own column of NC, which never counts.
+ * When attendance was still taken on a cancelled day, the recorded marks show and the date says "(NC)".
  */
 
 export interface ExportCourse {
@@ -86,6 +87,7 @@ export function attendanceExportSheets(
     const takers = students.filter((s) => !s.excludedCourseIds.includes(course.id));
     if (taken.length === 0 || takers.length === 0) return [];
     const cancelled = cancelledDays(course.id, new Set(taken.map((s) => s.dateKey)), cancellations);
+    const markedNoClass = new Set(cancelledDays(course.id, new Set(), cancellations));
     // Each column is a day: an attendance sheet, or null for a cancelled day.
     const columns = [...taken.map((s) => ({ dateKey: s.dateKey, sheet: s as ExportSheet | null })), ...cancelled.map((dateKey) => ({ dateKey, sheet: null }))].sort(
       (a, b) => (a.dateKey < b.dateKey ? -1 : a.dateKey > b.dateKey ? 1 : 0),
@@ -97,6 +99,52 @@ export function attendanceExportSheets(
       );
       return [student.name, marks.filter((m) => m === 1 || m === LATE_MARK).length, ...marks];
     });
-    return [{ name: course.name, rows: [['Name', 'Summary', ...columns.map((c) => shortDate(c.dateKey))], ...rows, [], [LEGEND]] }];
+    const header = columns.map((c) => (c.sheet && markedNoClass.has(c.dateKey) ? `${shortDate(c.dateKey)} (NC)` : shortDate(c.dateKey)));
+    return [{ name: course.name, rows: [['Name', 'Summary', ...header], ...rows, [], [LEGEND]] }];
   });
+}
+
+/** A timetable meeting with its id and end time, for finding classes whose attendance was never taken. */
+export interface UntakenMeeting {
+  id: string;
+  courseId: string;
+  dayOfWeek: number;
+  endMinutes: number;
+}
+
+/** One class meeting on one day with no attendance sheet. */
+export interface Untaken {
+  dateKey: string;
+  meetingId: string;
+  courseId: string;
+}
+
+const addDay = (dateKey: string, n: number) => new Date(Date.UTC(+dateKey.slice(0, 4), +dateKey.slice(5, 7) - 1, +dateKey.slice(8, 10) + n)).toISOString().slice(0, 10);
+
+/**
+ * Class meetings from the first day attendance was ever taken up to now that have no sheet, leaving out
+ * meetings marked "No classes" (the whole day or that course). Today's meetings count once they have ended.
+ * Earliest first. Empty when attendance was never taken.
+ */
+export function untakenMeetings(
+  meetings: UntakenMeeting[],
+  sheets: { dateKey: string; meetingId: string }[],
+  noClass: ExportNoClass[],
+  todayKey: string,
+  nowMinutes: number,
+): Untaken[] {
+  if (sheets.length === 0) return [];
+  const taken = new Set(sheets.map((s) => `${s.dateKey}|${s.meetingId}`));
+  const off = (day: string, courseId: string) => noClass.some((k) => k.dateKey === day && (!k.courseId || k.courseId === courseId));
+  const out: Untaken[] = [];
+  let day = sheets.reduce((min, s) => (s.dateKey < min ? s.dateKey : min), sheets[0].dateKey);
+  for (; day <= todayKey; day = addDay(day, 1)) {
+    for (const m of meetings) {
+      if (m.dayOfWeek !== weekdayOf(day)) continue;
+      if (day === todayKey && m.endMinutes > nowMinutes) continue;
+      if (taken.has(`${day}|${m.id}`) || off(day, m.courseId)) continue;
+      out.push({ dateKey: day, meetingId: m.id, courseId: m.courseId });
+    }
+  }
+  return out;
 }

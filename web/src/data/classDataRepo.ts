@@ -1,6 +1,7 @@
-import { addDoc, collection, deleteDoc, deleteField, doc, getDocs, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, deleteField, doc, getDocs, query, setDoc, where, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
 import type { ContentItem, LedgerRecord, ScheduleItem, ScheduleStatus } from './models';
+import { commitLogged, type LogNote } from './history';
 
 /* The ledger, schedule, done marks and class contents, written exactly as the Android app writes them. */
 
@@ -44,16 +45,16 @@ export async function addScheduleItem(classId: string, item: ScheduleItem): Prom
   await addDoc(scheduleOf(classId), { ...item, id: '', createdAtMillis: Date.now() });
 }
 
-export function updateScheduleItem(classId: string, item: ScheduleItem): Promise<void> {
-  return setDoc(doc(scheduleOf(classId), item.id), item);
+export function updateScheduleItem(classId: string, item: ScheduleItem, log?: LogNote): Promise<void> {
+  return commitLogged(db, classId, log, (b) => b.set(doc(scheduleOf(classId), item.id), item));
 }
 
-export function setScheduleStatus(classId: string, itemId: string, status: ScheduleStatus): Promise<void> {
-  return updateDoc(doc(scheduleOf(classId), itemId), { status });
+export function setScheduleStatus(classId: string, itemId: string, status: ScheduleStatus, log?: LogNote): Promise<void> {
+  return commitLogged(db, classId, log, (b) => b.update(doc(scheduleOf(classId), itemId), { status }));
 }
 
-export function deleteScheduleItem(classId: string, itemId: string): Promise<void> {
-  return deleteDoc(doc(scheduleOf(classId), itemId));
+export function deleteScheduleItem(classId: string, itemId: string, log?: LogNote): Promise<void> {
+  return commitLogged(db, classId, log, (b) => b.delete(doc(scheduleOf(classId), itemId)));
 }
 
 // ---- Each student's own done marks ----
@@ -72,10 +73,10 @@ export async function addContent(classId: string, item: ContentItem): Promise<vo
   await addDoc(contentsOf(classId), { ...item, id: '' });
 }
 
-export function updateContent(classId: string, item: ContentItem): Promise<void> {
-  return setDoc(doc(contentsOf(classId), item.id), item);
+export function updateContent(classId: string, item: ContentItem, log?: LogNote): Promise<void> {
+  return commitLogged(db, classId, log, (b) => b.set(doc(contentsOf(classId), item.id), item));
 }
 
-export function deleteContent(classId: string, itemId: string): Promise<void> {
-  return deleteDoc(doc(contentsOf(classId), itemId));
+export function deleteContent(classId: string, itemId: string, log?: LogNote): Promise<void> {
+  return commitLogged(db, classId, log, (b) => b.delete(doc(contentsOf(classId), itemId)));
 }

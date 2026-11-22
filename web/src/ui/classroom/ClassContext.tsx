@@ -348,7 +348,7 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
       leaveClass(newMayorUid, onDone) {
         const c = st();
         const handOver = MemberRules.mustHandOver(uid, c.room?.ownerUid ?? '');
-        if (!handOver) return runAction(null, onDone, () => membership.leaveClass(db, uid, classId));
+        if (!handOver) return runAction(null, onDone, () => membership.leaveClass(db, uid, classId, 'Left the class'));
         if (!newMayorUid) return deny('Choose the new Mayor before you leave.');
         if (!MemberRules.mayorCandidates(uid, c.members).some((m) => m.id === newMayorUid)) return deny('Choose someone who is still in the class.');
         runAction(null, onDone, () => membership.handOverAndLeave(db, uid, classId, newMayorUid));
@@ -385,25 +385,34 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         const c = st();
         if (!c.can('CLASS_SETTINGS')) return deny('You do not have permission to edit courses.');
         if (!CourseRules.isNameValid(name, c.courses)) return deny(`Use a course name of up to ${CourseRules.MAX_NAME} characters that is not already listed.`);
-        runAction(`Added ${name.trim()}.`, onDone, () => classRepo.addCourse(classId, name));
+        runAction(`Added ${name.trim()}.`, onDone, () => classRepo.addCourse(classId, name, { actorUid: uid, kind: 'COURSE_ADDED', text: `Added the course ${name.trim()}` }));
       },
 
       renameCourse(course, name, onDone) {
         const c = st();
         if (!c.can('CLASS_SETTINGS')) return deny('You do not have permission to edit courses.');
         if (!CourseRules.isNameValid(name, c.courses, course.id)) return deny(`Use a course name of up to ${CourseRules.MAX_NAME} characters that is not already listed.`);
-        runAction(`Renamed to ${name.trim()}.`, onDone, () => classRepo.renameCourse(classId, course.id, name));
+        runAction(`Renamed to ${name.trim()}.`, onDone, () =>
+          classRepo.renameCourse(classId, course.id, name, { actorUid: uid, kind: 'COURSE_EDITED', text: `Renamed the course ${course.name} to ${name.trim()}` }),
+        );
       },
 
       setCourseColor(course, color, onDone) {
         if (!st().can('CLASS_SETTINGS')) return deny('You do not have permission to edit courses.');
         if (!/^#[0-9a-fA-F]{6}$/.test(color)) return deny('Choose one of the colors.');
-        runAction(`Color of ${course.name} changed.`, onDone, () => classRepo.setCourseColor(classId, course.id, color));
+        runAction(`Color of ${course.name} changed.`, onDone, () =>
+          classRepo.setCourseColor(classId, course.id, color, { actorUid: uid, kind: 'COURSE_EDITED', text: `Changed the color of ${course.name}` }),
+        );
       },
 
       deleteCourse(course, onDone) {
         if (!st().can('CLASS_SETTINGS')) return deny('You do not have permission to edit courses.');
-        runAction(`Deleted ${course.name}.`, onDone, () => classRepo.deleteCourse(classId, course.id, st().can('SCHEDULE_MANAGE')));
+        const withMeetings = st().can('SCHEDULE_MANAGE');
+        runAction(`Deleted ${course.name}.`, onDone, () =>
+          classRepo.deleteCourse(classId, course.id, withMeetings, {
+            actorUid: uid, kind: 'COURSE_DELETED', text: `Deleted the course ${course.name}${withMeetings ? ' and its timetable meetings' : ''}`,
+          }),
+        );
       },
 
       // ---- Joining ----
@@ -502,13 +511,21 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
             void queueNotice(db, uid, classId, { kind: 'SCHEDULE_NEW', audience: clean.courseId ? 'COURSE' : 'CLASS', audienceId: clean.courseId, title: `New on the schedule: ${clean.title}`, body: `Due ${due}` });
           });
         }
-        else runAction(`Saved "${clean.title}".`, onDone, () => dataRepo.updateScheduleItem(classId, clean));
+        else {
+          const before = st().schedule.find((x) => x.id === clean.id);
+          const day = (millis: number) => new Date(millis).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          const moved = before && day(before.dueMillis) !== day(clean.dueMillis) ? ` (due moved from ${day(before.dueMillis)} to ${day(clean.dueMillis)})` : '';
+          const renamed = before && before.title !== clean.title ? ` (now "${clean.title}")` : '';
+          const text = `Edited "${before?.title ?? clean.title}"${renamed}${moved}`;
+          runAction(`Saved "${clean.title}".`, onDone, () => dataRepo.updateScheduleItem(classId, clean, { actorUid: uid, kind: 'SCHEDULE_EDITED', text }));
+        }
       },
 
       setCancelled(item, cancelled) {
         if (!st().can('SCHEDULE_MANAGE')) return deny('You do not have permission to manage the schedule.');
         const message = cancelled ? `"${item.title}" is cancelled for the class.` : `"${item.title}" is active again.`;
-        runAction(message, undefined, () => dataRepo.setScheduleStatus(classId, item.id, cancelled ? 'CANCELLED' : 'PENDING'));
+        const text = cancelled ? `Cancelled "${item.title}" for the class` : `Made "${item.title}" active again`;
+        runAction(message, undefined, () => dataRepo.setScheduleStatus(classId, item.id, cancelled ? 'CANCELLED' : 'PENDING', { actorUid: uid, kind: 'SCHEDULE_EDITED', text }));
       },
 
       setDone(item, done) {
@@ -519,7 +536,10 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
 
       deleteScheduleItem(item, onDone) {
         if (!st().can('SCHEDULE_MANAGE')) return deny('You do not have permission to manage the schedule.');
-        runAction(`Deleted "${item.title}".`, onDone, () => dataRepo.deleteScheduleItem(classId, item.id));
+        const due = new Date(item.dueMillis).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        runAction(`Deleted "${item.title}".`, onDone, () =>
+          dataRepo.deleteScheduleItem(classId, item.id, { actorUid: uid, kind: 'SCHEDULE_DELETED', text: `Deleted "${item.title}" (due ${due})` }),
+        );
       },
 
       // ---- Class contents ----
@@ -531,13 +551,19 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         const clean = { ...item, title: item.title.trim(), url: item.file ? '' : ContentRules.normalizeUrl(item.url), note: item.note.trim(), kind: item.file ? 'FILE' as const : item.kind };
         if (!clean.id) {
           runAction(`Added "${clean.title}".`, onDone, () => dataRepo.addContent(classId, { ...clean, createdByUid: uid, createdAtMillis: Date.now() }));
-        } else runAction(`Saved "${clean.title}".`, onDone, () => dataRepo.updateContent(classId, clean));
+        } else {
+          const before = st().contents.find((x) => x.id === clean.id);
+          const renamed = before && before.title !== clean.title ? ` (now "${clean.title}")` : '';
+          const swapped = before?.file && clean.file && before.file.key !== clean.file.key ? ', with a new file' : before && !before.file && before.url !== clean.url ? ', with a new link' : '';
+          const text = `Edited "${before?.title ?? clean.title}"${renamed}${swapped} in Contents`;
+          runAction(`Saved "${clean.title}".`, onDone, () => dataRepo.updateContent(classId, clean, { actorUid: uid, kind: 'CONTENT_EDITED', text }));
+        }
       },
 
       deleteContent(item, onDone) {
         if (!st().can('CONTENTS_MANAGE')) return deny('You do not have permission to manage class contents.');
         runAction(`Deleted "${item.title}".`, onDone, async () => {
-          await dataRepo.deleteContent(classId, item.id);
+          await dataRepo.deleteContent(classId, item.id, { actorUid: uid, kind: 'CONTENT_DELETED', text: `Deleted ${item.file ? 'the file' : 'the link'} "${item.title}" from Contents` });
           // The file goes too; if this fails (offline), the files Worker's daily clean-up removes it.
           if (item.file) void deleteFile(classId, item.file.key).catch(() => undefined);
         });

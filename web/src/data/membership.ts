@@ -23,7 +23,7 @@ import { RoleRules, can } from '../domain/permissions';
 import { UserError } from './errors';
 import { newId, nowMillis } from './dataEnv';
 import { addOpeningToBatch, openingRecordIdFor } from './openingBalances';
-import { PERMISSION_WORDS, logToBatch, peso } from './history';
+import { PERMISSION_WORDS, commitLogged, logToBatch, peso } from './history';
 import type { Actor } from './classes';
 import {
   bumpSummary,
@@ -232,10 +232,12 @@ export function watchMyClasses(db: Firestore, uid: string, onChange: (value: MyC
  * The user leaves the class (only their member entry goes; their ledger records stay as the class's history).
  * Also removes an entry a deleted class left behind. The Mayor must hand over first (handOverAndLeave).
  */
-export async function leaveClass(db: Firestore, uid: string, classId: string): Promise<void> {
+export async function leaveClass(db: Firestore, uid: string, classId: string, logText?: string): Promise<void> {
   const room = await getDoc(classRef(db, classId)).catch(() => null);
   if (room?.exists() && room.get('ownerUid') === uid) throw new UserError('MUST_HAND_OVER');
-  await deleteDoc(memberRef(db, classId, uid));
+  // A class that still exists gets a History entry; for a deleted class only the leftover entry goes.
+  const note = logText && room?.exists() ? { actorUid: uid, kind: 'MEMBER_LEFT' as const, text: logText } : null;
+  await commitLogged(db, classId, note, (b) => b.delete(memberRef(db, classId, uid)));
 }
 
 /**

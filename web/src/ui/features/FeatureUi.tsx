@@ -28,6 +28,7 @@ import {
   newMeeting,
   rejectClaim,
   removeNoClasses,
+  removeAttendance,
   saveAttendance,
   sheetId,
   useAttendance,
@@ -54,7 +55,7 @@ import { ROLE_MEMBER, byLastName, listName } from '../../data/models';
 import { formatMoney, parsePesos } from '../../domain/money';
 import { courseShortName, layoutWeek } from '../../domain/weekGrid';
 import { weekImage } from './weekImage';
-import { attendanceExportSheets } from '../../domain/attendanceExport';
+import { attendanceExportSheets, untakenMeetings } from '../../domain/attendanceExport';
 import { groupNoClass } from '../../domain/noClassGroups';
 import { xlsxFile } from '../../domain/xlsx';
 import { Avatar, ConfirmDialog, CourseDot, Dialog, Field, RoleChip, hexColor, inAndroidApp, saveFile, shortDate, shortDateTime } from '../common';
@@ -812,7 +813,17 @@ function Thread({ state, post, votes, memberIds }: { state: ClassState; post: An
           confirm="Remove"
           danger
           onClose={() => setRemoving(null)}
-          onConfirm={() => run('Comment removed.', () => removeComment(db, state.classId, removing.id))}
+          onConfirm={() =>
+            run('Comment removed.', () =>
+              removeComment(
+                db, state.classId, removing.id,
+                // Only an officer removing someone else's comment goes in the History log.
+                removing.uid !== state.myUid
+                  ? { actorUid: state.myUid, kind: 'COMMENT_REMOVED', text: `Removed a comment by ${nameOf(removing)} on "${post.title}": "${snippet(removing.text)}"` }
+                  : undefined,
+              ),
+            )
+          }
         />
       )}
     </div>
@@ -1238,7 +1249,16 @@ export function TimetableCard({ state }: { state: ClassState }) {
           confirm="Remove"
           danger
           onClose={() => setRemoving(null)}
-          onConfirm={() => run('Classes are back on.', () => removeNoClasses(db, state.classId, removing.map((k) => k.id)), () => setRemoving(null))}
+          onConfirm={() =>
+            run(
+              'Classes are back on.',
+              () =>
+                removeNoClasses(db, state.classId, removing.map((k) => k.id), {
+                  actorUid: state.myUid, kind: 'NO_CLASS_REMOVED', text: `Classes are back on: ${noClassText(removing, courseName)}`,
+                }),
+              () => setRemoving(null),
+            )
+          }
         />
       )}
       {taking && <AttendanceDialog state={state} meetings={meetings} onClose={() => setTaking(false)} />}
@@ -1269,6 +1289,8 @@ function MeetingDialog({ state, meeting, meetings, onClose }: { state: ClassStat
     setM({ ...m, courseId, instructor: saved || knownInstructor(courseId) });
   };
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const meetingText = (x: Meeting) =>
+    `${state.courses.find((c) => c.id === x.courseId)?.name ?? 'Course'}, ${DAY_SHORT[x.dayOfWeek]} ${clockText(x.startMinutes)} to ${clockText(x.endMinutes)}${x.room.trim() ? `, ${x.room.trim()}` : ''}`;
   if (confirmDelete)
     return (
       <ConfirmDialog
@@ -1277,7 +1299,13 @@ function MeetingDialog({ state, meeting, meetings, onClose }: { state: ClassStat
         confirm="Delete"
         danger
         onClose={() => setConfirmDelete(false)}
-        onConfirm={() => run('Meeting deleted.', () => deleteMeeting(db, state.classId, meeting.id), onClose)}
+        onConfirm={() =>
+          run(
+            'Meeting deleted.',
+            () => deleteMeeting(db, state.classId, meeting.id, { actorUid: state.myUid, kind: 'MEETING_DELETED', text: `Deleted the timetable meeting ${meetingText(meeting)}` }),
+            onClose,
+          )
+        }
       />
     );
   return (
@@ -1294,7 +1322,21 @@ function MeetingDialog({ state, meeting, meetings, onClose }: { state: ClassStat
           <button className="btn text" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn solid" onClick={() => run('Meeting saved.', () => saveMeeting(db, state.classId, m), onClose)}>
+          <button
+            className="btn solid"
+            onClick={() =>
+              run(
+                'Meeting saved.',
+                () =>
+                  saveMeeting(db, state.classId, m, {
+                    actorUid: state.myUid,
+                    kind: meeting.id ? 'MEETING_EDITED' : 'MEETING_ADDED',
+                    text: meeting.id ? `Edited the timetable meeting ${meetingText(meeting)} (now ${meetingText(m)})` : `Added the timetable meeting ${meetingText(m)}`,
+                  }),
+                onClose,
+              )
+            }
+          >
             Save
           </button>
         </>
@@ -1389,7 +1431,9 @@ function NoClassDialog({ state, meetings, onClose }: { state: ClassState; meetin
     });
   const save = () => {
     const count = chosen.length;
-    run(`Marked ${count} class${count === 1 ? '' : 'es'} as no classes.`, () => addNoClasses(db, state.myUid, state.classId, toSave(), reason), onClose);
+    const marked = toSave();
+    const text = `Marked No classes: ${noClassText(marked, courseName)}${reason.trim() ? `. Reason: ${reason.trim()}` : ''}`;
+    run(`Marked ${count} class${count === 1 ? '' : 'es'} as no classes.`, () => addNoClasses(db, state.myUid, state.classId, marked, reason, text), onClose);
   };
 
   if (confirming && chosen.length > 0) {
@@ -1593,6 +1637,21 @@ const addDays = (dateKey: string, n: number) => {
 };
 const mondayOf = (dateKey: string) => addDays(dateKey, -((weekdayOf(dateKey) + 6) % 7));
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** "Tue, Nov 17 (whole day); Thu, Nov 19 (Software Engineering)", for History entries about No classes marks. */
+function noClassText(marks: { dateKey: string; courseId: string }[], courseName: (id: string) => string): string {
+  const days = [...new Set(marks.map((k) => k.dateKey))].sort();
+  return days
+    .map((day) => {
+      const here = marks.filter((k) => k.dateKey === day);
+      const what = here.some((k) => !k.courseId) ? 'whole day' : here.map((k) => courseName(k.courseId)).join(', ');
+      return `${niceDate(day)} (${what})`;
+    })
+    .join('; ');
+}
+
+/** "a quoted snippet", cut short for a History entry. */
+const snippet = (text: string, max = 60) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 const MARK_LABELS: Record<AttendanceMark, string> = { PRESENT: 'Present', LATE: 'Late', ABSENT: 'Absent', EXCUSED: 'Excused' };
 const MARKS: AttendanceMark[] = ['PRESENT', 'LATE', 'ABSENT', 'EXCUSED'];
 /** "8:12 AM" in Philippine time. */
@@ -1623,6 +1682,9 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
   const [pickedId, setPickedId] = useState('');
   const [marks, setMarks] = useState<Record<string, AttendanceMark>>({});
   const [confirming, setConfirming] = useState(false);
+  // A meeting marked "No classes" opens without the student list until the officer chooses to take it anyway.
+  const [anyway, setAnyway] = useState(false);
+  const [removingSheet, setRemovingSheet] = useState(false);
 
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
@@ -1647,6 +1709,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
   // Starts from what was saved for this meeting and date, if anything.
   useEffect(() => {
     setMarks(marksOf(saved));
+    setAnyway(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
@@ -1654,7 +1717,8 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
   const withMark = (m: AttendanceMark) => students.filter((s) => markOf(s.id) === m);
   const savedMarks = marksOf(saved);
   const changes = saved ? students.filter((s) => (savedMarks[s.id] ?? 'PRESENT') !== markOf(s.id)) : [];
-  const canSave = !!meeting && sheets !== undefined && (!saved || changes.length > 0);
+  const hold = !!meeting && !saved && !!cancelled && !anyway;
+  const canSave = !!meeting && sheets !== undefined && !hold && (!saved || changes.length > 0);
 
   const pickDay = (day: string) => {
     setDateKey(day);
@@ -1664,9 +1728,37 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
   const save = () => {
     if (!meeting) return;
     const counts = `${withMark('PRESENT').length} present, ${withMark('LATE').length} late, ${withMark('ABSENT').length} absent, ${withMark('EXCUSED').length} excused`;
+    const which = `${courseName(meeting.courseId)}, ${niceDate(dateKey)} ${clockText(meeting.startMinutes)}`;
+    const logText = saved
+      ? `Changed the attendance for ${which}: ${changes.map((s) => `${listName(s)} ${MARK_LABELS[savedMarks[s.id] ?? 'PRESENT']} to ${MARK_LABELS[markOf(s.id)]}`).join('; ')}`
+      : `Took attendance for ${which}: ${counts}${cancelled ? ' (the day was marked No classes)' : ''}`;
     run(`${saved ? 'Attendance replaced' : 'Attendance saved'}: ${counts}.`, () =>
-      saveAttendance(db, state.myUid, state.classId, dateKey, meeting, Object.fromEntries(students.map((m) => [m.id, markOf(m.id)])), !saved), onClose);
+      saveAttendance(db, state.myUid, state.classId, dateKey, meeting, Object.fromEntries(students.map((m) => [m.id, markOf(m.id)])), !saved, logText), onClose);
   };
+
+  if (removingSheet && meeting && saved) {
+    return (
+      <ConfirmDialog
+        title="Remove this attendance?"
+        text={`${courseName(meeting.courseId)} · ${niceDate(dateKey)} goes back to not taken. The marks saved for it are deleted.`}
+        confirm="Remove"
+        danger
+        onClose={() => setRemovingSheet(false)}
+        onConfirm={() =>
+          run(
+            'Attendance removed.',
+            () =>
+              removeAttendance(db, state.classId, saved, {
+                actorUid: state.myUid,
+                kind: 'ATTENDANCE_REMOVED',
+                text: `Removed the attendance for ${courseName(meeting.courseId)}, ${niceDate(dateKey)} ${clockText(meeting.startMinutes)} (taken by ${takerName(saved.takenByUid)} on ${shortDateTime(saved.takenAtMillis)})`,
+              }),
+            () => setRemovingSheet(false),
+          )
+        }
+      />
+    );
+  }
 
   if (confirming && meeting) {
     const where = `${courseName(meeting.courseId)} · ${niceDate(dateKey)} · ${clockText(meeting.startMinutes)}`;
@@ -1768,7 +1860,11 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
                   <span className="att-dow">{DAY_SHORT[weekdayOf(day)]}</span>
                   <span className="att-num">{Number(day.slice(8, 10))}</span>
                   <span className="att-dots">
-                    {nc ? <span className="att-nc">NC</span> : list.map((m) => <i key={m.id} className={'att-dot' + (sheetFor(day, m.id) ? ' on' : '')} />)}
+                    {nc ? (
+                      <span className="att-nc">NC</span>
+                    ) : (
+                      list.map((m) => <i key={m.id} className={'att-dot' + (sheetFor(day, m.id) ? ' on' : cancelledOn(day, m.courseId) ? ' nc' : '')} />)
+                    )}
                   </span>
                 </button>
               );
@@ -1799,9 +1895,18 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
                       {courseName(m.courseId)}
                     </span>
                     {sheet ? (
-                      <span className="att-status ok">✓ Taken</span>
+                      <span className="att-status ok">
+                        ✓ Taken
+                        {off && (
+                          <span className="att-nc-tag">
+                            <StatusBadge status="danger">Marked No classes</StatusBadge>
+                          </span>
+                        )}
+                      </span>
                     ) : off ? (
-                      <span className="att-status">{`No classes${off.reason ? `: ${off.reason}` : ''}`}</span>
+                      <span className="att-status">
+                        <StatusBadge status="danger">{`No classes${off.reason ? `: ${off.reason}` : ''}`}</StatusBadge>
+                      </span>
                     ) : (
                       <span className="att-status">Not taken yet</span>
                     )}
@@ -1813,13 +1918,22 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
         )}
 
         {meeting && saved && (
-          <div className="att-banner taken">{`Taken on ${shortDateTime(saved.takenAtMillis)} by ${takerName(saved.takenByUid)}.`}</div>
+          <div className="att-banner taken">
+            <span className="grow">{`Taken on ${shortDateTime(saved.takenAtMillis)} by ${takerName(saved.takenByUid)}.`}</span>
+            <Button size="small" variant="text" danger onClick={() => setRemovingSheet(true)}>
+              Remove
+            </Button>
+          </div>
         )}
-        {meeting && !saved && cancelled && (
-          <Notice tone="warning">{`This day is marked "No classes"${cancelled.reason ? `: ${cancelled.reason}` : ''}. Take attendance only if the class still met.`}</Notice>
+        {hold && (
+          <div className="att-hold">
+            <Button variant="outline" onClick={() => setAnyway(true)}>
+              Take attendance anyway
+            </Button>
+          </div>
         )}
 
-        {meeting && (
+        {meeting && !hold && (
           <div className="ch-row ch-wrap ch-gap-2">
             <Badge tone="success">{`${withMark('PRESENT').length} present`}</Badge>
             <Badge tone="warning">{`${withMark('LATE').length} late`}</Badge>
@@ -1829,7 +1943,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
         )}
 
         <div className="att-students">
-          {students.map((m) => (
+          {!hold && students.map((m) => (
             <div key={m.id} className="att-student">
               <span className="grow">{listName(m)}</span>
               <span className="att-seg" role="radiogroup" aria-label={`Attendance of ${m.name}`}>
@@ -1892,7 +2006,15 @@ export function AttendanceCard({ state }: { state: ClassState }) {
       {excused > 0 && <Badge tone="info">{`${excused} excused`}</Badge>}
     </>
   );
+  const [untaken, setUntaken] = useState<{ dateKey: string; courseId: string }[] | null>(null);
+  // Warns first when a class meeting since attendance began has no sheet and was not marked "No classes".
   function exportAttendance() {
+    const known = meetings.filter((m) => state.courses.some((c) => c.id === m.courseId));
+    const missing = untakenMeetings(known, all, noClass, manilaDay(Date.now()).dateKey, manilaMinutes(Date.now()));
+    if (missing.length > 0) setUntaken(missing);
+    else writeExport();
+  }
+  function writeExport() {
     const courses = [...state.courses].sort((x, y) => x.name.localeCompare(y.name));
     const students = byLastName(state.members).map((m) => ({ id: m.id, name: listName(m), excludedCourseIds: m.excludedCourseIds }));
     // One sheet per course. Columns: name, days attended, then a column per day attendance was taken or the meeting was cancelled.
@@ -2013,6 +2135,25 @@ export function AttendanceCard({ state }: { state: ClassState }) {
               </Dialog>
             ))}
         </Section>
+      )}
+      {untaken && (
+        <ConfirmDialog
+          title={`${untaken.length} ${untaken.length === 1 ? 'class has' : 'classes have'} no attendance yet`}
+          text={
+            <span className="att-untaken">
+              {untaken.slice(0, 6).map((u) => (
+                <span key={`${u.dateKey}|${u.courseId}`}>{`${niceDate(u.dateKey)} · ${courseName(u.courseId)}`}</span>
+              ))}
+              {untaken.length > 6 && <span className="ch-muted">{`and ${untaken.length - 6} more`}</span>}
+            </span>
+          }
+          confirm="Export anyway"
+          onClose={() => setUntaken(null)}
+          onConfirm={() => {
+            setUntaken(null);
+            writeExport();
+          }}
+        />
       )}
     </>
   );

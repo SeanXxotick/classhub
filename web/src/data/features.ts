@@ -5,7 +5,7 @@ import { nowMillis, newId } from './dataEnv';
 import { UserError } from './errors';
 import { fromDoc, useQueryList } from './live';
 import { buildRecord } from './ledgerStore';
-import { logToBatch, peso } from './history';
+import { commitLogged, logToBatch, peso, type LogNote } from './history';
 import { bumpSummary, explainRefusal, memberRef, readFast, recordRef, withoutId } from './paths';
 import type { Actor } from './classes';
 
@@ -148,12 +148,16 @@ export async function saveAnnouncement(db: Firestore, actorUid: string, classId:
   if (!post.id) {
     const fresh = newAnnouncement({ title, body, pinned: post.pinned, commentsOff: post.commentsOff, courseId: post.courseId, createdByUid: actorUid, createdAtMillis: nowMillis() });
     const id = newId();
-    await explainRefusal(db, classId, () => setDoc(doc(announcementsCol(db, classId), id), withoutId(fresh)));
+    await explainRefusal(db, classId, () =>
+      commitLogged(db, classId, { actorUid, kind: 'ANNOUNCEMENT_POSTED', text: `Posted the announcement "${title}"${post.pinned ? ' (pinned)' : ''}` }, (b) =>
+        b.set(doc(announcementsCol(db, classId), id), withoutId(fresh)),
+      ),
+    );
     // A course tag tells only the students taking that course.
     void queueNotice(db, actorUid, classId, { kind: 'ANNOUNCEMENT', audience: post.courseId ? 'COURSE' : 'CLASS', audienceId: post.courseId, title: `Announcement: ${title}`, body });
     return id;
   }
-  // A change to the title or text goes in the History log (pinning and the comments switch do not).
+  // A change to the title or text goes in the History log, and so does pinning (the comments switch does not).
   const before = await readFast(doc(announcementsCol(db, classId), post.id)).catch(() => null);
   const oldTitle = String(before?.get('title') ?? '');
   const changed = !before || oldTitle !== title || String(before.get('body') ?? '') !== body;
@@ -163,6 +167,9 @@ export async function saveAnnouncement(db: Firestore, actorUid: string, classId:
     if (changed) {
       const renamed = oldTitle && oldTitle !== title ? ` (now "${title}")` : '';
       await logToBatch(batch, db, classId, actorUid, 'ANNOUNCEMENT_EDITED', `Edited the announcement "${oldTitle || title}"${renamed}`);
+    }
+    if (before && !!before.get('pinned') !== post.pinned) {
+      await logToBatch(batch, db, classId, actorUid, 'ANNOUNCEMENT_PINNED', `${post.pinned ? 'Pinned' : 'Unpinned'} the announcement "${title}"`);
     }
     await batch.commit();
   });
@@ -268,8 +275,8 @@ export async function addComment(
 }
 
 /** Removes a comment's text (its writer, or ANNOUNCEMENTS_MANAGE). It keeps its place in the thread. */
-export const removeComment = (db: Firestore, classId: string, commentId: string) =>
-  updateDoc(doc(commentsCol(db, classId), commentId), { text: '', removedAtMillis: nowMillis() });
+export const removeComment = (db: Firestore, classId: string, commentId: string, log?: LogNote) =>
+  commitLogged(db, classId, log, (b) => b.update(doc(commentsCol(db, classId), commentId), { text: '', removedAtMillis: nowMillis() }));
 
 /** The comments of one announcement, oldest first. Loaded only while its thread is open. */
 export function useComments(db: Firestore, classId: string, postId: string) {
@@ -352,14 +359,15 @@ export const meetingsCol = (db: Firestore, classId: string) => sub(db, classId, 
 export const noClassCol = (db: Firestore, classId: string) => sub(db, classId, 'noClass');
 
 /** Adds or changes a weekly meeting (SCHEDULE_MANAGE). */
-export async function saveMeeting(db: Firestore, classId: string, meeting: Meeting): Promise<void> {
+export async function saveMeeting(db: Firestore, classId: string, meeting: Meeting, log?: LogNote): Promise<void> {
   if (!meeting.courseId) throw new UserError('NAME_MISSING', 'Choose the course of this meeting.');
   if (meeting.endMinutes <= meeting.startMinutes) throw new UserError('AMOUNT_INVALID', 'The meeting must end after it starts.');
   const clean = { ...meeting, room: meeting.room.trim().slice(0, 60), instructor: meeting.instructor.trim().slice(0, 80), note: meeting.note.trim().slice(0, 200) };
-  await explainRefusal(db, classId, () => setDoc(doc(meetingsCol(db, classId), meeting.id || newId()), withoutId(clean)));
+  await explainRefusal(db, classId, () => commitLogged(db, classId, log, (b) => b.set(doc(meetingsCol(db, classId), meeting.id || newId()), withoutId(clean))));
 }
 
-export const deleteMeeting = (db: Firestore, classId: string, meetingId: string) => deleteDoc(doc(meetingsCol(db, classId), meetingId));
+export const deleteMeeting = (db: Firestore, classId: string, meetingId: string, log?: LogNote) =>
+  explainRefusal(db, classId, () => commitLogged(db, classId, log, (b) => b.delete(doc(meetingsCol(db, classId), meetingId))));
 
 /** Marks one course, or the whole day when courseId is empty, as having no classes on a date. */
 export async function addNoClass(db: Firestore, actorUid: string, classId: string, dateKey: string, courseId: string, reason: string): Promise<void> {
@@ -378,12 +386,17 @@ export const removeNoClass = (db: Firestore, classId: string, markId: string) =>
  * Each entry is a whole day (courseId empty) or one course on one day. Students get one notification for
  * the whole set: for that course's students when every mark is about the same course, otherwise the class.
  */
-export async function addNoClasses(db: Firestore, actorUid: string, classId: string, marks: { dateKey: string; courseId: string }[], reason: string): Promise<void> {
+export async function addNoClasses(
+  db: Firestore, actorUid: string, classId: string, marks: { dateKey: string; courseId: string }[], reason: string, logText?: string,
+): Promise<void> {
   if (marks.length === 0) return;
   const text = reason.trim().slice(0, 200);
-  const batch = writeBatch(db);
-  for (const m of marks) batch.set(doc(noClassCol(db, classId), newId()), { dateKey: m.dateKey, courseId: m.courseId, reason: text, createdByUid: actorUid });
-  await explainRefusal(db, classId, () => batch.commit());
+  const note = logText ? { actorUid, kind: 'NO_CLASS_MARKED' as const, text: logText } : null;
+  await explainRefusal(db, classId, () =>
+    commitLogged(db, classId, note, (b) => {
+      for (const m of marks) b.set(doc(noClassCol(db, classId), newId()), { dateKey: m.dateKey, courseId: m.courseId, reason: text, createdByUid: actorUid });
+    }),
+  );
   const days = [...new Set(marks.map((m) => m.dateKey))].sort();
   const first = new Date(`${days[0]}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
   const more = days.length - 1;
@@ -399,10 +412,12 @@ export async function addNoClasses(db: Firestore, actorUid: string, classId: str
 }
 
 /** Classes are back on for these marks, removed together. */
-export async function removeNoClasses(db: Firestore, classId: string, markIds: string[]): Promise<void> {
-  const batch = writeBatch(db);
-  for (const id of markIds) batch.delete(doc(noClassCol(db, classId), id));
-  await explainRefusal(db, classId, () => batch.commit());
+export async function removeNoClasses(db: Firestore, classId: string, markIds: string[], log?: LogNote): Promise<void> {
+  await explainRefusal(db, classId, () =>
+    commitLogged(db, classId, log, (b) => {
+      for (const id of markIds) b.delete(doc(noClassCol(db, classId), id));
+    }),
+  );
 }
 
 export const useMeetings = (db: Firestore, classId: string, enabled: boolean) =>
@@ -466,14 +481,25 @@ export const sheetId = (dateKey: string, meetingId: string) => `${dateKey}_${mee
  * isNew: no sheet existed for this meeting and date, so the course's count of meetings taken goes up by one.
  */
 export async function saveAttendance(
-  db: Firestore, actorUid: string, classId: string, dateKey: string, meeting: Meeting, marks: Record<string, AttendanceMark>, isNew = true,
+  db: Firestore, actorUid: string, classId: string, dateKey: string, meeting: Meeting, marks: Record<string, AttendanceMark>, isNew = true, logText?: string,
 ): Promise<void> {
   const of = (mark: AttendanceMark) => Object.keys(marks).filter((uid) => marks[uid] === mark).sort();
   const sheet = { dateKey, meetingId: meeting.id, courseId: meeting.courseId, absent: of('ABSENT'), late: of('LATE'), excused: of('EXCUSED'), takenByUid: actorUid, takenAtMillis: nowMillis() };
   const batch = writeBatch(db);
   batch.set(doc(attendanceCol(db, classId), sheetId(dateKey, meeting.id)), sheet);
   if (isNew) batch.set(doc(sub(db, classId, 'attendanceTotals'), meeting.courseId), { taken: increment(1) }, { merge: true });
+  if (logText) await logToBatch(batch, db, classId, actorUid, isNew ? 'ATTENDANCE_TAKEN' : 'ATTENDANCE_REPLACED', logText);
   await explainRefusal(db, classId, () => batch.commit());
+}
+
+/** Undoes a taken sheet: the meeting goes back to not taken, and the course's taken count drops by one. */
+export async function removeAttendance(db: Firestore, classId: string, sheet: { dateKey: string; meetingId: string; courseId: string }, log?: LogNote): Promise<void> {
+  await explainRefusal(db, classId, () =>
+    commitLogged(db, classId, log, (b) => {
+      b.delete(doc(attendanceCol(db, classId), sheetId(sheet.dateKey, sheet.meetingId)));
+      b.set(doc(sub(db, classId, 'attendanceTotals'), sheet.courseId), { taken: increment(-1) }, { merge: true });
+    }),
+  );
 }
 
 /** How many times attendance was taken for each course (course id to count). Every member may read it. */
