@@ -24,7 +24,9 @@ import {
   createGrouping,
   deleteGroupSlot,
   deleteGrouping,
+  disableGroupingSharing,
   editGroupSlot,
+  enableGroupingSharing,
   joinGroup,
   leaveGroup,
   linkSharedGrouping,
@@ -1468,11 +1470,73 @@ function PassLeaderDialog({
 
 function EditGroupingDialog({ state, grouping, onClose }: { state: ClassState; grouping: Grouping; onClose: () => void }) {
   const run = useRun();
+  const isHost = !grouping.shared || grouping.hostClassId === state.classId;
   const [title, setTitle] = useState(grouping.title);
   const [courseId, setCourseId] = useState(grouping.courseId);
   const [note, setNote] = useState(grouping.note);
   const [selfJoin, setSelfJoin] = useState(grouping.selfJoin);
   const [hasLeader, setHasLeader] = useState(!!grouping.hasLeader);
+  const [shared, setShared] = useState(!!grouping.shared);
+  const [sectionTag, setSectionTag] = useState(
+    () => grouping.linkedClasses?.[state.classId]?.tag ?? guessSectionTag(state.room?.name ?? ''),
+  );
+
+  const memberById = useMemo(() => new Map(state.members.map((m) => [m.id, m])), [state.members]);
+  const hasPartnerClasses = !!grouping.shared && (grouping.linkedClassIds?.length ?? 0) > 1;
+
+  function save() {
+    if (!title.trim()) return;
+    const roster = byLastName(
+      courseId ? state.members.filter((m) => !m.excludedCourseIds.includes(courseId)) : state.members,
+    ).map((m) => ({ uid: m.id, name: listName(m) }));
+
+    if (!grouping.shared && shared) {
+      run(
+        'Sharing turned on.',
+        () =>
+          enableGroupingSharing(db, state.myUid, state.classId, grouping, {
+            title,
+            courseId,
+            note,
+            selfJoin,
+            hasLeader,
+            className: state.room?.name ?? '',
+            sectionTag,
+            accentColor: state.room?.accentColor ?? '',
+            roster,
+            memberNameOf: (uid) => {
+              const m = memberById.get(uid);
+              return m ? listName(m) : 'Member';
+            },
+          }),
+        onClose,
+      );
+      return;
+    }
+
+    if (grouping.shared && !shared && isHost) {
+      run(
+        'Sharing turned off.',
+        () =>
+          disableGroupingSharing(db, state.myUid, state.classId, grouping, {
+            title,
+            courseId,
+            note,
+            selfJoin,
+            hasLeader,
+            localMemberIds: new Set(state.members.map((m) => m.id)),
+          }),
+        onClose,
+      );
+      return;
+    }
+
+    run(
+      'Grouping updated.',
+      () => updateGroupingMeta(db, state.myUid, state.classId, grouping, { title, courseId, note, selfJoin, hasLeader, roster }),
+      onClose,
+    );
+  }
 
   return (
     <Dialog
@@ -1487,13 +1551,7 @@ function EditGroupingDialog({ state, grouping, onClose }: { state: ClassState; g
             type="button"
             className="btn solid"
             disabled={!title.trim() || run.busy}
-            onClick={() =>
-              run(
-                'Grouping updated.',
-                () => updateGroupingMeta(db, state.myUid, state.classId, grouping, { title, courseId, note, selfJoin, hasLeader }),
-                onClose,
-              )
-            }
+            onClick={save}
           >
             {run.busy ? 'Saving…' : 'Save'}
           </button>
@@ -1519,6 +1577,30 @@ function EditGroupingDialog({ state, grouping, onClose }: { state: ClassState; g
           label="Group leaders"
           description="First to join leads and approves new members."
         />
+        {isHost && (
+          <>
+            <Switch
+              checked={shared}
+              onChange={setShared}
+              label="Share with another class"
+              description={
+                grouping.shared && !shared && hasPartnerClasses
+                  ? 'Linked partner classes will be unlinked.'
+                  : undefined
+              }
+            />
+            {!grouping.shared && shared && (
+              <Field label="Section tag">
+                <input
+                  value={sectionTag}
+                  maxLength={GUEST_TAG_MAX}
+                  placeholder="e.g. G1"
+                  onChange={(e) => setSectionTag(e.target.value)}
+                />
+              </Field>
+            )}
+          </>
+        )}
       </div>
     </Dialog>
   );

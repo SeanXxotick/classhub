@@ -322,6 +322,170 @@ export async function unlinkSharedGrouping(
   ).catch(() => undefined);
 }
 
+/** Converts a local grouping into a shared cross-class grouping, preserving all groups and members. */
+export async function enableGroupingSharing(
+  db: Firestore,
+  actorUid: string,
+  classId: string,
+  grouping: Grouping,
+  patch: {
+    title: string;
+    courseId: string;
+    note: string;
+    selfJoin: boolean;
+    hasLeader: boolean;
+    className: string;
+    sectionTag: string;
+    accentColor?: string;
+    roster: SharedRosterEntry[];
+    memberNameOf: (uid: string) => string;
+  },
+): Promise<string> {
+  const title = patch.title.trim().slice(0, GROUPING_TITLE_MAX);
+  if (!title) throw new UserError('NAME_MISSING', 'Give this grouping a title first.');
+  const note = patch.note.trim().slice(0, GROUPING_NOTE_MAX);
+  const hostClassName = patch.className.trim().slice(0, 100) || 'Host class';
+  const tag = patch.sectionTag.trim().slice(0, GUEST_TAG_MAX) || hostClassName.slice(0, GUEST_TAG_MAX);
+  const shareCode = await unusedShareCode(db);
+  const now = nowMillis();
+  const newSharedId = newId();
+
+  const groupsWithMeta: GroupSlot[] = grouping.groups.map((slot) => {
+    const memberMeta: Record<string, MemberMeta> = { ...(slot.memberMeta ?? {}) };
+    for (const uid of slot.memberUids) {
+      if (!memberMeta[uid]) {
+        memberMeta[uid] = { name: patch.memberNameOf(uid), classId, tag };
+      }
+    }
+    return { ...slot, memberMeta };
+  });
+
+  const sharedDoc = {
+    title,
+    note,
+    hostClassId: classId,
+    shareCode,
+    linkedClassIds: [classId],
+    linkedClasses: {
+      [classId]: {
+        name: hostClassName,
+        tag,
+        courseId: patch.courseId,
+        ...(patch.accentColor ? { accentColor: patch.accentColor } : {}),
+        roster: patch.roster,
+      },
+    },
+    selfJoin: patch.selfJoin,
+    locked: grouping.locked,
+    hasLeader: patch.hasLeader,
+    ...storedGroups(groupsWithMeta, now),
+    createdByUid: actorUid,
+    createdAtMillis: now,
+    updatedAtMillis: now,
+  };
+
+  await explainRefusal(db, classId, () =>
+    commitLogged(
+      db,
+      classId,
+      { actorUid, kind: 'GROUPING_UPDATED', text: `Enabled sharing for "${title}" (${shareCode})` },
+      (b) => {
+        b.set(sharedGroupingRef(db, newSharedId), sharedDoc);
+        b.set(groupingInviteRef(db, shareCode), {
+          sharedId: newSharedId,
+          title,
+          hostClassId: classId,
+          hostClassName,
+        });
+        b.set(sharedGroupingLinkRef(db, classId, newSharedId), { sharedId: newSharedId, linkedAtMillis: now });
+        b.delete(groupingRef(db, classId, grouping.id));
+      },
+    ),
+  );
+  return shareCode;
+}
+
+/** Converts a host-owned shared grouping back into a single-class grouping, keeping partner members as tagged guests. */
+export async function disableGroupingSharing(
+  db: Firestore,
+  actorUid: string,
+  classId: string,
+  grouping: Grouping,
+  patch: {
+    title: string;
+    courseId: string;
+    note: string;
+    selfJoin: boolean;
+    hasLeader: boolean;
+    localMemberIds: Set<string>;
+  },
+): Promise<void> {
+  if (!grouping.shared || grouping.hostClassId !== classId) {
+    throw new UserError('NO_PERMISSION', 'Only the host class can turn off sharing.');
+  }
+  const title = patch.title.trim().slice(0, GROUPING_TITLE_MAX);
+  if (!title) throw new UserError('NAME_MISSING', 'Give this grouping a title first.');
+  const note = patch.note.trim().slice(0, GROUPING_NOTE_MAX);
+  const now = nowMillis();
+  const newLocalId = newId();
+
+  const localGroups: GroupSlot[] = grouping.groups.map((slot) => {
+    const keptUids: string[] = [];
+    const extraGuests = [...slot.guests];
+    for (const uid of slot.memberUids) {
+      if (patch.localMemberIds.has(uid)) {
+        keptUids.push(uid);
+      } else {
+        const meta = slot.memberMeta?.[uid];
+        if (meta?.name) {
+          extraGuests.push({
+            id: newId().slice(0, 10),
+            name: meta.name.slice(0, GUEST_NAME_MAX),
+            tag: (meta.tag ?? '').slice(0, GUEST_TAG_MAX),
+            addedByUid: actorUid,
+          });
+        }
+      }
+    }
+    const nextLeader = slot.leaderUid && keptUids.includes(slot.leaderUid) ? slot.leaderUid : keptUids[0] ?? '';
+    return {
+      id: slot.id,
+      name: slot.name,
+      maxSize: slot.maxSize,
+      memberUids: keptUids,
+      ...(nextLeader ? { leaderUid: nextLeader } : {}),
+      guests: extraGuests,
+    };
+  });
+
+  const localDoc = {
+    title,
+    courseId: patch.courseId,
+    note,
+    selfJoin: patch.selfJoin,
+    locked: grouping.locked,
+    hasLeader: patch.hasLeader,
+    ...storedGroups(localGroups, now),
+    createdByUid: actorUid,
+    createdAtMillis: now,
+    updatedAtMillis: now,
+  };
+
+  await explainRefusal(db, classId, () =>
+    commitLogged(
+      db,
+      classId,
+      { actorUid, kind: 'GROUPING_UPDATED', text: `Turned off sharing for "${title}"` },
+      (b) => {
+        b.set(groupingRef(db, classId, newLocalId), localDoc);
+        b.delete(sharedGroupingRef(db, grouping.id));
+        if (grouping.shareCode) b.delete(groupingInviteRef(db, grouping.shareCode));
+        b.delete(sharedGroupingLinkRef(db, classId, grouping.id));
+      },
+    ),
+  );
+}
+
 /** Updates grouping metadata (title, course, note, selfJoin) (MEMBERS_MANAGE). */
 export async function updateGroupingMeta(
   db: Firestore,

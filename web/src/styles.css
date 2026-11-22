@@ -2449,11 +2449,13 @@ select.ch-input {
   background: var(--surface-variant);
   color: var(--on-surface);
 }
-.more-menu {
-  min-width: 200px;
+.menu.more-menu {
+  min-width: 240px;
+  max-height: 440px;
 }
 .more-menu .menu-item {
   padding: 10px 16px;
+  white-space: nowrap;
 }
 .menu-item.danger {
   color: var(--error);
