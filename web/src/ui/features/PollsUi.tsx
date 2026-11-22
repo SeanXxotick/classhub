@@ -318,7 +318,6 @@ function PollCard({
             {poll.shared
               ? `${tally.totalVoters} voted`
               : `${tally.totalVoters} of ${eligibleMembers.length} voted`}
-            {poll.anonymous ? ' · Anonymous' : ''}
           </span>
           <div className="ch-row ch-wrap ch-gap-1" style={{ alignItems: 'center' }}>
             {!poll.anonymous && tally.totalVoters > 0 && (
