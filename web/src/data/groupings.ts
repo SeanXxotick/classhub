@@ -54,7 +54,7 @@ import { newId, nowMillis } from './dataEnv';
 import { UserError } from './errors';
 import { commitLogged } from './history';
 import { fromDoc, useQueryList } from './live';
-import { savePartnerClass } from './partners';
+import { partnerRef, savePartnerClass } from './partners';
 import { explainRefusal } from './paths';
 
 export {
@@ -342,6 +342,14 @@ export async function unlinkSharedGrouping(
       tx.update(ref, { linkedClassIds: nextIds, linkedClasses: nextClasses, updatedAtMillis: now });
       if (actingClassId === targetClassId) {
         tx.delete(sharedGroupingLinkRef(db, targetClassId, grouping.id));
+      }
+      // The acting class stops trusting the class it unlinked (or, when it leaves, every class it was linked
+      // with here), so they can no longer send it polls or notifications. A shared grouping that still links
+      // two classes registers them as partners again when an officer opens it. Same transaction as the
+      // unlink, so the screen never sees the partner gone while the grouping still lists it.
+      const formerPartners = actingClassId === targetClassId ? nextIds : [targetClassId];
+      for (const id of formerPartners) {
+        if (id && id !== actingClassId) tx.delete(partnerRef(db, actingClassId, id));
       }
     }),
   );

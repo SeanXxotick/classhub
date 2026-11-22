@@ -21,6 +21,7 @@ import {
   requestJoinGroup,
   setGroupingLocked,
   syncSharedRoster,
+  unlinkSharedGrouping,
   updateGroupingMeta,
 } from './groupings';
 import { newMember, newRole, type ClassRoom, type Member, type Role } from './models';
@@ -141,6 +142,27 @@ describe('groupings', () => {
     expect(after.groups[1].memberUids).toEqual([PARTNER_STU.uid]);
     expect(after.groups[1].memberMeta?.[PARTNER_STU.uid]?.tag).toBe('G2');
     await expect(linkSharedGrouping(as(PARTNER.uid), PARTNER.uid, partnerClass, 'BSIT 3D', shareCode!, 'G2', '')).rejects.toBeTruthy();
+  });
+
+  it('unlinking a class stops it from sending this class notices and polls', async () => {
+    const { id, shareCode } = await createGrouping(as(MAYOR.uid), MAYOR.uid, classId, {
+      title: 'Debate teams', courseId: '', note: '', groupCount: 2, defaultMaxSize: 3, selfJoin: true, shared: true, className: 'BSIT 3C', sectionTag: 'G1',
+    });
+    const STRANGER = { uid: 'gpStranger', name: 'Ivan Go' };
+    const other = await classWith(STRANGER, 'BSIT 3F', []);
+    await linkSharedGrouping(as(STRANGER.uid), STRANGER.uid, other, 'BSIT 3F', shareCode!, 'G4', '');
+    const trusted = () => getDoc(doc(adminDb, 'classes', classId, 'partners', other)).then((d) => d.exists());
+    expect(await trusted()).toBe(true);
+    const notice = () =>
+      setDoc(doc(as(STRANGER.uid), 'classes', classId, 'outbox', `n${Date.now()}`), {
+        kind: 'ANNOUNCEMENT', audience: 'CLASS', audienceId: '', title: 'Fund due today', body: '', createdByUid: STRANGER.uid, createdAtMillis: Date.now(), fromClassId: other,
+      });
+    await notice();
+
+    await unlinkSharedGrouping(as(MAYOR.uid), MAYOR.uid, classId, { ...(await stored(['sharedGroupings', id])), id, shared: true }, other);
+    expect(await trusted()).toBe(false);
+    await expect(notice()).rejects.toBeTruthy();
+    expect((await stored(['sharedGroupings', id])).linkedClassIds).toEqual([classId]);
   });
 
   it('an officer saving from an older copy keeps a class that linked in the meantime', async () => {
