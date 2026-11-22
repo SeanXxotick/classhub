@@ -54,6 +54,7 @@ import { newId, nowMillis } from './dataEnv';
 import { UserError } from './errors';
 import { commitLogged } from './history';
 import { fromDoc, useQueryList } from './live';
+import { savePartnerClass } from './partners';
 import { explainRefusal } from './paths';
 
 export {
@@ -235,7 +236,12 @@ export async function linkSharedGrouping(
   if (!code) throw new UserError('NAME_MISSING', 'Enter the grouping share code.');
   const invSnap = await getDoc(groupingInviteRef(db, code));
   if (!invSnap.exists()) throw new UserError('NAME_MISSING', `No shared grouping found for code "${code}".`);
-  const { sharedId, title } = invSnap.data() as { sharedId: string; title: string };
+  const { sharedId, title, hostClassId, hostClassName } = invSnap.data() as {
+    sharedId: string;
+    title: string;
+    hostClassId: string;
+    hostClassName: string;
+  };
   const cleanName = className.trim().slice(0, 100) || 'Partner class';
   const tag = sectionTag.trim().slice(0, GUEST_TAG_MAX) || cleanName.slice(0, GUEST_TAG_MAX);
   const now = nowMillis();
@@ -271,6 +277,31 @@ export async function linkSharedGrouping(
     if (e instanceof UserError) throw e;
     // The grouping was deleted, or it already links the most classes it can.
     throw new UserError('NO_PERMISSION', `That grouping could not be linked. It may have been deleted, or it already links ${SHARED_MAX_CLASSES} classes.`);
+  }
+
+  // Register mutual partner classes so both classes can include each other in shared polls.
+  if (hostClassId && hostClassId !== classId) {
+    const sharedSnap = await getDoc(sharedGroupingRef(db, sharedId)).catch(() => null);
+    const hostLink = (sharedSnap?.data()?.linkedClasses as Record<string, SharedClassLink> | undefined)?.[hostClassId];
+    await Promise.all([
+      savePartnerClass(db, classId, {
+        partnerClassId: hostClassId,
+        name: hostLink?.name || hostClassName || 'Host class',
+        tag: hostLink?.tag || (hostClassName || 'Host').slice(0, GUEST_TAG_MAX),
+        accentColor: hostLink?.accentColor ?? '',
+      }).catch(() => undefined),
+      savePartnerClass(
+        db,
+        hostClassId,
+        {
+          partnerClassId: classId,
+          name: cleanName,
+          tag,
+          accentColor: accentColor ?? '',
+        },
+        { linkCode: code },
+      ).catch(() => undefined),
+    ]);
   }
 
   await commitLogged(

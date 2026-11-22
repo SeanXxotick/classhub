@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { db } from '../../data/firebase';
 import { friendlyMessage } from '../../data/errors';
 import { byLastName, listName } from '../../data/models';
+import { savePartnerClass, usePartnerClasses } from '../../data/partners';
 import {
   GROUPING_MAX_GROUPS,
   GROUPING_NOTE_MAX,
@@ -253,6 +254,44 @@ function GroupingCard({
     if (storedRosterSig === localRosterSig && storedAccent === localAccent) return;
     void syncSharedRoster(db, state.classId, grouping, localRoster, state.room?.accentColor ?? '').catch(() => undefined);
   }, [manage, grouping.shared, grouping.id, state.classId, storedRosterSig, localRosterSig, storedAccent, localAccent]);
+
+  // Ensure any class linked via a shared grouping is registered as a mutual partner class for shared polls.
+  const partners = usePartnerClasses(db, state.classId, manage && !!grouping.shared).data;
+  const syncedMutualRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!manage || !grouping.shared || !partners) return;
+    const myLink = grouping.linkedClasses?.[state.classId];
+    for (const cid of grouping.linkedClassIds ?? []) {
+      if (cid === state.classId) continue;
+      const other = grouping.linkedClasses?.[cid];
+      if (!other) continue;
+      const existing = partners.find((p) => p.partnerClassId === cid);
+      const wantAccent = other.accentColor ?? '';
+      if (!existing || existing.name !== other.name || existing.tag !== other.tag || existing.accentColor !== wantAccent) {
+        void savePartnerClass(db, state.classId, {
+          partnerClassId: cid,
+          name: other.name,
+          tag: other.tag,
+          accentColor: wantAccent,
+        }).catch(() => undefined);
+      }
+      const mutualKey = `${state.classId}:${cid}:${grouping.id}`;
+      if (myLink && !syncedMutualRef.current.has(mutualKey)) {
+        syncedMutualRef.current.add(mutualKey);
+        void savePartnerClass(
+          db,
+          cid,
+          {
+            partnerClassId: state.classId,
+            name: myLink.name || state.room?.name || 'Partner class',
+            tag: myLink.tag || mySectionTag,
+            accentColor: state.room?.accentColor ?? myLink.accentColor ?? '',
+          },
+          { sharedGroupingId: grouping.id },
+        ).catch(() => undefined);
+      }
+    }
+  }, [manage, grouping.shared, grouping.id, grouping.linkedClassIds, grouping.linkedClasses, partners, state.classId, state.room?.name, state.room?.accentColor, mySectionTag]);
 
   const combinedEligible = useMemo(() => {
     const seen = new Set<string>();

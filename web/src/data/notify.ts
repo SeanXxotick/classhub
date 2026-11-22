@@ -39,6 +39,8 @@ export interface Notice {
   audienceId?: string;
   title: string;
   body?: string;
+  /** Present when a trusted partner class officer queues a shared-poll notice for a partner class. */
+  fromClassId?: string;
 }
 
 /** Queues a notification for the sender. Never throws. */
@@ -51,6 +53,7 @@ export function queueNotice(db: Firestore, actorUid: string, classId: string, no
     body: (notice.body ?? '').trim().slice(0, 300),
     createdByUid: actorUid,
     createdAtMillis: nowMillis(),
+    ...(notice.fromClassId ? { fromClassId: notice.fromClassId } : {}),
   }).catch(() => undefined);
 }
 

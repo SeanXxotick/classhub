@@ -63,7 +63,7 @@ import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, SearchInp
 import { useClass, type ClassState } from '../classroom/ClassContext';
 import { useSearchParams } from 'react-router-dom';
 import { useForum, useForumAnswersSince, useForumAuthors } from '../../data/forum';
-import { useMyBallots, usePolls, usePollVotes } from '../../data/polls';
+import { useMyBallots, usePolls, usePollVotes, useSharedPolls } from '../../data/polls';
 import { isPollOpen } from '../../domain/pollLogic';
 import { forumUnseen } from '../../domain/forumUnseen';
 import { ForumView, TagBadge, TagSelect } from './ForumUi';
@@ -495,12 +495,20 @@ export function NewsTab({ state }: { state: ClassState }) {
   const showAnnouncements = () => setParams({ tab: 'NEWS' }, { replace: true });
   const questions = useForum(db, state.classId, manage, true).data;
   const authors = useForumAuthors(db, state.classId, state.myUid, manage, true).data ?? [];
-  const polls = usePolls(db, state.classId, true).data;
+  const localPolls = usePolls(db, state.classId, true).data;
+  const sharedPolls = useSharedPolls(db, state.classId, state.myUid, true, inPolls);
+  const polls = useMemo(() => {
+    if (!localPolls) return sharedPolls.polls.length > 0 ? sharedPolls.polls : undefined;
+    return [...localPolls, ...sharedPolls.polls].sort((a, b) => b.createdAtMillis - a.createdAtMillis);
+  }, [localPolls, sharedPolls.polls]);
   const openVotes = usePollVotes(db, state.classId, inPolls).data;
   const myBallots = useMyBallots(db, state.classId, state.myUid, inPolls).data;
-  const pollVotes = useMemo(() => [...(openVotes ?? []), ...(myBallots ?? [])], [openVotes, myBallots]);
+  const pollVotes = useMemo(
+    () => [...(openVotes ?? []), ...(myBallots ?? []), ...sharedPolls.votes],
+    [openVotes, myBallots, sharedPolls.votes],
+  );
   const openPollsCount = useMemo(
-    () => (polls ?? []).filter((p) => (manage || state.takes(p.courseId)) && isPollOpen(p, Date.now())).length,
+    () => (polls ?? []).filter((p) => (manage || p.shared || state.takes(p.courseId)) && isPollOpen(p, Date.now())).length,
     [polls, manage, state],
   );
   const [tag, setTag] = useState('*');

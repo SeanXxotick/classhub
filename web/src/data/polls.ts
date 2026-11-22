@@ -1,18 +1,42 @@
 /*
  * Class Polls (inside the News tab): officers with ANNOUNCEMENTS_MANAGE create, close and delete polls;
  * every class member votes once (or changes/clears their vote while the poll is open).
+ * Supports both single-class polls (classes/{classId}/polls/{id}) and cross-class shared polls
+ * (/sharedPolls/{id}, linked to trusted partner classes via classes/{classId}/sharedPollLinks/{id}).
  */
-import { FieldPath, collection, deleteDoc, doc, getDocs, increment, query, runTransaction, setDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
+import {
+  FieldPath,
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  increment,
+  onSnapshot,
+  query,
+  runTransaction,
+  setDoc,
+  where,
+  writeBatch,
+  type Firestore,
+} from 'firebase/firestore';
 import { newId, nowMillis } from './dataEnv';
 import { UserError } from './errors';
 import { commitLogged, logToBatch } from './history';
 import { fromDoc, useQueryList } from './live';
 import { queueNotice } from './notify';
+import type { PartnerClass } from './partners';
 import { explainRefusal, withoutId } from './paths';
 
 export const POLL_QUESTION_MAX = 150;
 export const POLL_OPTION_MAX = 100;
 export const POLL_MAX_OPTIONS = 10;
+
+export interface SharedPollClassLink {
+  name: string;
+  tag: string;
+  accentColor?: string;
+}
 
 export interface Poll {
   id: string;
@@ -32,6 +56,11 @@ export interface Poll {
   voters: number;
   createdByUid: string;
   createdAtMillis: number;
+  /** True when this poll is shared across multiple partner classes (/sharedPolls/{id}). */
+  shared?: boolean;
+  hostClassId?: string;
+  linkedClassIds?: string[];
+  linkedClasses?: Record<string, SharedPollClassLink>;
 }
 
 export const newPoll = (p: Partial<Poll>): Poll => ({
@@ -74,6 +103,13 @@ export const pollVotesCol = (db: Firestore, classId: string) => collection(db, '
 export const pollBallotsCol = (db: Firestore, classId: string) => collection(db, 'classes', classId, 'pollBallots');
 export const pollVoteId = (pollId: string, uid: string) => `${pollId}_${uid}`;
 
+export const sharedPollsCol = (db: Firestore) => collection(db, 'sharedPolls');
+export const sharedPollRef = (db: Firestore, pollId: string) => doc(sharedPollsCol(db), pollId);
+export const sharedPollVotesCol = (db: Firestore, pollId: string) => collection(db, 'sharedPolls', pollId, 'votes');
+export const sharedPollBallotsCol = (db: Firestore, pollId: string) => collection(db, 'sharedPolls', pollId, 'ballots');
+export const sharedPollLinksCol = (db: Firestore, classId: string) => collection(db, 'classes', classId, 'sharedPollLinks');
+export const sharedPollLinkRef = (db: Firestore, classId: string, pollId: string) => doc(sharedPollLinksCol(db, classId), pollId);
+
 export interface NewPollInput {
   question: string;
   options: string[];
@@ -82,16 +118,103 @@ export interface NewPollInput {
   maxChoices: number;
   anonymous: boolean;
   closesAtMillis: number;
+  /** Whether to send a push notification to the posting class. Defaults to true. */
+  notifyOwnClass?: boolean;
+  /** Optional trusted partner classes to include in a cross-class shared poll. */
+  partnerClasses?: PartnerClass[];
+  /** Whether to send push notifications to included partner classes. Defaults to true. */
+  notifyPartners?: boolean;
+  hostClassName?: string;
+  hostTag?: string;
+  hostAccentColor?: string;
 }
 
-/** Creates a poll (ANNOUNCEMENTS_MANAGE), logs it in History, and notifies the class or course. */
+/** Creates a local or cross-class shared poll (ANNOUNCEMENTS_MANAGE), logs it in History, and optionally notifies classes. */
 export async function createPoll(db: Firestore, actorUid: string, classId: string, input: NewPollInput): Promise<string> {
   const question = input.question.trim().slice(0, POLL_QUESTION_MAX);
   if (!question) throw new UserError('NAME_MISSING', 'Write the poll question first.');
   const options = input.options.map((o) => o.trim().slice(0, POLL_OPTION_MAX)).filter(Boolean).slice(0, POLL_MAX_OPTIONS);
   if (options.length < 2) throw new UserError('NAME_MISSING', 'Add at least two choices.');
   const maxChoices = input.multi ? Math.min(options.length, Math.max(2, Math.trunc(input.maxChoices))) : 1;
+  const closesAtMillis = input.closesAtMillis > 0 ? input.closesAtMillis : 0;
   const id = newId();
+  const now = nowMillis();
+  const notifyOwn = input.notifyOwnClass ?? true;
+  const partners = (input.partnerClasses ?? []).filter((p) => p.partnerClassId && p.partnerClassId !== classId).slice(0, 3);
+
+  if (partners.length > 0) {
+    const hostName = (input.hostClassName ?? '').trim().slice(0, 100) || 'Host class';
+    const hostTag = (input.hostTag ?? '').trim().slice(0, 24) || hostName.slice(0, 24);
+    const linkedClassIds = [classId, ...partners.map((p) => p.partnerClassId)];
+    const linkedClasses: Record<string, SharedPollClassLink> = {
+      [classId]: {
+        name: hostName,
+        tag: hostTag,
+        ...(input.hostAccentColor ? { accentColor: input.hostAccentColor } : {}),
+      },
+    };
+    for (const p of partners) {
+      linkedClasses[p.partnerClassId] = {
+        name: p.name,
+        tag: p.tag,
+        ...(p.accentColor ? { accentColor: p.accentColor } : {}),
+      };
+    }
+    const sharedDoc = {
+      question,
+      options,
+      multi: input.multi,
+      maxChoices,
+      anonymous: input.anonymous,
+      closesAtMillis,
+      closed: false,
+      tally: {},
+      voters: 0,
+      hostClassId: classId,
+      linkedClassIds,
+      linkedClasses,
+      createdByUid: actorUid,
+      createdAtMillis: now,
+    };
+    await explainRefusal(db, classId, () =>
+      commitLogged(
+        db,
+        classId,
+        { actorUid, kind: 'POLL_CREATED', text: `Created the shared poll "${question}"` },
+        (b) => {
+          b.set(sharedPollRef(db, id), sharedDoc);
+          b.set(sharedPollLinkRef(db, classId, id), { pollId: id, fromClassId: classId, linkedAtMillis: now });
+          for (const p of partners) {
+            b.set(sharedPollLinkRef(db, p.partnerClassId, id), { pollId: id, fromClassId: classId, linkedAtMillis: now });
+          }
+        },
+      ),
+    );
+    const body = options.slice(0, 3).join(' · ');
+    if (notifyOwn) {
+      void queueNotice(db, actorUid, classId, {
+        kind: 'ANNOUNCEMENT',
+        audience: 'CLASS',
+        audienceId: '',
+        title: `New poll: ${question}`,
+        body,
+      });
+    }
+    if (input.notifyPartners ?? true) {
+      for (const p of partners) {
+        void queueNotice(db, actorUid, p.partnerClassId, {
+          kind: 'ANNOUNCEMENT',
+          audience: 'CLASS',
+          audienceId: '',
+          title: `New poll: ${question}`,
+          body,
+          fromClassId: classId,
+        });
+      }
+    }
+    return id;
+  }
+
   const poll = newPoll({
     question,
     options,
@@ -99,23 +222,25 @@ export async function createPoll(db: Firestore, actorUid: string, classId: strin
     multi: input.multi,
     maxChoices,
     anonymous: input.anonymous,
-    closesAtMillis: input.closesAtMillis > 0 ? input.closesAtMillis : 0,
+    closesAtMillis,
     closed: false,
     createdByUid: actorUid,
-    createdAtMillis: nowMillis(),
+    createdAtMillis: now,
   });
   await explainRefusal(db, classId, () =>
     commitLogged(db, classId, { actorUid, kind: 'POLL_CREATED', text: `Created the poll "${question}"` }, (b) =>
       b.set(doc(pollsCol(db, classId), id), withoutId(poll)),
     ),
   );
-  void queueNotice(db, actorUid, classId, {
-    kind: 'ANNOUNCEMENT',
-    audience: input.courseId ? 'COURSE' : 'CLASS',
-    audienceId: input.courseId,
-    title: `New poll: ${question}`,
-    body: options.slice(0, 3).join(' · '),
-  });
+  if (notifyOwn) {
+    void queueNotice(db, actorUid, classId, {
+      kind: 'ANNOUNCEMENT',
+      audience: input.courseId ? 'COURSE' : 'CLASS',
+      audienceId: input.courseId,
+      title: `New poll: ${question}`,
+      body: options.slice(0, 3).join(' · '),
+    });
+  }
   return id;
 }
 
@@ -126,8 +251,10 @@ export async function createPoll(db: Firestore, actorUid: string, classId: strin
 export async function castPollVote(db: Firestore, classId: string, poll: Poll, uid: string, choices: number[]): Promise<void> {
   const pollId = poll.id;
   if (poll.anonymous) {
-    const ballotRef = doc(pollBallotsCol(db, classId), pollVoteId(pollId, uid));
-    const pollRef = doc(pollsCol(db, classId), pollId);
+    const ballotRef = poll.shared
+      ? doc(sharedPollBallotsCol(db, pollId), uid)
+      : doc(pollBallotsCol(db, classId), pollVoteId(pollId, uid));
+    const pollRef = poll.shared ? sharedPollRef(db, pollId) : doc(pollsCol(db, classId), pollId);
     await explainRefusal(db, classId, () =>
       runTransaction(db, async (tx) => {
         const before = await tx.get(ballotRef);
@@ -146,7 +273,9 @@ export async function castPollVote(db: Firestore, classId: string, poll: Poll, u
     );
     return;
   }
-  const ref = doc(pollVotesCol(db, classId), pollVoteId(pollId, uid));
+  const ref = poll.shared
+    ? doc(sharedPollVotesCol(db, pollId), uid)
+    : doc(pollVotesCol(db, classId), pollVoteId(pollId, uid));
   if (choices.length === 0) {
     await explainRefusal(db, classId, () => deleteDoc(ref));
     return;
@@ -160,18 +289,35 @@ export async function castPollVote(db: Firestore, classId: string, poll: Poll, u
 export async function setPollClosed(db: Firestore, actorUid: string, classId: string, poll: Poll, closed: boolean): Promise<void> {
   const clearExpired = !closed && poll.closesAtMillis > 0 && poll.closesAtMillis <= nowMillis();
   const patch = clearExpired ? { closed: false, closesAtMillis: 0 } : { closed };
+  const target = poll.shared ? sharedPollRef(db, poll.id) : doc(pollsCol(db, classId), poll.id);
   await explainRefusal(db, classId, () =>
     commitLogged(
       db,
       classId,
       { actorUid, kind: 'POLL_CLOSED', text: `${closed ? 'Closed' : 'Reopened'} the poll "${poll.question}"` },
-      (b) => b.update(doc(pollsCol(db, classId), poll.id), patch),
+      (b) => b.update(target, patch),
     ),
   );
 }
 
 /** Deletes a poll and its votes (ANNOUNCEMENTS_MANAGE), with a History entry. */
 export async function deletePoll(db: Firestore, actorUid: string, classId: string, poll: Poll): Promise<void> {
+  if (poll.shared) {
+    const votes = await getDocs(sharedPollVotesCol(db, poll.id));
+    for (let i = 0; i < votes.docs.length; i += 400) {
+      const batch = writeBatch(db);
+      for (const d of votes.docs.slice(i, i + 400)) batch.delete(d.ref);
+      await batch.commit();
+    }
+    const batch = writeBatch(db);
+    batch.delete(sharedPollRef(db, poll.id));
+    for (const cid of poll.linkedClassIds ?? [classId]) {
+      batch.delete(sharedPollLinkRef(db, cid, poll.id));
+    }
+    await logToBatch(batch, db, classId, actorUid, 'POLL_DELETED', `Deleted the shared poll "${poll.question}"`);
+    await explainRefusal(db, classId, () => batch.commit());
+    return;
+  }
   const votes = await getDocs(query(pollVotesCol(db, classId), where('pollId', '==', poll.id)));
   for (let i = 0; i < votes.docs.length; i += 400) {
     const batch = writeBatch(db);
@@ -184,20 +330,138 @@ export async function deletePoll(db: Firestore, actorUid: string, classId: strin
   await explainRefusal(db, classId, () => batch.commit());
 }
 
-/** All polls in the class, newest first. */
+/** All local polls in the class, newest first. */
 export function usePolls(db: Firestore, classId: string, enabled: boolean) {
   const live = useQueryList<Poll>(`v2/polls/${classId}/${enabled}`, enabled ? pollsCol(db, classId) : null, (d) => fromDoc(newPoll({}), d));
   return { ...live, data: live.data ? [...live.data].sort((a, b) => b.createdAtMillis - a.createdAtMillis) : live.data };
 }
 
-/** All votes on polls that are not anonymous. */
+/** All votes on local polls that are not anonymous. */
 export const usePollVotes = (db: Firestore, classId: string, enabled: boolean) =>
   useQueryList<PollVote>(`v2/pollVotes/${classId}/${enabled}`, enabled ? pollVotesCol(db, classId) : null, (d) => fromDoc(newPollVote({}), d));
 
-/** The signed-in member's own ballots on anonymous polls. */
+/** The signed-in member's own ballots on local anonymous polls. */
 export const useMyBallots = (db: Firestore, classId: string, uid: string, enabled: boolean) =>
   useQueryList<PollVote>(
     `v2/pollBallots/${classId}/${uid}/${enabled}`,
     enabled ? query(pollBallotsCol(db, classId), where('uid', '==', uid)) : null,
     (d) => fromDoc(newPollVote({}), d),
   );
+
+/** Live cross-class shared polls linked to `classId`, plus their votes/ballots when `loadVotes` is true. */
+export function useSharedPolls(db: Firestore, classId: string, uid: string, enabled: boolean, loadVotes: boolean) {
+  const [polls, setPolls] = useState<Poll[]>([]);
+  const [votesByPoll, setVotesByPoll] = useState<Record<string, PollVote[]>>({});
+
+  useEffect(() => {
+    if (!enabled || !classId) {
+      setPolls([]);
+      setVotesByPoll({});
+      return;
+    }
+    const pollUnsubs = new Map<string, () => void>();
+    const voteUnsubs = new Map<string, () => void>();
+    const pollAnonState = new Map<string, boolean>();
+    const pollsMap = new Map<string, Poll>();
+
+    const emitPolls = () => {
+      setPolls(Array.from(pollsMap.values()).sort((a, b) => b.createdAtMillis - a.createdAtMillis));
+    };
+
+    const syncVoteSub = (pollId: string, anonymous: boolean) => {
+      if (!loadVotes) {
+        voteUnsubs.get(pollId)?.();
+        voteUnsubs.delete(pollId);
+        pollAnonState.delete(pollId);
+        return;
+      }
+      if (voteUnsubs.has(pollId) && pollAnonState.get(pollId) === anonymous) return;
+      voteUnsubs.get(pollId)?.();
+      pollAnonState.set(pollId, anonymous);
+      if (anonymous) {
+        if (!uid) return;
+        const unsub = onSnapshot(
+          doc(sharedPollBallotsCol(db, pollId), uid),
+          (snap) => {
+            const list = snap.exists() ? [fromDoc(newPollVote({}), snap)] : [];
+            setVotesByPoll((prev) => ({ ...prev, [pollId]: list }));
+          },
+          () => setVotesByPoll((prev) => ({ ...prev, [pollId]: [] })),
+        );
+        voteUnsubs.set(pollId, unsub);
+      } else {
+        const unsub = onSnapshot(
+          sharedPollVotesCol(db, pollId),
+          (snap) => {
+            const list = snap.docs.map((d) => fromDoc(newPollVote({}), d));
+            setVotesByPoll((prev) => ({ ...prev, [pollId]: list }));
+          },
+          () => setVotesByPoll((prev) => ({ ...prev, [pollId]: [] })),
+        );
+        voteUnsubs.set(pollId, unsub);
+      }
+    };
+
+    const unsubLinks = onSnapshot(
+      sharedPollLinksCol(db, classId),
+      (snap) => {
+        const activeIds = new Set(snap.docs.map((d) => d.id));
+        for (const [id, unsub] of pollUnsubs) {
+          if (!activeIds.has(id)) {
+            unsub();
+            pollUnsubs.delete(id);
+            voteUnsubs.get(id)?.();
+            voteUnsubs.delete(id);
+            pollAnonState.delete(id);
+            pollsMap.delete(id);
+            setVotesByPoll((prev) => {
+              if (!(id in prev)) return prev;
+              const next = { ...prev };
+              delete next[id];
+              return next;
+            });
+          }
+        }
+        for (const id of activeIds) {
+          if (pollUnsubs.has(id)) continue;
+          const unsub = onSnapshot(
+            sharedPollRef(db, id),
+            (docSnap) => {
+              if (!docSnap.exists()) {
+                pollsMap.delete(id);
+                voteUnsubs.get(id)?.();
+                voteUnsubs.delete(id);
+                pollAnonState.delete(id);
+              } else {
+                const parsed = fromDoc(newPoll({}), docSnap);
+                parsed.shared = true;
+                pollsMap.set(id, parsed);
+                syncVoteSub(id, parsed.anonymous);
+              }
+              emitPolls();
+            },
+            () => {
+              pollsMap.delete(id);
+              emitPolls();
+            },
+          );
+          pollUnsubs.set(id, unsub);
+        }
+        emitPolls();
+      },
+      () => {
+        setPolls([]);
+        setVotesByPoll({});
+      },
+    );
+
+    return () => {
+      unsubLinks();
+      for (const unsub of pollUnsubs.values()) unsub();
+      for (const unsub of voteUnsubs.values()) unsub();
+    };
+  }, [db, classId, uid, enabled, loadVotes]);
+
+  const votes = Object.values(votesByPoll).flat();
+  return { polls, votes };
+}

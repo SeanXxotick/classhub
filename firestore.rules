@@ -58,6 +58,14 @@ service cloud.firestore {
       return /databases/$(database)/documents/invites/$(code);
     }
 
+    function partnerPath(c, p) {
+      return /databases/$(database)/documents/classes/$(c)/partners/$(p);
+    }
+
+    function isTrustedPartner(c, fromClassId) {
+      return isId(fromClassId) && exists(partnerPath(c, fromClassId));
+    }
+
     function isMember(c) {
       return signedIn() && exists(memberPath(c, uid()));
     }
@@ -457,6 +465,139 @@ service cloud.firestore {
       allow delete: if signedIn() && can(resource.data.hostClassId, 'MEMBERS_MANAGE');
     }
 
+    // ============================================================ Shared cross-class polls (Option A: trusted partner classes)
+
+    function sharedPollPath(pollId) {
+      return /databases/$(database)/documents/sharedPolls/$(pollId);
+    }
+
+    function isSharedPollManager(ids) {
+      return ids is list && (
+        (ids.size() > 0 && can(ids[0], 'ANNOUNCEMENTS_MANAGE'))
+        || (ids.size() > 1 && can(ids[1], 'ANNOUNCEMENTS_MANAGE'))
+        || (ids.size() > 2 && can(ids[2], 'ANNOUNCEMENTS_MANAGE'))
+        || (ids.size() > 3 && can(ids[3], 'ANNOUNCEMENTS_MANAGE'))
+      );
+    }
+
+    function isSharedPollOpen(pollId) {
+      let p = get(sharedPollPath(pollId)).data;
+      return p.closed == false && (p.closesAtMillis == 0 || p.closesAtMillis > request.time.toMillis());
+    }
+
+    function sharedPicks(list, i) {
+      return i in list ? 1 : 0;
+    }
+
+    function sharedOptionMoved(before, after, was, now, i) {
+      return after.get(string(i), 0) == before.get(string(i), 0) + sharedPicks(now, i) - sharedPicks(was, i);
+    }
+
+    function isSharedPollTallyMatched(pollId) {
+      let ballot = /databases/$(database)/documents/sharedPolls/$(pollId)/ballots/$(uid());
+      let was = exists(ballot) ? get(ballot).data.choices : [];
+      let now = existsAfter(ballot) ? getAfter(ballot).data.choices : [];
+      let before = get(sharedPollPath(pollId)).data.get('tally', {});
+      let after = getAfter(sharedPollPath(pollId)).data.get('tally', {});
+      return sharedOptionMoved(before, after, was, now, 0) && sharedOptionMoved(before, after, was, now, 1)
+        && sharedOptionMoved(before, after, was, now, 2) && sharedOptionMoved(before, after, was, now, 3)
+        && sharedOptionMoved(before, after, was, now, 4) && sharedOptionMoved(before, after, was, now, 5)
+        && sharedOptionMoved(before, after, was, now, 6) && sharedOptionMoved(before, after, was, now, 7)
+        && sharedOptionMoved(before, after, was, now, 8) && sharedOptionMoved(before, after, was, now, 9)
+        && after.keys().hasOnly(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
+        && getAfter(sharedPollPath(pollId)).data.get('voters', 0)
+          == get(sharedPollPath(pollId)).data.get('voters', 0) + (now.size() > 0 ? 1 : 0) - (was.size() > 0 ? 1 : 0);
+    }
+
+    function partnersTrustedByHost(ids, host) {
+      return (ids.size() <= 1 || isTrustedPartner(ids[1], host))
+        && (ids.size() <= 2 || isTrustedPartner(ids[2], host))
+        && (ids.size() <= 3 || isTrustedPartner(ids[3], host));
+    }
+
+    match /sharedPolls/{pollId} {
+      allow get: if isSharedGroupingMember(resource.data.linkedClassIds);
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll(['question', 'options', 'multi', 'maxChoices', 'anonymous', 'closesAtMillis', 'closed', 'hostClassId', 'linkedClassIds', 'linkedClasses', 'createdByUid', 'createdAtMillis'])
+        && request.resource.data.keys().hasOnly(['question', 'options', 'multi', 'maxChoices', 'anonymous', 'closesAtMillis', 'closed', 'tally', 'voters', 'hostClassId', 'linkedClassIds', 'linkedClasses', 'createdByUid', 'createdAtMillis', 'id'])
+        && request.resource.data.get('id', '') == ''
+        && can(request.resource.data.hostClassId, 'ANNOUNCEMENTS_MANAGE')
+        && isOpen(request.resource.data.hostClassId)
+        && isFilled(request.resource.data.question, 150)
+        && request.resource.data.options is list
+        && request.resource.data.options.size() >= 2
+        && request.resource.data.options.size() <= 10
+        && request.resource.data.multi is bool
+        && request.resource.data.maxChoices is int
+        && request.resource.data.maxChoices >= 1
+        && request.resource.data.maxChoices <= request.resource.data.options.size()
+        && request.resource.data.anonymous is bool
+        && request.resource.data.closesAtMillis is int
+        && request.resource.data.closed == false
+        && request.resource.data.get('tally', {}) == {}
+        && request.resource.data.get('voters', 0) == 0
+        && request.resource.data.linkedClassIds is list
+        && request.resource.data.linkedClassIds.size() >= 1
+        && request.resource.data.linkedClassIds.size() <= 4
+        && request.resource.data.linkedClassIds[0] == request.resource.data.hostClassId
+        && partnersTrustedByHost(request.resource.data.linkedClassIds, request.resource.data.hostClassId)
+        && request.resource.data.linkedClasses is map
+        && request.resource.data.createdByUid == uid()
+        && isRecentMillis(request.resource.data.createdAtMillis);
+      allow update: if signedIn() && (
+        (isSharedPollManager(resource.data.linkedClassIds)
+          && changesOnly(['closed', 'closesAtMillis'])
+          && request.resource.data.closed is bool
+          && request.resource.data.closesAtMillis is int)
+        || (isSharedGroupingMember(resource.data.linkedClassIds)
+          && resource.data.get('anonymous', false) == true
+          && changesOnly(['tally', 'voters'])
+          && isSharedPollTallyMatched(pollId))
+      );
+      allow delete: if signedIn() && can(resource.data.hostClassId, 'ANNOUNCEMENTS_MANAGE');
+
+      match /votes/{voterUid} {
+        allow read: if isSharedGroupingMember(get(sharedPollPath(pollId)).data.linkedClassIds);
+        allow create, update: if isSharedGroupingMember(get(sharedPollPath(pollId)).data.linkedClassIds)
+          && get(sharedPollPath(pollId)).data.get('anonymous', false) == false
+          && isSharedPollOpen(pollId)
+          && voterUid == uid()
+          && hasFields(request.resource.data, ['pollId', 'uid', 'choices', 'votedAtMillis'])
+          && request.resource.data.pollId == pollId
+          && request.resource.data.uid == uid()
+          && request.resource.data.choices is list
+          && request.resource.data.choices.size() >= 1
+          && request.resource.data.choices.size() <= get(sharedPollPath(pollId)).data.maxChoices
+          && isRecentMillis(request.resource.data.votedAtMillis);
+        allow delete: if (isSharedGroupingMember(get(sharedPollPath(pollId)).data.linkedClassIds) && voterUid == uid())
+          || isSharedPollManager(get(sharedPollPath(pollId)).data.linkedClassIds);
+      }
+
+      match /ballots/{voterUid} {
+        allow get: if signedIn() && voterUid == uid();
+        allow list: if false;
+        allow create, update: if isSharedGroupingMember(get(sharedPollPath(pollId)).data.linkedClassIds)
+          && get(sharedPollPath(pollId)).data.get('anonymous', false) == true
+          && isSharedPollOpen(pollId)
+          && voterUid == uid()
+          && hasFields(request.resource.data, ['pollId', 'uid', 'choices', 'votedAtMillis'])
+          && request.resource.data.pollId == pollId
+          && request.resource.data.uid == uid()
+          && request.resource.data.choices is list
+          && request.resource.data.choices.size() >= 1
+          && request.resource.data.choices.size() <= get(sharedPollPath(pollId)).data.maxChoices
+          && isRecentMillis(request.resource.data.votedAtMillis)
+          && isSharedPollTallyMatched(pollId);
+        allow delete: if (isSharedGroupingMember(get(sharedPollPath(pollId)).data.linkedClassIds)
+            && voterUid == uid()
+            && get(sharedPollPath(pollId)).data.get('anonymous', false) == true
+            && isSharedPollOpen(pollId)
+            && isSharedPollTallyMatched(pollId))
+          || isSharedPollManager(get(sharedPollPath(pollId)).data.linkedClassIds);
+      }
+    }
+
     // ============================================================ "My classes"
 
     // The list of a user's classes is a collection-group query on members (and on joinRequests for the
@@ -740,7 +881,8 @@ service cloud.firestore {
     function isNewNotice(c) {
       let d = request.resource.data;
       return signedIn()
-        && d.keys().hasOnly(['kind', 'audience', 'audienceId', 'title', 'body', 'createdByUid', 'createdAtMillis'])
+        && d.keys().hasAll(['kind', 'audience', 'audienceId', 'title', 'body', 'createdByUid', 'createdAtMillis'])
+        && d.keys().hasOnly(['kind', 'audience', 'audienceId', 'title', 'body', 'createdByUid', 'createdAtMillis', 'fromClassId'])
         && d.createdByUid == uid()
         && isRecentMillis(d.createdAtMillis)
         && isFilled(d.title, 120)
@@ -748,6 +890,7 @@ service cloud.firestore {
         && isText(d.audienceId, 128)
         && (
           (d.kind == 'ANNOUNCEMENT' && d.audience in ['CLASS', 'COURSE'] && can(c, 'ANNOUNCEMENTS_MANAGE'))
+          || (d.kind == 'ANNOUNCEMENT' && d.audience == 'CLASS' && isTrustedPartner(c, d.get('fromClassId', '')) && can(d.get('fromClassId', ''), 'ANNOUNCEMENTS_MANAGE'))
           || (d.kind == 'FORUM_QUESTION' && d.audience in ['CLASS', 'COURSE'] && isMember(c))
           // AUTHOR: the writer of the forum question or answer audienceId, looked up by the sender.
           || (d.kind == 'FORUM_ANSWER' && d.audience == 'AUTHOR' && isMember(c))
@@ -1610,6 +1753,45 @@ service cloud.firestore {
           && request.resource.data.sharedId == sharedId
           && isRecentMillis(request.resource.data.linkedAtMillis);
         allow delete: if can(classId, 'MEMBERS_MANAGE') || isOwnerClosing(classId);
+      }
+
+      // Partner classes that this class has collaborated with (e.g. G1 <-> G2).
+      match /partners/{partnerId} {
+        allow read: if isMember(classId);
+        allow create, update: if isOpen(classId)
+          && request.resource.data.keys().hasAll(['partnerClassId', 'name', 'tag', 'accentColor', 'linkedAtMillis'])
+          && request.resource.data.keys().hasOnly(['partnerClassId', 'name', 'tag', 'accentColor', 'linkedAtMillis', 'linkCode', 'sharedGroupingId'])
+          && request.resource.data.partnerClassId == partnerId
+          && isFilled(request.resource.data.name, 100)
+          && isFilled(request.resource.data.tag, 24)
+          && isText(request.resource.data.accentColor, 9)
+          && isRecentMillis(request.resource.data.linkedAtMillis)
+          && (can(classId, 'MEMBERS_MANAGE') || can(classId, 'CLASS_SETTINGS')
+            || (isId(request.resource.data.get('linkCode', ''))
+              && exists(/databases/$(database)/documents/groupingInvites/$(request.resource.data.linkCode))
+              && get(/databases/$(database)/documents/groupingInvites/$(request.resource.data.linkCode)).data.hostClassId == classId
+              && can(partnerId, 'MEMBERS_MANAGE'))
+            || (isId(request.resource.data.get('sharedGroupingId', ''))
+              && exists(/databases/$(database)/documents/sharedGroupings/$(request.resource.data.sharedGroupingId))
+              && classId in get(/databases/$(database)/documents/sharedGroupings/$(request.resource.data.sharedGroupingId)).data.linkedClassIds
+              && partnerId in get(/databases/$(database)/documents/sharedGroupings/$(request.resource.data.sharedGroupingId)).data.linkedClassIds
+              && can(partnerId, 'MEMBERS_MANAGE')));
+        allow delete: if can(classId, 'MEMBERS_MANAGE') || can(classId, 'CLASS_SETTINGS') || isOwnerClosing(classId);
+      }
+
+      // Pointers to top-level /sharedPolls/{pollId} linked to this class.
+      match /sharedPollLinks/{pollId} {
+        allow read: if isMember(classId);
+        allow create: if isOpen(classId)
+          && request.resource.data.keys().hasAll(['pollId', 'fromClassId', 'linkedAtMillis'])
+          && request.resource.data.keys().hasOnly(['pollId', 'fromClassId', 'linkedAtMillis'])
+          && request.resource.data.pollId == pollId
+          && isRecentMillis(request.resource.data.linkedAtMillis)
+          && (can(classId, 'ANNOUNCEMENTS_MANAGE')
+            || (isTrustedPartner(classId, request.resource.data.fromClassId) && can(request.resource.data.fromClassId, 'ANNOUNCEMENTS_MANAGE')));
+        allow delete: if can(classId, 'ANNOUNCEMENTS_MANAGE')
+          || isOwnerClosing(classId)
+          || (resource.data.fromClassId is string && resource.data.fromClassId != '' && can(resource.data.fromClassId, 'ANNOUNCEMENTS_MANAGE'));
       }
 
       // Each member's up and down votes on announcements and comments: one document per member holding

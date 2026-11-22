@@ -1,11 +1,13 @@
 /*
  * Class Polls (inside the News tab): interactive single/multi-choice polls, optional anonymous voting,
- * percentage bars, and an officer-only list of who has not voted (not on anonymous polls).
+ * cross-class shared polls with trusted partner classes, per-class notification toggles, percentage bars,
+ * and an officer-only list of who has not voted (not on anonymous polls).
  */
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import { db } from '../../data/firebase';
 import { friendlyMessage } from '../../data/errors';
 import { byLastName, listName } from '../../data/models';
+import { usePartnerClasses } from '../../data/partners';
 import {
   POLL_MAX_OPTIONS,
   POLL_OPTION_MAX,
@@ -17,9 +19,10 @@ import {
   type Poll,
   type PollVote,
 } from '../../data/polls';
+import { myAccent } from '../settings';
 import { isPollOpen, tallyPoll, togglePollChoice } from '../../domain/pollLogic';
 import { Badge, Button, Card, Notice, Switch } from '../../design';
-import { ConfirmDialog, Dialog, Field, shortDateTime } from '../common';
+import { ConfirmDialog, Dialog, Field, hexColor, shortDateTime } from '../common';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 import { MoreMenu } from '../MoreMenu';
 import { TagBadge, TagSelect } from './ForumUi';
@@ -46,6 +49,20 @@ function useRun() {
   return Object.assign(run, { busy });
 }
 
+function guessSectionTag(className: string): string {
+  const m = className.match(/\b(G\d+|[A-Z]\d+)\b/i);
+  if (m) return m[1].toUpperCase();
+  return className.trim().slice(0, 12) || 'Sec';
+}
+
+function classTintStyle(state: ClassState, classId: string, storedAccent?: string): CSSProperties | undefined {
+  const personal = myAccent(classId);
+  const localDefault = classId === state.classId ? state.room?.accentColor : undefined;
+  const raw = personal ?? storedAccent ?? localDefault;
+  if (!raw) return undefined;
+  return { '--tag-color': hexColor(raw) } as CSSProperties;
+}
+
 export function PollsView({ state, polls, votes }: { state: ClassState; polls: Poll[] | undefined; votes: PollVote[] }) {
   const manage = state.can('ANNOUNCEMENTS_MANAGE');
   const [tag, setTag] = useState('*');
@@ -54,7 +71,7 @@ export function PollsView({ state, polls, votes }: { state: ClassState; polls: P
   const run = useRun();
 
   const visible = useMemo(() => {
-    return (polls ?? []).filter((p) => (manage || state.takes(p.courseId)) && (tag === '*' || p.courseId === tag));
+    return (polls ?? []).filter((p) => (manage || p.shared || state.takes(p.courseId)) && (tag === '*' || p.courseId === tag));
   }, [polls, manage, state, tag]);
 
   return (
@@ -95,7 +112,11 @@ export function PollsView({ state, polls, votes }: { state: ClassState; polls: P
       {deleting && (
         <ConfirmDialog
           title={`Delete "${deleting.question}"?`}
-          text="The poll and all its votes will be removed for everyone in the class."
+          text={
+            deleting.shared
+              ? 'The poll and all its votes will be removed for everyone in all linked classes.'
+              : 'The poll and all its votes will be removed for everyone in the class.'
+          }
           confirm="Delete"
           danger
           onClose={() => setDeleting(null)}
@@ -125,6 +146,7 @@ function PollCard({
   const [showUnvoted, setShowUnvoted] = useState(false);
   const [saving, setSaving] = useState(false);
   const open = isPollOpen(poll, Date.now());
+  const isHost = !poll.shared || poll.hostClassId === state.classId;
   const eligibleMembers = useMemo(
     () => byLastName(poll.courseId ? state.members.filter((m) => !m.excludedCourseIds.includes(poll.courseId)) : state.members),
     [state.members, poll.courseId],
@@ -138,9 +160,17 @@ function PollCard({
   }, [poll, votes, eligibleMembers]);
   const myVote = votes.find((v) => v.uid === state.myUid);
   const myChoices = myVote?.choices ?? [];
-  const authorName = state.members.find((m) => m.id === poll.createdByUid)?.name ?? 'An officer';
+  const authorName =
+    state.members.find((m) => m.id === poll.createdByUid)?.name ??
+    (poll.shared && poll.hostClassId ? `${poll.linkedClasses?.[poll.hostClassId]?.name ?? 'Partner class'} officer` : 'An officer');
   const unvotedMembers = poll.anonymous ? [] : eligibleMembers.filter((m) => !tally.votedUids.has(m.id));
   const denom = poll.multi ? Math.max(1, tally.totalVoters) : Math.max(1, tally.totalVotes);
+  const linkedList = poll.shared
+    ? (poll.linkedClassIds ?? []).map((cid, idx) => ({
+        classId: cid,
+        ...(poll.linkedClasses?.[cid] ?? { name: cid, tag: `S${idx + 1}` }),
+      }))
+    : [];
 
   async function pick(index: number) {
     if (!open || saving) return;
@@ -165,7 +195,8 @@ function PollCard({
         <div className="card-head">
           <div className="stack" style={{ gap: 6 }}>
             <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
-              <TagBadge state={state} courseId={poll.courseId} />
+              {!poll.shared && <TagBadge state={state} courseId={poll.courseId} />}
+              {poll.shared && <Badge tone="primary">Shared poll</Badge>}
               {open ? (
                 <Badge tone="success">
                   {poll.closesAtMillis ? `Open · Closes ${shortDateTime(poll.closesAtMillis)}` : 'Open'}
@@ -180,13 +211,27 @@ function PollCard({
               {poll.question}
             </div>
             <div className="ch-small ch-muted">{`${authorName} · ${shortDateTime(poll.createdAtMillis)}`}</div>
+            {poll.shared && linkedList.length > 0 && (
+              <div className="ch-row ch-wrap ch-gap-1" style={{ alignItems: 'center', marginTop: 2 }}>
+                <span className="tiny muted">Classes:</span>
+                {linkedList.map((c) => (
+                  <span
+                    key={c.classId}
+                    className="grouping-class-tag"
+                    style={classTintStyle(state, c.classId, c.accentColor)}
+                  >
+                    {c.name}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <MoreMenu
             label={`More for "${poll.question}"`}
             title={poll.question}
             items={[
               manage && { label: open ? 'Close poll' : 'Reopen poll', icon: 'lock', onClick: onToggleClosed },
-              manage && { label: 'Delete', icon: 'trash', danger: true, onClick: onDelete },
+              manage && isHost && { label: 'Delete', icon: 'trash', danger: true, onClick: onDelete },
             ]}
           />
         </div>
@@ -216,12 +261,16 @@ function PollCard({
 
         <div className="ch-row ch-wrap ch-gap-2" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <span className="ch-small ch-muted">
-            {`${tally.totalVoters} of ${eligibleMembers.length} voted`}
+            {poll.shared
+              ? `${tally.totalVoters} voted`
+              : `${tally.totalVoters} of ${eligibleMembers.length} voted`}
             {poll.anonymous ? ' · Anonymous' : ''}
           </span>
           {manage && unvotedMembers.length > 0 && (
             <button type="button" className="btn text small" onClick={() => setShowUnvoted(!showUnvoted)}>
-              {`Not voted yet (${unvotedMembers.length}) ${showUnvoted ? '▴' : '▾'}`}
+              {poll.shared
+                ? `Not voted in this class (${unvotedMembers.length}) ${showUnvoted ? '▴' : '▾'}`
+                : `Not voted yet (${unvotedMembers.length}) ${showUnvoted ? '▴' : '▾'}`}
             </button>
           )}
         </div>
@@ -229,7 +278,9 @@ function PollCard({
         {manage && showUnvoted && unvotedMembers.length > 0 && (
           <div className="poll-unvoted">
             <span className="tiny bold muted" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Not voted yet ({unvotedMembers.length}) · Officers only
+              {poll.shared
+                ? `Not voted in this class (${unvotedMembers.length}) · Officers only`
+                : `Not voted yet (${unvotedMembers.length}) · Officers only`}
             </span>
             <div className="poll-chips">
               {unvotedMembers.map((m) => (
@@ -247,6 +298,7 @@ function PollCard({
 
 function NewPollDialog({ state, onClose }: { state: ClassState; onClose: () => void }) {
   const run = useRun();
+  const partners = usePartnerClasses(db, state.classId, true).data ?? [];
   const [question, setQuestion] = useState('');
   const [options, setOptions] = useState(['', '']);
   const [courseId, setCourseId] = useState('');
@@ -254,6 +306,19 @@ function NewPollDialog({ state, onClose }: { state: ClassState; onClose: () => v
   const [maxChoices, setMaxChoices] = useState(2);
   const [anonymous, setAnonymous] = useState(false);
   const [closeDate, setCloseDate] = useState('');
+  const [selectedPartnerIds, setSelectedPartnerIds] = useState<string[]>([]);
+  const [notifyOwnClass, setNotifyOwnClass] = useState(true);
+  const [notifyPartners, setNotifyPartners] = useState(true);
+
+  const selectedPartners = useMemo(
+    () => partners.filter((p) => selectedPartnerIds.includes(p.partnerClassId)),
+    [partners, selectedPartnerIds],
+  );
+  const togglePartner = (partnerClassId: string, on: boolean) => {
+    setSelectedPartnerIds((prev) =>
+      on ? (prev.includes(partnerClassId) ? prev : [...prev, partnerClassId].slice(0, 3)) : prev.filter((id) => id !== partnerClassId),
+    );
+  };
 
   const filledOptions = options.map((o) => o.trim()).filter(Boolean);
   const valid = !!question.trim() && filledOptions.length >= 2;
@@ -263,9 +328,25 @@ function NewPollDialog({ state, onClose }: { state: ClassState; onClose: () => v
   function save() {
     if (!valid) return;
     const closesAtMillis = closeDate ? new Date(`${closeDate}T23:59:59+08:00`).getTime() : 0;
+    const ownName = state.room?.name ?? '';
     run(
-      'Poll created.',
-      () => createPoll(db, state.myUid, state.classId, { question, options, courseId, multi, maxChoices, anonymous, closesAtMillis }),
+      selectedPartners.length > 0 ? 'Shared poll created.' : 'Poll created.',
+      () =>
+        createPoll(db, state.myUid, state.classId, {
+          question,
+          options,
+          courseId: selectedPartners.length > 0 ? '' : courseId,
+          multi,
+          maxChoices,
+          anonymous,
+          closesAtMillis,
+          notifyOwnClass,
+          partnerClasses: selectedPartners,
+          notifyPartners,
+          hostClassName: ownName,
+          hostTag: guessSectionTag(ownName),
+          hostAccentColor: state.room?.accentColor ?? '',
+        }),
       onClose,
     );
   }
@@ -318,10 +399,24 @@ function NewPollDialog({ state, onClose }: { state: ClassState; onClose: () => v
             </button>
           )}
         </div>
-        {state.courses.length > 0 && (
+        {selectedPartners.length === 0 && state.courses.length > 0 && (
           <Field label="Who votes">
             <TagSelect state={state} value={courseId} onChange={setCourseId} label="Who votes" />
           </Field>
+        )}
+        {partners.length > 0 && (
+          <div className="stack" style={{ gap: 6 }}>
+            <span className="small semibold muted">Include partner classes</span>
+            {partners.map((p) => (
+              <Switch
+                key={p.partnerClassId}
+                checked={selectedPartnerIds.includes(p.partnerClassId)}
+                onChange={(on) => togglePartner(p.partnerClassId, on)}
+                label={p.name}
+                description="Members in this partner class can view and vote on this poll."
+              />
+            ))}
+          </div>
         )}
         <Switch checked={multi} onChange={setMulti} label="Allow multiple choices" />
         {multi && (
@@ -343,6 +438,23 @@ function NewPollDialog({ state, onClose }: { state: ClassState; onClose: () => v
         <Field label="Close automatically after (optional)">
           <input type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
         </Field>
+        <div className="stack" style={{ gap: 6 }}>
+          <span className="small semibold muted">Notifications</span>
+          <Switch
+            checked={notifyOwnClass}
+            onChange={setNotifyOwnClass}
+            label={`Notify ${state.room?.name || 'this class'}`}
+            description="Send a push notification to members of this class."
+          />
+          {selectedPartners.length > 0 && (
+            <Switch
+              checked={notifyPartners}
+              onChange={setNotifyPartners}
+              label={selectedPartners.length === 1 ? `Notify ${selectedPartners[0].name}` : 'Notify partner classes'}
+              description="Send a push notification to members of the included partner classes."
+            />
+          )}
+        </div>
       </div>
     </Dialog>
   );

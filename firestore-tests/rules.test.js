@@ -2337,6 +2337,76 @@ async function main() {
     await assertFails(b.commit());
   });
 
+  // ---- Partner classes & shared cross-class polls
+  await test('Partners: mutual partner records can be created via a shared grouping or link code, not by outsiders', async () => {
+    const partnerDoc = (id, name, tag, extra = {}) => ({
+      partnerClassId: id, name, tag, accentColor: '#CC4A0A', linkedAtMillis: now(), ...extra,
+    });
+    // Outsider cannot add themselves as a partner of grp2.
+    await assertFails(setDoc(doc(db('xmayor'), 'classes/grp2/partners/elsewhere'), partnerDoc('elsewhere', 'Elsewhere', 'EL')));
+    // gmayor (host of sharedGroupings/sh, which links grp + grp2) can register grp2 in grp and grp in grp2 via sharedGroupingId.
+    await assertSucceeds(setDoc(doc(db('gmayor'), 'classes/grp/partners/grp2'), partnerDoc('grp2', 'G2', 'G2')));
+    await assertSucceeds(setDoc(doc(db('gmayor'), 'classes/grp2/partners/grp'), partnerDoc('grp', 'G1', 'G1', { sharedGroupingId: 'sh' })));
+    // Non-officer student cannot add partners.
+    await assertFails(setDoc(doc(db('ann'), 'classes/grp/partners/elsewhere'), partnerDoc('elsewhere', 'Elsewhere', 'EL')));
+  });
+
+  await test('Shared polls: host officer can create a shared poll with a trusted partner, not an untrusted class', async () => {
+    const sharedPollData = (ids, anonymous = false) => ({
+      question: 'Joint schedule?', options: ['Fri', 'Sat'], multi: false, maxChoices: 1, anonymous,
+      closesAtMillis: 0, closed: false, tally: {}, voters: 0,
+      hostClassId: 'grp', linkedClassIds: ids,
+      linkedClasses: { grp: { name: 'G1', tag: 'G1' }, grp2: { name: 'G2', tag: 'G2' } },
+      createdByUid: 'gmayor', createdAtMillis: now(),
+    });
+    // Untrusted class 'elsewhere' is rejected.
+    await assertFails(setDoc(doc(db('gmayor'), 'sharedPolls/sp_bad'), sharedPollData(['grp', 'elsewhere'])));
+    // Trusted partner 'grp2' succeeds, along with links in both classes.
+    const g = db('gmayor');
+    const b = writeBatch(g);
+    b.set(doc(g, 'sharedPolls/sp_open'), sharedPollData(['grp', 'grp2'], false));
+    b.set(doc(g, 'classes/grp/sharedPollLinks/sp_open'), { pollId: 'sp_open', fromClassId: 'grp', linkedAtMillis: now() });
+    b.set(doc(g, 'classes/grp2/sharedPollLinks/sp_open'), { pollId: 'sp_open', fromClassId: 'grp', linkedAtMillis: now() });
+    await assertSucceeds(b.commit());
+    // Untrusted class cannot create a sharedPollLink in grp2.
+    await assertFails(setDoc(doc(db('xmayor'), 'classes/grp2/sharedPollLinks/sp_evil'), { pollId: 'sp_evil', fromClassId: 'elsewhere', linkedAtMillis: now() }));
+  });
+
+  await test('Shared polls: partner students can vote on open and anonymous shared polls, outsiders cannot', async () => {
+    // Open shared poll: pam (in grp2) can read and vote; eve (outsider) cannot.
+    await assertFails(getDoc(doc(db('eve'), 'sharedPolls/sp_open')));
+    await assertSucceeds(getDoc(doc(db('pam'), 'sharedPolls/sp_open')));
+    await assertFails(setDoc(doc(db('eve'), 'sharedPolls/sp_open/votes/eve'), { pollId: 'sp_open', uid: 'eve', choices: [0], votedAtMillis: now() }));
+    await assertSucceeds(setDoc(doc(db('pam'), 'sharedPolls/sp_open/votes/pam'), { pollId: 'sp_open', uid: 'pam', choices: [1], votedAtMillis: now() }));
+    await assertSucceeds(setDoc(doc(db('ann'), 'sharedPolls/sp_open/votes/ann'), { pollId: 'sp_open', uid: 'ann', choices: [0], votedAtMillis: now() }));
+
+    // Anonymous shared poll: create and cast a private ballot with matched tally.
+    await assertSucceeds(setDoc(doc(db('gmayor'), 'sharedPolls/sp_anon'), {
+      question: 'Secret vote?', options: ['A', 'B'], multi: false, maxChoices: 1, anonymous: true,
+      closesAtMillis: 0, closed: false, tally: {}, voters: 0,
+      hostClassId: 'grp', linkedClassIds: ['grp', 'grp2'],
+      linkedClasses: { grp: { name: 'G1', tag: 'G1' }, grp2: { name: 'G2', tag: 'G2' } },
+      createdByUid: 'gmayor', createdAtMillis: now(),
+    }));
+    const pamDb = db('pam');
+    const anonVote = writeBatch(pamDb);
+    anonVote.set(doc(pamDb, 'sharedPolls/sp_anon/ballots/pam'), { pollId: 'sp_anon', uid: 'pam', choices: [0], votedAtMillis: now() });
+    anonVote.update(doc(pamDb, 'sharedPolls/sp_anon'), { 'tally.0': increment(1), voters: increment(1) });
+    await assertSucceeds(anonVote.commit());
+    await assertFails(getDoc(doc(db('gmayor'), 'sharedPolls/sp_anon/ballots/pam')));
+    await assertSucceeds(getDoc(doc(db('pam'), 'sharedPolls/sp_anon/ballots/pam')));
+  });
+
+  await test('Partner notices: trusted partner officer can queue a class notice, untrusted officer cannot', async () => {
+    const notice = (fromClassId, uid) => ({
+      kind: 'ANNOUNCEMENT', audience: 'CLASS', audienceId: '', title: 'New poll: Joint schedule?', body: 'Fri · Sat',
+      createdByUid: uid, createdAtMillis: now(), fromClassId,
+    });
+    await assertSucceeds(setDoc(doc(db('gmayor'), 'classes/grp2/outbox/p1'), notice('grp', 'gmayor')));
+    await assertFails(setDoc(doc(db('xmayor'), 'classes/grp2/outbox/p2'), notice('elsewhere', 'xmayor')));
+    await assertFails(setDoc(doc(db('ann'), 'classes/grp2/outbox/p3'), notice('grp', 'ann')));
+  });
+
   await env.cleanup();
 
   // ---------------------------------------------------------------- Report
