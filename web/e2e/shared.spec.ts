@@ -169,6 +169,39 @@ test.describe.serial('shared groupings and shared polls across two classes', () 
     await shot(ben.page, '09-ben-poll-voters-phone');
   });
 
+  test('after votes, a multiple-choice poll stays one and its limit cannot go down', async () => {
+    const h = hostMayor.page;
+    await openPolls(h, hostUrl);
+    await h.getByRole('button', { name: 'New poll' }).click();
+    const dialog = h.getByRole('dialog', { name: 'New poll' });
+    await dialog.getByLabel('Question').fill('Snacks for defense?');
+    await dialog.getByPlaceholder('Choice 1').fill('Bread');
+    await dialog.getByPlaceholder('Choice 2').fill('Juice');
+    await dialog.getByRole('button', { name: '+ Add choice' }).click();
+    await dialog.getByPlaceholder('Choice 3').fill('Fruit');
+    await dialog.getByRole('switch', { name: /Allow multiple choices/ }).check();
+    await dialog.getByLabel('Maximum choices per student').selectOption('3');
+    await dialog.getByRole('button', { name: 'Create poll' }).click();
+    await expectNotice(h, 'Poll created.');
+
+    const a = ana.page;
+    await openPolls(a, hostUrl);
+    const aCard = a.locator('.ch-card').filter({ hasText: 'Snacks for defense?' });
+    for (const choice of ['Bread', 'Juice', 'Fruit']) {
+      await aCard.getByRole('button', { name: new RegExp(choice) }).click();
+      await expect(aCard.getByRole('button', { name: new RegExp(choice) })).toHaveAttribute('aria-pressed', 'true');
+    }
+
+    await h.reload();
+    await h.getByRole('button', { name: 'More for "Snacks for defense?"' }).click();
+    await h.getByRole('menuitem', { name: 'Edit poll' }).click();
+    const edit = h.getByRole('dialog', { name: 'Edit poll' });
+    await expect(edit.getByRole('switch', { name: /Allow multiple choices/ })).toBeDisabled();
+    await expect(edit.getByLabel('Maximum choices per student').locator('option')).toHaveText(['Up to 3']);
+    await shot(h, '10-host-edit-poll-after-votes');
+    await edit.getByRole('button', { name: 'Cancel' }).click();
+  });
+
   test('no console errors', async () => {
     for (const u of [hostMayor, partnerMayor, ana, ben]) expect(realErrors(u.errors, u.failedRequests)).toEqual([]);
   });

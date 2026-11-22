@@ -557,6 +557,10 @@ function EditPollDialog({
   const [closeDate, setCloseDate] = useState(() => toManilaDateInput(poll.closesAtMillis));
 
   const filledOptions = options.map((o) => o.trim()).filter(Boolean);
+  // After votes, a multiple-choice poll stays one and its limit only goes up: a lower limit would leave
+  // ballots holding more choices than the poll allows.
+  const keepMulti = hasVotes && poll.multi;
+  const minPick = keepMulti ? Math.max(2, poll.maxChoices) : 2;
   const existingKept = !hasVotes || options.slice(0, initialCount).every((o) => o.trim().length > 0);
   const valid = !!question.trim() && filledOptions.length >= 2 && existingKept;
   const updateOption = (i: number, value: string) =>
@@ -653,14 +657,14 @@ function EditPollDialog({
             <TagSelect state={state} value={courseId} onChange={setCourseId} label="Who votes" />
           </Field>
         )}
-        <Switch checked={multi} onChange={setMulti} label="Allow multiple choices" />
+        <Switch checked={multi} onChange={setMulti} label="Allow multiple choices" disabled={keepMulti} />
         {multi && (
           <Field label="Maximum choices per student">
             <select
-              value={Math.min(maxChoices, Math.max(2, filledOptions.length))}
+              value={Math.min(Math.max(maxChoices, minPick), Math.max(minPick, filledOptions.length))}
               onChange={(e) => setMaxChoices(Number(e.target.value))}
             >
-              {Array.from({ length: Math.max(1, filledOptions.length - 1) }, (_, i) => i + 2).map((n) => (
+              {Array.from({ length: Math.max(1, filledOptions.length - minPick + 1) }, (_, i) => i + minPick).map((n) => (
                 <option key={n} value={n}>
                   Up to {n}
                 </option>
