@@ -117,6 +117,13 @@ describe('groupingAttentionCount', () => {
     const groupings: GroupingCountItem[] = [mk()];
     expect(groupingAttentionCount(groupings, ME, true, () => true)).toBe(3);
   });
+
+  it('skips a grouping with self-join off for a student, who cannot join it', () => {
+    const groupings: GroupingCountItem[] = [mk({ selfJoin: false, hasLeader: false, groups: [{ memberUids: ['other'] }] })];
+    expect(groupingAttentionCount(groupings, ME, false, () => true)).toBe(0);
+    // An officer can still place themselves.
+    expect(groupingAttentionCount(groupings, ME, true, () => true)).toBe(1);
+  });
 });
 
 describe('countLabel', () => {

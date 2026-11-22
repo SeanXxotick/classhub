@@ -11,6 +11,8 @@ export type TabsSeen = Record<SeenTab, number>;
 export interface GroupingCountItem {
   courseId: string;
   locked: boolean;
+  /** Off: only officers place students, so a student without a group has nothing to do here. */
+  selfJoin?: boolean;
   hasLeader?: boolean;
   shared?: boolean;
   groups: {
@@ -23,7 +25,8 @@ export interface GroupingCountItem {
 /**
  * Counts grouping items that need this member's attention:
  * - Pending join requests waiting for this member (as group leader or officer with MEMBERS_MANAGE).
- * - Open groupings for courses this member takes where they do not have a group yet.
+ * - Open groupings for courses this member takes where they do not have a group yet, when they can do
+ *   something about it: self-join is on, or they are an officer who places students.
  */
 export function groupingAttentionCount(
   groupings: readonly GroupingCountItem[],
@@ -41,7 +44,7 @@ export function groupingAttentionCount(
         if (canManage || (!g.locked && leaderUid === myUid)) total += reqs;
       }
     }
-    if (!g.locked && takes(g.courseId)) {
+    if (!g.locked && takes(g.courseId) && (g.selfJoin !== false || canManage)) {
       const inGroup = g.groups.some((slot) => slot.memberUids.includes(myUid));
       if (!inGroup) total += 1;
     }
