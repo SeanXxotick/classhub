@@ -58,7 +58,8 @@ test('forum: an anonymous question, an answer, a reply, the best answer and a ta
   await s.getByRole('button', { name: 'Post reply' }).click();
   await expectNotice(s, 'Reply posted.');
   await expect(s.getByText('The asker (you)')).toBeVisible();
-  await s.getByRole('button', { name: 'Mark as best answer' }).click();
+  await s.getByRole('button', { name: 'More for this answer' }).first().click();
+  await s.getByRole('menuitem', { name: 'Mark as best answer' }).click();
   await expectNotice(s, 'Marked as the best answer.');
   await expect(s.getByText('✓ Best answer · Picked by the asker')).toBeVisible();
 
@@ -71,9 +72,16 @@ test('forum: an anonymous question, an answer, a reply, the best answer and a ta
   // The list says Answered, and the Mayor tops the helpers.
   await s.getByRole('button', { name: 'Forum' }).last().click();
   await expect(s.locator('.forum-card').getByText('Answered')).toBeVisible();
-  await expect(s.getByText('Top helpers this month')).toBeVisible();
+  // Phone: the medal strip, which opens in place.
+  await expect(s.getByRole('complementary', { name: 'Top helpers' })).toHaveCount(0);
+  await s.getByRole('button', { name: /Rafa Mendoza, 1 best answer/ }).click();
   await expect(s.locator('.forum-helper').first()).toContainText('Rafa Mendoza');
-  await expect(s.locator('.forum-helper').first()).toContainText('1 best answer');
+  await expect(s.locator('.forum-helper').first().getByLabel('1 best answer')).toBeVisible();
+  // Wide screen: the same list in a side column.
+  const phone = s.viewportSize()!;
+  await s.setViewportSize({ width: 1360, height: 900 });
+  await expect(s.getByRole('complementary', { name: 'Top helpers' }).locator('.forum-helper').first()).toContainText('Rafa Mendoza');
+  await s.setViewportSize(phone);
 
   // A tagged announcement: the Mayor picks the course, the student filters by it.
   await m.getByRole('button', { name: 'Announcements' }).click();

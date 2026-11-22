@@ -29,8 +29,9 @@ import { ROLE_MEMBER } from '../../data/models';
 import { manilaMonthStart, topHelpers } from '../../domain/forumBoard';
 import { forumUnseen } from '../../domain/forumUnseen';
 import { Avatar, ConfirmDialog, CourseDot, Dialog, Field, RoleChip, hexColor, shortDateTime } from '../common';
-import { Badge, Button, Card, FilterChips, Notice, SearchInput, SegmentedControl, Switch } from '../../design';
+import { Badge, Button, Card, FilterChips, Icon, Notice, SearchInput, SegmentedControl, Switch } from '../../design';
 import { useClass, type ClassState } from '../classroom/ClassContext';
+import { MoreMenu } from '../MoreMenu';
 
 type Filter = 'ALL' | 'OPEN' | 'DONE' | 'MINE';
 const FILTERS: { value: Filter; label: string }[] = [
@@ -140,6 +141,7 @@ export function ForumView({ state, questions, authors, seen, lastVisit, openId, 
   const [tag, setTag] = useState('*');
   const [search, setSearch] = useState('');
   const [asking, setAsking] = useState(false);
+  const wide = useWide();
   const mine = (q: ForumQuestion) => writerOf(authors, q.id, q.uid) === state.myUid;
   // Kept from when the Forum opened, so what was new stays marked during this visit.
   const [since] = useState(lastVisit);
@@ -176,7 +178,8 @@ export function ForumView({ state, questions, authors, seen, lastVisit, openId, 
   const plain = filter === 'ALL' && tag === '*' && !words;
 
   return (
-    <div className="stack">
+    <div className="forum-layout">
+    <div className="stack forum-main">
       <div className="ch-row">
         <Button icon="plus" onClick={() => setAsking(true)}>
           Ask a question
@@ -187,7 +190,7 @@ export function ForumView({ state, questions, authors, seen, lastVisit, openId, 
         <SearchInput aria-label="Search the Forum" placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
         <TagSelect state={state} value={tag} onChange={setTag} label="Tag" all />
       </div>
-      {plain && questions && <TopHelpers state={state} questions={questions} seen={seen} />}
+      {!wide && plain && questions && <TopHelpers state={state} questions={questions} seen={seen} rail={false} />}
       {questions && list.length === 0 && <Notice tone="info">{plain ? 'No questions yet. Ask the first one.' : 'No questions match.'}</Notice>}
       {list.map((q) => (
         <button key={q.id} type="button" className="forum-card" onClick={() => onOpen(q.id)}>
@@ -206,6 +209,8 @@ export function ForumView({ state, questions, authors, seen, lastVisit, openId, 
         </button>
       ))}
       {asking && <AskDialog state={state} onClose={() => setAsking(false)} onAsked={onOpen} />}
+    </div>
+    {wide && questions && <TopHelpers state={state} questions={questions} seen={seen} rail />}
     </div>
   );
 }
@@ -258,7 +263,26 @@ function QuestionPage({ state, q, authors, onBack, onPromote }: {
   const answerBlock = (a: ForumAnswer, top: ForumAnswer) => (
     <div className={'comment' + (a.id === q.bestAnswerId ? ' forum-best' : '')} key={a.id}>
       {a.id === q.bestAnswerId && <span className="forum-best-tag">{`✓ Best answer · Picked by ${q.pickedBy === 'OFFICER' ? 'an officer' : 'the asker'}`}</span>}
-      <Who state={state} uid={a.uid} name={a.name} anonymous={a.anonymous} realUid={writerOf(authors, a.id, a.uid)} when={a.createdAtMillis} asker={isAskerPost(a)} />
+      <div className="card-head">
+        <Who state={state} uid={a.uid} name={a.name} anonymous={a.anonymous} realUid={writerOf(authors, a.id, a.uid)} when={a.createdAtMillis} asker={isAskerPost(a)} />
+        {!a.removedAtMillis && (
+          <MoreMenu
+            label="More for this answer"
+            title={a.text}
+            items={[
+              pickable(a) && {
+                label: a.id === q.bestAnswerId ? 'Remove best answer' : 'Mark as best answer',
+                icon: a.id === q.bestAnswerId ? 'x' : 'check',
+                onClick: () =>
+                  a.id === q.bestAnswerId
+                    ? run('Best answer removed.', () => pickBest(db, state.classId, q.id, null, isAsker))
+                    : run('Marked as the best answer.', () => pickBest(db, state.classId, q.id, a, isAsker)),
+              },
+              (writerOf(authors, a.id, a.uid) === state.myUid || manage) && { label: 'Remove', icon: 'trash', danger: true, onClick: () => setRemoving(a) },
+            ]}
+          />
+        )}
+      </div>
       {a.removedAtMillis ? (
         <div className="ch-muted" style={{ fontStyle: 'italic' }}>Removed</div>
       ) : (
@@ -268,24 +292,6 @@ function QuestionPage({ state, q, authors, onBack, onPromote }: {
             {!q.closed && (
               <button type="button" className="btn text" onClick={() => { setReplyTo(top.id); setReplyText(''); }}>
                 Reply
-              </button>
-            )}
-            {pickable(a) && (
-              <button
-                type="button"
-                className="btn text"
-                onClick={() =>
-                  a.id === q.bestAnswerId
-                    ? run('Best answer removed.', () => pickBest(db, state.classId, q.id, null, isAsker))
-                    : run('Marked as the best answer.', () => pickBest(db, state.classId, q.id, a, isAsker))
-                }
-              >
-                {a.id === q.bestAnswerId ? 'Remove best answer' : 'Mark as best answer'}
-              </button>
-            )}
-            {(writerOf(authors, a.id, a.uid) === state.myUid || manage) && (
-              <button type="button" className="btn text" onClick={() => setRemoving(a)}>
-                Remove
               </button>
             )}
           </div>
@@ -300,42 +306,30 @@ function QuestionPage({ state, q, authors, onBack, onPromote }: {
       {q.hidden && <Notice tone="warning">Hidden from the class. Only officers see it.</Notice>}
       <Card>
         <div className="stack" style={{ gap: 8 }}>
-          <div className="forum-meta">
-            <TagBadge state={state} courseId={q.courseId} />
-            {q.closed ? <Badge tone="warning">Closed</Badge> : q.bestAnswerId ? <Badge tone="success" icon="check">Answered</Badge> : null}
-          </div>
-          <div className="bold" style={{ fontSize: 18, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
-            {q.title}
+          <div className="card-head">
+            <div className="stack" style={{ gap: 8 }}>
+              <div className="forum-meta">
+                <TagBadge state={state} courseId={q.courseId} />
+                {q.closed ? <Badge tone="warning">Closed</Badge> : q.bestAnswerId ? <Badge tone="success" icon="check">Answered</Badge> : null}
+              </div>
+              <div className="bold" style={{ fontSize: 18, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
+                {q.title}
+              </div>
+            </div>
+            <MoreMenu
+              label="More for this question"
+              title={q.title}
+              items={[
+                isAsker && { label: 'Edit', icon: 'edit', onClick: () => setEditing(true) },
+                manage && { label: q.closed ? 'Reopen' : 'Close', icon: 'lock', onClick: () => run(q.closed ? 'Open to new answers.' : 'Closed to new answers.', () => setQuestionFlags(db, state.classId, q.id, { closed: !q.closed })) },
+                manage && { label: q.hidden ? 'Show' : 'Hide', icon: 'eye', onClick: () => run(q.hidden ? 'Shown to the class.' : 'Hidden from the class.', () => setQuestionFlags(db, state.classId, q.id, { hidden: !q.hidden })) },
+                manage && best && !best.removedAtMillis && { label: 'Post as announcement', icon: 'bell', onClick: promote },
+                (isAsker || manage) && { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleting(true) },
+              ]}
+            />
           </div>
           {q.body && <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.55, overflowWrap: 'anywhere' }}>{q.body}</div>}
           <Who state={state} uid={q.uid} name={q.name} anonymous={q.anonymous} realUid={askerUid} when={q.createdAtMillis} size={36} />
-          {(isAsker || manage) && (
-            <div className="ch-row ch-wrap ch-gap-2">
-              {isAsker && (
-                <Button size="small" variant="outline" icon="edit" onClick={() => setEditing(true)}>
-                  Edit
-                </Button>
-              )}
-              {manage && (
-                <>
-                  <Button size="small" variant="outline" icon="lock" onClick={() => run(q.closed ? 'Open to new answers.' : 'Closed to new answers.', () => setQuestionFlags(db, state.classId, q.id, { closed: !q.closed }))}>
-                    {q.closed ? 'Reopen' : 'Close'}
-                  </Button>
-                  <Button size="small" variant="outline" icon="eye" onClick={() => run(q.hidden ? 'Shown to the class.' : 'Hidden from the class.', () => setQuestionFlags(db, state.classId, q.id, { hidden: !q.hidden }))}>
-                    {q.hidden ? 'Show' : 'Hide'}
-                  </Button>
-                  {best && !best.removedAtMillis && (
-                    <Button size="small" variant="outline" icon="bell" onClick={promote}>
-                      Post as announcement
-                    </Button>
-                  )}
-                </>
-              )}
-              <Button size="small" variant="outline" danger icon="trash" onClick={() => setDeleting(true)}>
-                Delete
-              </Button>
-            </div>
-          )}
         </div>
       </Card>
 
@@ -481,9 +475,42 @@ function AskDialog({ state, question, onClose, onAsked }: { state: ClassState; q
 
 // ---------------------------------------------------------------- Top helpers
 
-function TopHelpers({ state, questions, seen }: { state: ClassState; questions: ForumQuestion[]; seen: SeenMarks[] }) {
+const HELPERS_OPEN_KEY = 'classhub.helpersOpen';
+
+/** True on screens wide enough for the Forum's side column. */
+function useWide(): boolean {
+  const query = '(min-width: 1200px)';
+  const [wide, setWide] = useState(() => typeof matchMedia === 'function' && matchMedia(query).matches);
+  useEffect(() => {
+    if (typeof matchMedia !== 'function') return;
+    const m = matchMedia(query);
+    const on = () => setWide(m.matches);
+    m.addEventListener('change', on);
+    return () => m.removeEventListener('change', on);
+  }, []);
+  return wide;
+}
+
+/** This month's top three: a side column on wide screens, a medal strip that opens in place on narrow ones. Same look in both. */
+function TopHelpers({ state, questions, seen, rail }: { state: ClassState; questions: ForumQuestion[]; seen: SeenMarks[]; rail: boolean }) {
   const run = useRun();
   const [all, setAll] = useState(false);
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(HELPERS_OPEN_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggle = (v: boolean) => {
+    setOpen(v);
+    try {
+      localStorage.setItem(HELPERS_OPEN_KEY, v ? '1' : '0');
+    } catch {
+      /* storage blocked: it just starts closed next time */
+    }
+  };
+  const monthName = new Date().toLocaleString('en-US', { month: 'long', timeZone: 'Asia/Manila' });
   const [range, setRange] = useState<'MONTH' | 'ALL'>('MONTH');
   const leftOut = useMemo(() => new Set(seen.filter((s) => s.hideFromBoard).map((s) => s.id)), [seen]);
   const since = manilaMonthStart(Date.now());
@@ -498,22 +525,61 @@ function TopHelpers({ state, questions, seen }: { state: ClassState; questions: 
         <span className={`forum-rank r${i + 1}`}>{i + 1}</span>
         <Avatar photo={state.avatars.get(h.uid)} name={nameOf(h.uid)} color="#6B768A" size={26} />
         <span className="grow forum-helper-name">{nameOf(h.uid)}</span>
-        <span className="ch-small ch-muted">{plural(h.points, 'best answer')}</span>
+        <span className="ch-small ch-muted" aria-label={plural(h.points, 'best answer')}>{h.points}</span>
       </div>
     ));
 
+  if (month.length === 0) return null;
+  const top = month.slice(0, 3);
+  const head = (
+    <>
+      <span className="helpers-trophy"><Icon name="trophy" size={18} /></span>
+      <span className="bold">Top helpers</span>
+      <span className="ch-small ch-muted helpers-month">{monthName}</span>
+    </>
+  );
+  const panel = (
+    <>
+      {rows(top)}
+      <button type="button" className="btn text helpers-all" onClick={() => setAll(true)}>
+        See all
+      </button>
+    </>
+  );
+
   return (
     <>
-      {month.length > 0 && (
-        <Card>
-          <div className="forum-helpers-head">
-            <span className="bold">Top helpers this month</span>
-            <button type="button" className="btn text" onClick={() => setAll(true)}>
-              See all
-            </button>
-          </div>
-          {rows(month.slice(0, 3))}
-        </Card>
+      {rail ? (
+        <aside className="helpers helpers-rail" aria-label="Top helpers">
+          <div className="helpers-head">{head}</div>
+          {panel}
+        </aside>
+      ) : (
+        <div className={'helpers helpers-strip' + (open ? ' open' : '')}>
+          <button type="button" className="helpers-head" aria-expanded={open} onClick={() => toggle(!open)}>
+            {open ? (
+              head
+            ) : (
+              <>
+                <span className="helpers-trophy"><Icon name="trophy" size={18} /></span>
+                <span className="helpers-medals" aria-label={top.map((h, i) => `${i + 1}. ${nameOf(h.uid)}, ${plural(h.points, 'best answer')}`).join('; ')}>
+                  {top.map((h, i) => (
+                    <span className="helpers-medal" key={h.uid}>
+                      <span className={`helpers-ring r${i + 1}`}>
+                        <Avatar photo={state.avatars.get(h.uid)} name={nameOf(h.uid)} color="#6B768A" size={28} />
+                      </span>
+                      <span className="bold">{h.points}</span>
+                    </span>
+                  ))}
+                </span>
+              </>
+            )}
+            <span className={'helpers-chev' + (open ? ' up' : '')}>
+              <Icon name="chev" size={18} />
+            </span>
+          </button>
+          {open && panel}
+        </div>
       )}
       {all && (
         <Dialog

@@ -42,6 +42,7 @@ const PATHS = {
   trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
   edit: 'M4 20l1-5L16 4l4 4L9 19zM14 6l4 4',
   logout: 'M10 4H5v16h5M15 8l4 4-4 4M19 12H9',
+  trophy: 'M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3M12 14v4M8 21h8M9 18h6',
   bell: 'M6 17V11a6 6 0 0 1 12 0v6l2 2H4zM10 21h4',
   phone: 'M8 3h8v18H8zM11 18h2',
   share: 'M12 3v12M8 7l4-4 4 4M5 13v8h14v-8',

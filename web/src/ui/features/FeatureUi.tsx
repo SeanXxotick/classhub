@@ -64,6 +64,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useForum, useForumAnswersSince, useForumAuthors } from '../../data/forum';
 import { forumUnseen } from '../../domain/forumUnseen';
 import { ForumView, TagBadge, TagSelect } from './ForumUi';
+import { MoreMenu } from '../MoreMenu';
 
 /** Runs a write and shows the result in the snackbar. */
 function useRun() {
@@ -554,17 +555,30 @@ export function NewsTab({ state }: { state: ClassState }) {
       {(posts ?? []).map((p) => (
         <Card key={p.id}>
           <div className="stack" style={{ gap: 8 }}>
-            {(p.pinned || p.courseId) && (
-              <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
-                {p.pinned && (
-                  <Badge tone="primary" icon="pin">
-                    Pinned
-                  </Badge>
+            <div className="card-head">
+              <div className="stack" style={{ gap: 8 }}>
+                {(p.pinned || p.courseId) && (
+                  <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
+                    {p.pinned && (
+                      <Badge tone="primary" icon="pin">
+                        Pinned
+                      </Badge>
+                    )}
+                    <TagBadge state={state} courseId={p.courseId} />
+                  </div>
                 )}
-                <TagBadge state={state} courseId={p.courseId} />
+                <Byline state={state} uid={p.createdByUid} fallback="A former member" when={p.createdAtMillis} edited={!!p.editedAtMillis} size={40} />
               </div>
-            )}
-            <Byline state={state} uid={p.createdByUid} fallback="A former member" when={p.createdAtMillis} edited={!!p.editedAtMillis} size={40} />
+              <MoreMenu
+                label={`More for "${p.title}"`}
+                title={p.title}
+                items={[
+                  manage && { label: 'Edit', icon: 'edit', onClick: () => setEditing(p) },
+                  manage && { label: p.pinned ? 'Unpin' : 'Pin', icon: 'pin', onClick: () => run(p.pinned ? 'Unpinned.' : 'Pinned.', () => saveAnnouncement(db, state.myUid, state.classId, { ...p, pinned: !p.pinned })) },
+                  manage && { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleting(p) },
+                ]}
+              />
+            </div>
             <div className="bold" style={{ fontSize: 18, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
               {p.title}
             </div>
@@ -576,23 +590,14 @@ export function NewsTab({ state }: { state: ClassState }) {
                   {p.commentCount === 0 ? 'Comment' : `${p.commentCount} comment${p.commentCount === 1 ? '' : 's'}`}
                 </Button>
               )}
-              <Button size="small" variant="outline" icon="eye" onClick={() => setSeenOf(p)}>
-                {`Seen by ${seenBy(p.id)} of ${state.members.length}`}
-              </Button>
+              <button type="button" className="seen-link" onClick={() => setSeenOf(p)}>
+                <Icon name="eye" size={16} />
+                <span>
+                  <span className="seen-word">Seen by </span>
+                  {`${seenBy(p.id)} of ${state.members.length}`}
+                </span>
+              </button>
             </div>
-            {manage && (
-              <div className="ch-row ch-wrap ch-gap-2">
-                <Button size="small" variant="outline" icon="edit" onClick={() => setEditing(p)}>
-                  Edit
-                </Button>
-                <Button size="small" variant="outline" icon="pin" onClick={() => run(p.pinned ? 'Unpinned.' : 'Pinned.', () => saveAnnouncement(db, state.myUid, state.classId, { ...p, pinned: !p.pinned }))}>
-                  {p.pinned ? 'Unpin' : 'Pin'}
-                </Button>
-                <Button size="small" variant="outline" danger icon="trash" onClick={() => setDeleting(p)}>
-                  Delete
-                </Button>
-              </div>
-            )}
             {openId === p.id && <Thread state={state} post={p} votes={votes} memberIds={memberIds} />}
           </div>
         </Card>
@@ -616,7 +621,7 @@ export function NewsTab({ state }: { state: ClassState }) {
                 <Card flush key={String(did)}>
                   <DayHeader>{did ? `Seen (${list.length})` : `Not yet (${list.length})`}</DayHeader>
                   {list.map((m) => (
-                    <ListRow key={m.id} leading={<TypeIcon icon={did ? 'check' : 'hourglass'} tone={did ? 'success' : 'neutral'} size={32} />} title={listName(m)} />
+                    <ListRow key={m.id} title={listName(m)} />
                   ))}
                 </Card>
               )
@@ -703,7 +708,16 @@ function Thread({ state, post, votes, memberIds }: { state: ClassState; post: An
 
   const line = (c: Comment, top: Comment) => (
     <div className="comment" key={c.id}>
-      <Byline state={state} uid={c.uid} fallback={c.name} when={c.createdAtMillis} size={28} />
+      <div className="card-head">
+        <Byline state={state} uid={c.uid} fallback={c.name} when={c.createdAtMillis} size={28} />
+        {!c.removedAtMillis && (
+          <MoreMenu
+            label={`More for ${nameOf(c)}'s comment`}
+            title={c.text}
+            items={[(c.uid === state.myUid || manage) && { label: 'Remove', icon: 'trash', danger: true, onClick: () => setRemoving(c) }]}
+          />
+        )}
+      </div>
       {c.removedAtMillis ? (
         <div className="ch-muted" style={{ fontStyle: 'italic' }}>Comment removed</div>
       ) : (
@@ -721,11 +735,6 @@ function Thread({ state, post, votes, memberIds }: { state: ClassState; post: An
                 }}
               >
                 Reply
-              </button>
-            )}
-            {(c.uid === state.myUid || manage) && (
-              <button type="button" className="btn text" onClick={() => setRemoving(c)}>
-                Remove
               </button>
             )}
           </div>
