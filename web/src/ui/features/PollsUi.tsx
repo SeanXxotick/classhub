@@ -21,7 +21,7 @@ import {
   type PollVote,
 } from '../../data/polls';
 import { myAccent } from '../settings';
-import { isPollOpen, tallyPoll, togglePollChoice } from '../../domain/pollLogic';
+import { isPollOpen, pollEligibleUids, tallyPoll, togglePollChoice } from '../../domain/pollLogic';
 import { Badge, Button, Card, Notice, Switch } from '../../design';
 import { ConfirmDialog, Dialog, Field, hexColor, shortDateTime } from '../common';
 import { useClass, type ClassState } from '../classroom/ClassContext';
@@ -167,7 +167,10 @@ function PollCard({
   );
   // An anonymous poll's votes are private: its counts come from the poll itself, and only your own ballot loads.
   const tally = useMemo(() => {
-    if (!poll.anonymous) return tallyPoll(poll, votes, eligibleMembers.map((m) => m.id));
+    if (!poll.anonymous) {
+      const local = eligibleMembers.map((m) => m.id);
+      return tallyPoll(poll, votes, pollEligibleUids(local, votes, !!poll.shared));
+    }
     const counts = poll.options.map((_, i) => Math.max(0, poll.tally?.[String(i)] ?? 0));
     const totalVotes = counts.reduce((a, b) => a + b, 0);
     return { counts, totalVotes, totalVoters: Math.max(0, poll.voters ?? 0), votedUids: new Set<string>(), unvotedUids: [] as string[] };

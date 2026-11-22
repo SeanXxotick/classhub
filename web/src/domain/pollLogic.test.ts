@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPollOpen, tallyPoll, togglePollChoice } from './pollLogic';
+import { isPollOpen, pollEligibleUids, tallyPoll, togglePollChoice } from './pollLogic';
 
 describe('pollLogic', () => {
   it('detects open vs closed polls by flag and close timestamp', () => {
@@ -33,5 +33,22 @@ describe('pollLogic', () => {
     expect(t.totalVotes).toBe(3);
     expect(t.totalVoters).toBe(2);
     expect(t.unvotedUids).toEqual(['u3', 'u4']);
+  });
+
+  it('counts every vote on a shared poll, so each linked class shows the same numbers', () => {
+    const poll = { options: ['Mon', 'Fri'] };
+    const votes = [
+      { pollId: 'p', uid: 'ana', choices: [1] }, // G1
+      { pollId: 'p', uid: 'ben', choices: [1] }, // G2
+      { pollId: 'p', uid: 'gone', choices: [0] }, // left G1 after voting
+    ];
+    const g1 = tallyPoll(poll, votes, pollEligibleUids(['ana', 'cara'], votes, true));
+    const g2 = tallyPoll(poll, votes, pollEligibleUids(['ben'], votes, true));
+    expect(g1.counts).toEqual([1, 2]);
+    expect(g2.counts).toEqual(g1.counts);
+    expect(g1.totalVoters).toBe(3);
+    expect(g1.unvotedUids).toEqual(['cara']);
+    // A class poll still counts only current eligible members.
+    expect(tallyPoll(poll, votes, pollEligibleUids(['ana'], votes, false)).counts).toEqual([0, 1]);
   });
 });

@@ -41,6 +41,15 @@ export interface PollTally {
   unvotedUids: string[];
 }
 
+/**
+ * Who counts on a poll: this class's eligible members. A shared poll counts every vote, as its anonymous
+ * counts do: no class lists the others' members, and every linked class must show the same numbers.
+ */
+export function pollEligibleUids(localUids: readonly string[], votes: readonly { uid: string }[], shared: boolean): string[] {
+  if (!shared) return [...localUids];
+  return [...new Set([...localUids, ...votes.map((v) => v.uid)])];
+}
+
 /** Computes option counts and unvoted members for a poll, counting only eligible current members. */
 export function tallyPoll(
   poll: Pick<PollLike, 'options'>,
