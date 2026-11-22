@@ -76,7 +76,7 @@ export function TagBadge({ state, courseId }: { state: ClassState; courseId: str
   if (!courseId || !course) return null;
   return (
     <span className="forum-tag">
-      <CourseDot color={course.color} />
+      <CourseDot color={course.color || 'var(--accent)'} />
       {course.name}
     </span>
   );

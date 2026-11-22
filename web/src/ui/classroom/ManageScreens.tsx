@@ -172,7 +172,7 @@ function MemberDetailContent({ member, readOnly }: { member: Member; readOnly: b
               const takes = !member.excludedCourseIds.includes(course.id);
               return (
                 <div key={course.id} className="row" style={{ padding: '8px 0' }}>
-                  <CourseDot color={course.color} />
+                  <CourseDot color={course.color || 'var(--accent)'} />
                   <span className="grow" style={takes ? undefined : { color: 'var(--muted)', textDecoration: 'line-through' }}>{course.name}</span>
                   <span className="small muted">{takes ? 'Takes' : 'Does not take'}</span>
                 </div>
