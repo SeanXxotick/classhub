@@ -235,7 +235,7 @@ function GroupingCard({
     [eligibleMembers],
   );
 
-  // Keep this class's roster snapshot synced on shared groupings so partner classes see ungrouped students.
+  // Keep this class's roster snapshot and default accent color synced on shared groupings.
   const storedRosterSig = useMemo(() => {
     const r = grouping.linkedClasses?.[state.classId]?.roster;
     return r ? r.map((x) => `${x.uid}:${x.name}`).join('|') : '';
@@ -244,11 +244,13 @@ function GroupingCard({
     () => localRoster.map((x) => `${x.uid}:${x.name}`).join('|'),
     [localRoster],
   );
+  const storedAccent = (grouping.linkedClasses?.[state.classId]?.accentColor ?? '').toUpperCase();
+  const localAccent = (state.room?.accentColor ?? '').toUpperCase();
   useEffect(() => {
     if (!manage || !grouping.shared || !grouping.linkedClasses?.[state.classId]) return;
-    if (storedRosterSig === localRosterSig) return;
-    void syncSharedRoster(db, state.classId, grouping, localRoster).catch(() => undefined);
-  }, [manage, grouping.shared, grouping.id, state.classId, storedRosterSig, localRosterSig]);
+    if (storedRosterSig === localRosterSig && storedAccent === localAccent) return;
+    void syncSharedRoster(db, state.classId, grouping, localRoster, state.room?.accentColor ?? '').catch(() => undefined);
+  }, [manage, grouping.shared, grouping.id, state.classId, storedRosterSig, localRosterSig, storedAccent, localAccent]);
 
   const combinedEligible = useMemo(() => {
     const seen = new Set<string>();

@@ -430,12 +430,13 @@ export async function setGroupLeader(
   });
 }
 
-/** Refreshes this class's eligible roster snapshot on a shared grouping so partner classes see ungrouped students. */
+/** Refreshes this class's eligible roster and default accent color on a shared grouping. */
 export async function syncSharedRoster(
   db: Firestore,
   classId: string,
   grouping: Grouping,
   roster: SharedRosterEntry[],
+  accentColor?: string,
 ): Promise<void> {
   if (!grouping.shared) return;
   const curLink = grouping.linkedClasses?.[classId];
@@ -444,7 +445,11 @@ export async function syncSharedRoster(
   batch.update(sharedGroupingRef(db, grouping.id), {
     linkedClasses: {
       ...(grouping.linkedClasses ?? {}),
-      [classId]: { ...curLink, roster },
+      [classId]: {
+        ...curLink,
+        roster,
+        ...(accentColor ? { accentColor } : {}),
+      },
     },
     updatedAtMillis: nowMillis(),
   });
