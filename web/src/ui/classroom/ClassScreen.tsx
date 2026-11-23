@@ -696,28 +696,43 @@ const moduleOn = (state: ClassState, p: Permission): boolean => {
 
 function MemberRow({ member, state, isMe, onClick }: { member: Member; state: ClassState; isMe: boolean; onClick?: () => void }) {
   const role = state.roleOf(member);
+  const isOfficerRole = !!role && (role.locked || role.permissions.length > 0);
   // Only officers who set courses or charge by course see who skips a course; classmates do not.
   const showCourses = state.can('MEMBERS_MANAGE') || state.can('RECORDS_MANAGE');
   const skipped = showCourses ? state.courses.filter((c) => member.excludedCourseIds.includes(c.id)).length : 0;
+  const takenCount = showCourses ? state.courses.length - skipped : 0;
+  const courseNote = !showCourses
+    ? null
+    : member.irregular && state.courses.length > 0
+      ? `Takes ${takenCount} course${s(takenCount)}`
+      : skipped > 0
+        ? `Does not take ${skipped} course${s(skipped)}`
+        : null;
   const balance = state.balanceOf(member.id);
   const showBalance = state.room?.ledgerEnabled !== false && (state.seeAll || isMe);
-  const details = [
-    showBalance ? balanceText(balance) : null,
-    skipped > 0 ? `Does not take ${skipped} course${s(skipped)}` : null,
-  ].filter(Boolean);
   const content = (
     <>
       <Avatar photo={state.avatars.get(member.id)} name={member.name} color={hexColor(role?.colorHex, '#6B768A')} />
       <span className="grow ellipsis-box">
         <span className="title ellipsis">{isMe ? `${listName(member)} (you)` : listName(member)}</span>
-        {details.length > 0 && (
-          <span className="sub ellipsis" style={showBalance && balance < 0 ? { color: 'var(--error)' } : undefined}>
-            {details.join('  ·  ')}
+        {(showBalance || courseNote) && (
+          <span className="sub" style={{ whiteSpace: 'normal', lineHeight: 1.35 }}>
+            {showBalance && (
+              <span style={balance < 0 ? { color: 'var(--error)' } : undefined}>{balanceText(balance)}</span>
+            )}
+            {showBalance && courseNote && ' · '}
+            {courseNote && <span style={{ whiteSpace: 'nowrap' }}>{courseNote}</span>}
           </span>
         )}
       </span>
-      {member.irregular && <RoleChip name="Irregular" color="#D97706" />}
-      <RoleChip name={role?.name ?? 'No role'} color={role?.colorHex ?? '#6B768A'} />
+      {member.irregular ? (
+        <>
+          <RoleChip name="Irregular" color="#D97706" />
+          {isOfficerRole && role && <RoleChip name={role.name} color={role.colorHex} />}
+        </>
+      ) : (
+        <RoleChip name={role?.name ?? 'No role'} color={role?.colorHex ?? '#6B768A'} />
+      )}
     </>
   );
   return onClick ? (
