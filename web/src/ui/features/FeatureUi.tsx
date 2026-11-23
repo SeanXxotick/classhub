@@ -1172,9 +1172,16 @@ export function TimetableCard({ state }: { state: ClassState }) {
     const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : null;
     return [label ? `${label} · ${DAYS[manilaDay(millis).dayOfWeek]}` : niceDate(manilaDay(millis).dateKey), millis];
   });
-  const coming = marks.filter((k) => k.dateKey >= todayKey).sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
+  const coming = marks
+    .filter((k) => k.dateKey >= todayKey && (seesAll || !k.courseId || state.takes(k.courseId)))
+    .sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
   // Marks saved together (a suspension over several days) show as one entry.
-  const comingGroups = groupNoClass(coming, (day) => meetings.some((m) => m.dayOfWeek === weekdayOf(day)));
+  // For students (regular or irregular), hide any entry that affects 0 of their taken classes.
+  const comingGroups = groupNoClass(coming, (day) => meetings.some((m) => m.dayOfWeek === weekdayOf(day))).filter(
+    (group) =>
+      seesAll ||
+      group.some((k) => meetings.some((m) => m.dayOfWeek === weekdayOf(k.dateKey) && (!k.courseId || k.courseId === m.courseId))),
+  );
   const [removing, setRemoving] = useState<NoClassMark[] | null>(null);
   const viewingCancelled = viewing ? nextCancelled(viewing, meetings, marks, now) : null;
   const { actions } = useClass();
