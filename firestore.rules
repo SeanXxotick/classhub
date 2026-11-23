@@ -439,8 +439,11 @@ service cloud.firestore {
         && isRecentMillis(request.resource.data.updatedAtMillis);
       allow update: if signedIn() && (
         // Any officer of a linked class updates details, lock, leader mode, groups, or unlinks a partner class.
+        // Only the host class officer may rotate shareCode (e.g. when unlinking a partner).
         (isSharedGroupingManager(resource.data.linkedClassIds)
-          && changesOnly(['title', 'note', 'linkedClassIds', 'linkedClasses', 'selfJoin', 'locked', 'hasLeader', 'groups', 'seats', 'meta', 'leaders', 'requests', 'guests', 'act', 'updatedAtMillis'])
+          && changesOnly(['title', 'note', 'shareCode', 'linkedClassIds', 'linkedClasses', 'selfJoin', 'locked', 'hasLeader', 'groups', 'seats', 'meta', 'leaders', 'requests', 'guests', 'act', 'updatedAtMillis'])
+          && (request.resource.data.shareCode == resource.data.shareCode
+            || (can(resource.data.hostClassId, 'MEMBERS_MANAGE') && isId(request.resource.data.shareCode)))
           && isFilled(request.resource.data.title, 120)
           && isText(request.resource.data.note, 300)
           && groupingMapsOk(request.resource.data)
@@ -581,6 +584,10 @@ service cloud.firestore {
           && isText(request.resource.data.get('name', ''), 100)
           && isText(request.resource.data.get('classId', ''), 128)
           && isText(request.resource.data.get('tag', ''), 24)
+          && (request.resource.data.get('classId', '') == ''
+            || (request.resource.data.classId in get(sharedPollPath(pollId)).data.linkedClassIds
+              && isMember(request.resource.data.classId)
+              && request.resource.data.get('tag', '') == get(sharedPollPath(pollId)).data.linkedClasses[request.resource.data.classId].tag))
           && request.resource.data.pollId == pollId
           && request.resource.data.uid == uid()
           && request.resource.data.choices is list
@@ -1782,26 +1789,18 @@ service cloud.firestore {
       }
 
       // Partner classes that this class has collaborated with (e.g. G1 <-> G2).
+      // Only an officer of this class can add, update or remove who this class trusts.
       match /partners/{partnerId} {
         allow read: if isMember(classId);
         allow create, update: if isOpen(classId)
+          && (can(classId, 'MEMBERS_MANAGE') || can(classId, 'CLASS_SETTINGS'))
           && request.resource.data.keys().hasAll(['partnerClassId', 'name', 'tag', 'accentColor', 'linkedAtMillis'])
-          && request.resource.data.keys().hasOnly(['partnerClassId', 'name', 'tag', 'accentColor', 'linkedAtMillis', 'linkCode', 'sharedGroupingId'])
+          && request.resource.data.keys().hasOnly(['partnerClassId', 'name', 'tag', 'accentColor', 'linkedAtMillis'])
           && request.resource.data.partnerClassId == partnerId
           && isFilled(request.resource.data.name, 100)
           && isFilled(request.resource.data.tag, 24)
           && isText(request.resource.data.accentColor, 9)
-          && isRecentMillis(request.resource.data.linkedAtMillis)
-          && (can(classId, 'MEMBERS_MANAGE') || can(classId, 'CLASS_SETTINGS')
-            || (isId(request.resource.data.get('linkCode', ''))
-              && exists(/databases/$(database)/documents/groupingInvites/$(request.resource.data.linkCode))
-              && get(/databases/$(database)/documents/groupingInvites/$(request.resource.data.linkCode)).data.hostClassId == classId
-              && can(partnerId, 'MEMBERS_MANAGE'))
-            || (isId(request.resource.data.get('sharedGroupingId', ''))
-              && exists(/databases/$(database)/documents/sharedGroupings/$(request.resource.data.sharedGroupingId))
-              && classId in get(/databases/$(database)/documents/sharedGroupings/$(request.resource.data.sharedGroupingId)).data.linkedClassIds
-              && partnerId in get(/databases/$(database)/documents/sharedGroupings/$(request.resource.data.sharedGroupingId)).data.linkedClassIds
-              && can(partnerId, 'MEMBERS_MANAGE')));
+          && isRecentMillis(request.resource.data.linkedAtMillis);
         allow delete: if can(classId, 'MEMBERS_MANAGE') || can(classId, 'CLASS_SETTINGS') || isOwnerClosing(classId);
       }
 

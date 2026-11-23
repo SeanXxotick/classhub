@@ -2341,15 +2341,16 @@ async function main() {
   });
 
   // ---- Partner classes & shared cross-class polls
-  await test('Partners: mutual partner records can be created via a shared grouping or link code, not by outsiders', async () => {
-    const partnerDoc = (id, name, tag, extra = {}) => ({
-      partnerClassId: id, name, tag, accentColor: '#CC4A0A', linkedAtMillis: now(), ...extra,
+  await test('Partners: only a class\'s own officer can add who it trusts, not outsiders or partner officers', async () => {
+    const partnerDoc = (id, name, tag) => ({
+      partnerClassId: id, name, tag, accentColor: '#CC4A0A', linkedAtMillis: now(),
     });
-    // Outsider cannot add themselves as a partner of grp2.
+    // Outsider and even a linked partner's officer cannot write into grp2's partners list.
     await assertFails(setDoc(doc(db('xmayor'), 'classes/grp2/partners/elsewhere'), partnerDoc('elsewhere', 'Elsewhere', 'EL')));
-    // gmayor (host of sharedGroupings/sh, which links grp + grp2) can register grp2 in grp and grp in grp2 via sharedGroupingId.
+    await assertFails(setDoc(doc(db('gmayor'), 'classes/grp2/partners/grp'), partnerDoc('grp', 'G1', 'G1')));
+    // Each class's own officer registers the other class.
     await assertSucceeds(setDoc(doc(db('gmayor'), 'classes/grp/partners/grp2'), partnerDoc('grp2', 'G2', 'G2')));
-    await assertSucceeds(setDoc(doc(db('gmayor'), 'classes/grp2/partners/grp'), partnerDoc('grp', 'G1', 'G1', { sharedGroupingId: 'sh' })));
+    await assertSucceeds(setDoc(doc(db('pmayor'), 'classes/grp2/partners/grp'), partnerDoc('grp', 'G1', 'G1')));
     // Non-officer student cannot add partners.
     await assertFails(setDoc(doc(db('ann'), 'classes/grp/partners/elsewhere'), partnerDoc('elsewhere', 'Elsewhere', 'EL')));
   });
@@ -2380,6 +2381,9 @@ async function main() {
     await assertFails(getDoc(doc(db('eve'), 'sharedPolls/sp_open')));
     await assertSucceeds(getDoc(doc(db('pam'), 'sharedPolls/sp_open')));
     await assertFails(setDoc(doc(db('eve'), 'sharedPolls/sp_open/votes/eve'), { pollId: 'sp_open', uid: 'eve', choices: [0], votedAtMillis: now() }));
+    // Partner student cannot spoof another class's classId or tag on a shared vote.
+    await assertFails(setDoc(doc(db('pam'), 'sharedPolls/sp_open/votes/pam'), { pollId: 'sp_open', uid: 'pam', choices: [1], votedAtMillis: now(), name: 'Pam', classId: 'grp', tag: 'G1' }));
+    await assertFails(setDoc(doc(db('pam'), 'sharedPolls/sp_open/votes/pam'), { pollId: 'sp_open', uid: 'pam', choices: [1], votedAtMillis: now(), name: 'Pam', classId: 'grp2', tag: 'G1' }));
     await assertSucceeds(setDoc(doc(db('pam'), 'sharedPolls/sp_open/votes/pam'), { pollId: 'sp_open', uid: 'pam', choices: [1], votedAtMillis: now(), name: 'Pam', classId: 'grp2', tag: 'G2' }));
     await assertSucceeds(setDoc(doc(db('ann'), 'sharedPolls/sp_open/votes/ann'), { pollId: 'sp_open', uid: 'ann', choices: [0], votedAtMillis: now() }));
     // Host officer can edit a shared poll; partner officer and students cannot edit its question/options.

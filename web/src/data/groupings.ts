@@ -11,6 +11,7 @@ import {
   deleteField,
   doc,
   getDoc,
+  getDocsFromServer,
   onSnapshot,
   runTransaction,
   writeBatch,
@@ -280,29 +281,17 @@ export async function linkSharedGrouping(
     throw new UserError('NO_PERMISSION', `That grouping could not be linked. It may have been deleted, or it already links ${SHARED_MAX_CLASSES} classes.`);
   }
 
-  // Register mutual partner classes so both classes can include each other in shared polls.
+  // Register the host class as a partner of this class (the host registers this class on its own side
+  // when a host officer views the grouping, so knowing a share code never grants unsolicited trust).
   if (hostClassId && hostClassId !== classId) {
     const sharedSnap = await getDoc(sharedGroupingRef(db, sharedId)).catch(() => null);
     const hostLink = (sharedSnap?.data()?.linkedClasses as Record<string, SharedClassLink> | undefined)?.[hostClassId];
-    await Promise.all([
-      savePartnerClass(db, classId, {
-        partnerClassId: hostClassId,
-        name: hostLink?.name || hostClassName || 'Host class',
-        tag: hostLink?.tag || (hostClassName || 'Host').slice(0, GUEST_TAG_MAX),
-        accentColor: hostLink?.accentColor ?? '',
-      }).catch(() => undefined),
-      savePartnerClass(
-        db,
-        hostClassId,
-        {
-          partnerClassId: classId,
-          name: cleanName,
-          tag,
-          accentColor: accentColor ?? '',
-        },
-        { linkCode: code },
-      ).catch(() => undefined),
-    ]);
+    await savePartnerClass(db, classId, {
+      partnerClassId: hostClassId,
+      name: hostLink?.name || hostClassName || 'Host class',
+      tag: hostLink?.tag || (hostClassName || 'Host').slice(0, GUEST_TAG_MAX),
+      accentColor: hostLink?.accentColor ?? '',
+    }).catch(() => undefined);
   }
 
   await commitLogged(
@@ -326,7 +315,11 @@ function forgetPartners(b: WriteBatch, db: Firestore, classId: string, grouping:
   }
 }
 
-/** Unlinks a partner class from a shared grouping (host officer or partner officer). */
+/**
+ * Unlinks a partner class from a shared grouping (host officer or partner officer).
+ * Seated members from the unlinked class are converted into tagged guests so existing teams stay intact,
+ * and when the host unlinks a class, the share code rotates so the old code cannot re-link.
+ */
 export async function unlinkSharedGrouping(
   db: Firestore,
   actorUid: string,
@@ -339,19 +332,67 @@ export async function unlinkSharedGrouping(
     throw new UserError('NO_PERMISSION', 'The host class cannot unlink itself. Delete the grouping instead.');
   }
   const now = nowMillis();
+  const isHostActing = actingClassId === grouping.hostClassId;
+  const nextShareCode = isHostActing ? await unusedShareCode(db) : '';
   await explainRefusal(db, actingClassId, () =>
     runTransaction(db, async (tx) => {
       const ref = sharedGroupingRef(db, grouping.id);
       const snap = await tx.get(ref);
       if (!snap.exists()) return;
-      const data = snap.data() as {
-        linkedClassIds?: string[];
-        linkedClasses?: Record<string, SharedClassLink>;
-      };
-      const nextIds = (data.linkedClassIds ?? []).filter((id) => id !== targetClassId);
-      const nextClasses = { ...(data.linkedClasses ?? {}) };
+      const cur = groupingFrom(snap);
+      const unlinkedTag = cur.linkedClasses?.[targetClassId]?.tag ?? '';
+      const nextIds = (cur.linkedClassIds ?? []).filter((id) => id !== targetClassId);
+      const nextClasses = { ...(cur.linkedClasses ?? {}) };
       delete nextClasses[targetClassId];
-      tx.update(ref, { linkedClassIds: nextIds, linkedClasses: nextClasses, updatedAtMillis: now });
+
+      // Convert seated members from the unlinked class into tagged guests and drop its pending requests.
+      const nextGroups: GroupSlot[] = cur.groups.map((slot) => {
+        const keptUids: string[] = [];
+        const keptMeta: Record<string, MemberMeta> = {};
+        const nextGuests = [...slot.guests];
+        for (const uid of slot.memberUids) {
+          const meta = slot.memberMeta?.[uid];
+          if (meta?.classId === targetClassId) {
+            nextGuests.push({
+              id: newId().slice(0, 10),
+              name: (meta.name || 'Former member').slice(0, GUEST_NAME_MAX),
+              tag: (meta.tag || unlinkedTag).slice(0, GUEST_TAG_MAX),
+              addedByUid: actorUid,
+            });
+          } else {
+            keptUids.push(uid);
+            if (meta) keptMeta[uid] = meta;
+          }
+        }
+        const nextLeader = slot.leaderUid && keptUids.includes(slot.leaderUid) ? slot.leaderUid : keptUids[0] ?? '';
+        const nextReqs = (slot.joinRequests ?? []).filter((r) => r.classId !== targetClassId);
+        return {
+          ...slot,
+          memberUids: keptUids,
+          memberMeta: keptMeta,
+          ...(nextLeader ? { leaderUid: nextLeader } : { leaderUid: '' }),
+          joinRequests: nextReqs,
+          guests: nextGuests,
+        };
+      });
+
+      if (isHostActing && nextShareCode) {
+        if (cur.shareCode) tx.delete(groupingInviteRef(db, cur.shareCode));
+        const hostName = cur.linkedClasses?.[actingClassId]?.name || 'Host class';
+        tx.set(groupingInviteRef(db, nextShareCode), {
+          sharedId: grouping.id,
+          title: cur.title,
+          hostClassId: actingClassId,
+          hostClassName: hostName,
+        });
+      }
+      tx.update(ref, {
+        linkedClassIds: nextIds,
+        linkedClasses: nextClasses,
+        ...storedGroups(nextGroups, now),
+        ...(isHostActing && nextShareCode ? { shareCode: nextShareCode } : {}),
+        updatedAtMillis: now,
+      });
       if (actingClassId === targetClassId) {
         tx.delete(sharedGroupingLinkRef(db, targetClassId, grouping.id));
       }
@@ -659,11 +700,13 @@ export async function syncSharedRoster(
   const curLink = grouping.linkedClasses?.[classId];
   if (!curLink) return;
   // Only this class's own entry, so a class that linked since this screen loaded keeps its own.
+  const { accentColor: _oldAccent, ...restLink } = curLink;
+  const nextLink = { ...restLink, roster, ...(accentColor ? { accentColor } : {}) };
   const batch = writeBatch(db);
   batch.update(
     sharedGroupingRef(db, grouping.id),
     new FieldPath('linkedClasses', classId),
-    { ...curLink, roster, ...(accentColor ? { accentColor } : {}) },
+    nextLink,
     new FieldPath('updatedAtMillis'),
     nowMillis(),
   );
@@ -1035,6 +1078,34 @@ export async function autoAssignUngrouped(
     return res.groups;
   });
   return count;
+}
+
+/**
+ * Called during class deletion (while the Mayor still holds permissions):
+ * deletes shared groupings and invites hosted by this class, and unlinks this class from any it joined
+ * (converting its seated members into tagged guests).
+ */
+export async function cleanupSharedGroupingsForDeletedClass(
+  db: Firestore,
+  ownerUid: string,
+  classId: string,
+): Promise<void> {
+  const links = await getDocsFromServer(sharedGroupingLinksCol(db, classId)).catch(() => null);
+  if (!links) return;
+  for (const d of links.docs) {
+    const sharedId = String(d.data()?.sharedId ?? d.id);
+    const snap = await getDoc(sharedGroupingRef(db, sharedId)).catch(() => null);
+    if (!snap?.exists()) continue;
+    const g = { ...groupingFrom(snap), shared: true };
+    if (g.hostClassId === classId) {
+      const b = writeBatch(db);
+      b.delete(sharedGroupingRef(db, sharedId));
+      if (g.shareCode) b.delete(groupingInviteRef(db, g.shareCode));
+      await b.commit().catch(() => undefined);
+    } else if ((g.linkedClassIds ?? []).includes(classId)) {
+      await unlinkSharedGrouping(db, ownerUid, classId, g, classId).catch(() => undefined);
+    }
+  }
 }
 
 /** Local (single-class) groupings, newest first. */

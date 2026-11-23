@@ -10,7 +10,9 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
+  getDocsFromServer,
   increment,
   onSnapshot,
   query,
@@ -388,6 +390,36 @@ export async function deletePoll(db: Firestore, actorUid: string, classId: strin
   batch.delete(doc(pollsCol(db, classId), poll.id));
   await logToBatch(batch, db, classId, actorUid, 'POLL_DELETED', `Deleted the poll "${poll.question}"`);
   await explainRefusal(db, classId, () => batch.commit());
+}
+
+/**
+ * Called during class deletion (while the Mayor still holds permissions):
+ * deletes any shared polls hosted by this class, their votes, and best-effort partner link pointers.
+ */
+export async function cleanupSharedPollsForDeletedClass(db: Firestore, classId: string): Promise<void> {
+  const links = await getDocsFromServer(sharedPollLinksCol(db, classId)).catch(() => null);
+  if (!links) return;
+  for (const d of links.docs) {
+    const pollId = d.id;
+    const snap = await getDoc(sharedPollRef(db, pollId)).catch(() => null);
+    if (!snap?.exists()) continue;
+    const data = snap.data() as { hostClassId?: string; linkedClassIds?: string[] };
+    if (data.hostClassId !== classId) continue;
+    const votes = await getDocs(sharedPollVotesCol(db, pollId)).catch(() => null);
+    if (votes) {
+      for (let i = 0; i < votes.docs.length; i += 400) {
+        const b = writeBatch(db);
+        for (const v of votes.docs.slice(i, i + 400)) b.delete(v.ref);
+        await b.commit().catch(() => undefined);
+      }
+    }
+    await deleteDoc(sharedPollRef(db, pollId)).catch(() => undefined);
+    for (const cid of data.linkedClassIds ?? []) {
+      if (cid !== classId) {
+        await deleteDoc(sharedPollLinkRef(db, cid, pollId)).catch(() => undefined);
+      }
+    }
+  }
 }
 
 /** All local polls in the class, newest first. */

@@ -22,6 +22,8 @@ import { Ledger } from '../domain/ledger';
 import { UserError } from './errors';
 import { newId, newInviteCode, nowMillis } from './dataEnv';
 import { logToBatch } from './history';
+import { cleanupSharedGroupingsForDeletedClass } from './groupings';
+import { cleanupSharedPollsForDeletedClass } from './polls';
 import {
   CLASS_SUBCOLLECTIONS,
   classPhotoRef,
@@ -281,6 +283,10 @@ export async function deleteClass(
     if (!Ledger.canCloseBooks(records.docs.map(toRecord))) throw new UserError('NOT_SETTLED');
     await updateDoc(classRef(db, classId), { deletingAtMillis: nowMillis() });
   }
+
+  // Clean up top-level shared groupings, invites, and shared polls before deleting link subcollections.
+  await cleanupSharedGroupingsForDeletedClass(db, ownerUid, classId);
+  await cleanupSharedPollsForDeletedClass(db, classId);
 
   const keep = new Set<string>([memberRef(db, classId, ownerUid).path]);
   for (let pass = 0; pass < MAX_PASSES; pass++) {

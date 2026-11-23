@@ -497,7 +497,7 @@ function NewPollDialog({ state, onClose }: { state: ClassState; onClose: () => v
           description="Hide who voted for each choice. When off, members can see who voted for what."
         />
         <Field label="Close automatically after (optional)">
-          <input type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
+          <input type="date" min={toManilaDateInput(Date.now())} value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
         </Field>
         <div className="stack" style={{ gap: 6 }}>
           <span className="small semibold muted">Notifications</span>
@@ -672,7 +672,7 @@ function EditPollDialog({
           </Field>
         )}
         <Field label="Close automatically after (optional)">
-          <input type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
+          <input type="date" min={toManilaDateInput(Date.now())} value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
         </Field>
       </div>
     </Dialog>

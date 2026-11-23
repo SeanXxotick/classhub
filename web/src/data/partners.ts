@@ -35,7 +35,6 @@ export async function savePartnerClass(
   db: Firestore,
   classId: string,
   partner: { partnerClassId: string; name: string; tag: string; accentColor?: string },
-  proof?: { linkCode?: string; sharedGroupingId?: string },
 ): Promise<void> {
   if (!partner.partnerClassId || partner.partnerClassId === classId) return;
   await setDoc(partnerRef(db, classId, partner.partnerClassId), {
@@ -44,8 +43,6 @@ export async function savePartnerClass(
     tag: partner.tag.trim().slice(0, 24) || 'Partner',
     accentColor: (partner.accentColor ?? '').trim().slice(0, 9),
     linkedAtMillis: nowMillis(),
-    ...(proof?.linkCode ? { linkCode: proof.linkCode } : {}),
-    ...(proof?.sharedGroupingId ? { sharedGroupingId: proof.sharedGroupingId } : {}),
   });
 }
 

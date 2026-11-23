@@ -26,13 +26,13 @@ import {
   updateGroupingMeta,
 } from './groupings';
 import { newMember, newRole, type ClassRoom, type Member, type Role } from './models';
-import { newPartnerClass } from './partners';
+import { newPartnerClass, savePartnerClass } from './partners';
 import { castPollVote, createPoll, deletePoll, newPoll, type Poll } from './polls';
 import { rolloverClass } from './rollover';
 
 const PROJECT = process.env.EMU_PROJECT || 'demo-classhub';
 const HOST = '127.0.0.1';
-const PORT = 8080;
+const PORT = Number(process.env.EMU_PORT || 8080);
 
 const apps: FirebaseApp[] = [];
 const dbs = new Map<string, Firestore>();
@@ -146,31 +146,50 @@ describe('groupings', () => {
     await expect(linkSharedGrouping(as(PARTNER.uid), PARTNER.uid, partnerClass, 'BSIT 3D', shareCode!, 'G2', '')).rejects.toBeTruthy();
   });
 
-  it('unlinking a class stops it from sending this class notices and polls', async () => {
+  it('linking alone does not grant host trust; unlinking revokes trust, rotates the code, and converts members to guests', async () => {
     const { id, shareCode } = await createGrouping(as(MAYOR.uid), MAYOR.uid, classId, {
       title: 'Debate teams', courseId: '', note: '', groupCount: 2, defaultMaxSize: 3, selfJoin: true, shared: true, className: 'BSIT 3C', sectionTag: 'G1',
     });
     const STRANGER = { uid: 'gpStranger', name: 'Ivan Go' };
-    const other = await classWith(STRANGER, 'BSIT 3F', []);
+    const STRANGER_STU = { uid: 'gpStrangerStu', name: 'Lia Sy' };
+    const other = await classWith(STRANGER, 'BSIT 3F', [STRANGER_STU]);
     await linkSharedGrouping(as(STRANGER.uid), STRANGER.uid, other, 'BSIT 3F', shareCode!, 'G4', '');
     const trusted = () => getDoc(doc(adminDb, 'classes', classId, 'partners', other)).then((d) => d.exists());
-    expect(await trusted()).toBe(true);
+    // H1: linking with a share code alone never writes the host's partner record.
+    expect(await trusted()).toBe(false);
     const notice = () =>
       setDoc(doc(as(STRANGER.uid), 'classes', classId, 'outbox', `n${Date.now()}`), {
         kind: 'ANNOUNCEMENT', audience: 'CLASS', audienceId: '', title: 'Fund due today', body: '', createdByUid: STRANGER.uid, createdAtMillis: Date.now(), fromClassId: other,
       });
-    await notice();
+    await expect(notice()).rejects.toBeTruthy();
 
+    // Host officer explicitly trusts the linked class, and a partner student joins Group 1.
+    await savePartnerClass(as(MAYOR.uid), classId, { partnerClassId: other, name: 'BSIT 3F', tag: 'G4' });
+    expect(await trusted()).toBe(true);
+    await notice();
+    const gBefore = await stored(['sharedGroupings', id]);
+    await joinGroup(as(STRANGER_STU.uid), other, id, STRANGER_STU.uid, gBefore.groups[0].id, false, true, {
+      name: 'Sy, Lia', classId: other, tag: 'G4',
+    });
+
+    // Host unlinks the partner class: trust is removed, shareCode rotates, and the seated student becomes a guest.
     await unlinkSharedGrouping(as(MAYOR.uid), MAYOR.uid, classId, { ...(await stored(['sharedGroupings', id])), id, shared: true }, other);
     expect(await trusted()).toBe(false);
     await expect(notice()).rejects.toBeTruthy();
-    expect((await stored(['sharedGroupings', id])).linkedClassIds).toEqual([classId]);
+    const gAfter = await stored(['sharedGroupings', id]);
+    expect(gAfter.linkedClassIds).toEqual([classId]);
+    expect(gAfter.shareCode).not.toBe(shareCode);
+    expect(gAfter.groups[0].memberUids).toEqual([]);
+    expect(gAfter.groups[0].guests.map((x) => ({ name: x.name, tag: x.tag }))).toEqual([{ name: 'Sy, Lia', tag: 'G4' }]);
+    // Old share code can no longer re-link.
+    await expect(linkSharedGrouping(as(STRANGER.uid), STRANGER.uid, other, 'BSIT 3F', shareCode!, 'G4', '')).rejects.toBeTruthy();
 
     // The same when the host deletes a shared grouping a class is still linked to.
     const second = await createGrouping(as(MAYOR.uid), MAYOR.uid, classId, {
       title: 'Debate teams 2', courseId: '', note: '', groupCount: 1, defaultMaxSize: 3, selfJoin: true, shared: true, className: 'BSIT 3C', sectionTag: 'G1',
     });
     await linkSharedGrouping(as(STRANGER.uid), STRANGER.uid, other, 'BSIT 3F', second.shareCode!, 'G4', '');
+    await savePartnerClass(as(MAYOR.uid), classId, { partnerClassId: other, name: 'BSIT 3F', tag: 'G4' });
     expect(await trusted()).toBe(true);
     await deleteGrouping(as(MAYOR.uid), MAYOR.uid, classId, { ...(await stored(['sharedGroupings', second.id])), id: second.id, shared: true });
     expect(await trusted()).toBe(false);
@@ -245,6 +264,33 @@ describe('shared polls', () => {
     await deletePoll(as(HOSTM.uid), HOSTM.uid, host, second);
     expect(await exists('sharedPolls', second.id)).toBe(false);
     expect(await exists('classes', host, 'sharedPollLinks', second.id)).toBe(false);
+  });
+
+  it('deleting a host class cleans up its hosted shared groupings, invites, and shared polls', async () => {
+    const HOSTM2 = { uid: 'gpHostDel', name: 'Mina Cruz' };
+    const PARTM2 = { uid: 'gpPartDel', name: 'Niko Ong' };
+    const host = await classWith(HOSTM2, 'BSCS 4A-G1', []);
+    const partner = await classWith(PARTM2, 'BSCS 4A-G2', []);
+    const { id: sharedGrpId, shareCode } = await createGrouping(as(HOSTM2.uid), HOSTM2.uid, host, {
+      title: 'Capstone', courseId: '', note: '', groupCount: 1, defaultMaxSize: 3, selfJoin: true, shared: true, className: 'BSCS 4A-G1', sectionTag: 'G1',
+    });
+    await linkSharedGrouping(as(PARTM2.uid), PARTM2.uid, partner, 'BSCS 4A-G2', shareCode!, 'G2', '');
+    const pollId = await createPoll(as(HOSTM2.uid), HOSTM2.uid, host, {
+      question: 'Demo slot?', options: ['AM', 'PM'], courseId: '', multi: false, maxChoices: 1, anonymous: false, closesAtMillis: 0,
+      notifyOwnClass: false, notifyPartners: false, hostClassName: 'BSCS 4A-G1', hostTag: 'G1',
+      partnerClasses: [newPartnerClass({ partnerClassId: partner, name: 'BSCS 4A-G2', tag: 'G2' })],
+    });
+    const exists = (...path: string[]) => getDoc(doc(adminDb, path[0], ...path.slice(1))).then((d) => d.exists());
+    expect(await exists('sharedGroupings', sharedGrpId)).toBe(true);
+    expect(await exists('groupingInvites', shareCode!)).toBe(true);
+    expect(await exists('sharedPolls', pollId)).toBe(true);
+    expect(await exists('classes', partner, 'sharedPollLinks', pollId)).toBe(true);
+
+    await deleteClass(as(HOSTM2.uid), HOSTM2.uid, host);
+    expect(await exists('sharedGroupings', sharedGrpId)).toBe(false);
+    expect(await exists('groupingInvites', shareCode!)).toBe(false);
+    expect(await exists('sharedPolls', pollId)).toBe(false);
+    expect(await exists('classes', partner, 'sharedPollLinks', pollId)).toBe(false);
   });
 });
 

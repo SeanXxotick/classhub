@@ -256,12 +256,10 @@ function GroupingCard({
     void syncSharedRoster(db, state.classId, grouping, localRoster, state.room?.accentColor ?? '').catch(() => undefined);
   }, [manage, grouping.shared, grouping.id, state.classId, storedRosterSig, localRosterSig, storedAccent, localAccent]);
 
-  // Ensure any class linked via a shared grouping is registered as a mutual partner class for shared polls.
+  // Ensure any class linked via a shared grouping is registered in THIS class's partner list for shared polls.
   const partners = usePartnerClasses(db, state.classId, manage && !!grouping.shared).data;
-  const syncedMutualRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!manage || !grouping.shared || !partners) return;
-    const myLink = grouping.linkedClasses?.[state.classId];
     for (const cid of grouping.linkedClassIds ?? []) {
       if (cid === state.classId) continue;
       const other = grouping.linkedClasses?.[cid];
@@ -276,23 +274,8 @@ function GroupingCard({
           accentColor: wantAccent,
         }).catch(() => undefined);
       }
-      const mutualKey = `${state.classId}:${cid}:${grouping.id}`;
-      if (myLink && !syncedMutualRef.current.has(mutualKey)) {
-        syncedMutualRef.current.add(mutualKey);
-        void savePartnerClass(
-          db,
-          cid,
-          {
-            partnerClassId: state.classId,
-            name: myLink.name || state.room?.name || 'Partner class',
-            tag: myLink.tag || mySectionTag,
-            accentColor: state.room?.accentColor ?? myLink.accentColor ?? '',
-          },
-          { sharedGroupingId: grouping.id },
-        ).catch(() => undefined);
-      }
     }
-  }, [manage, grouping.shared, grouping.id, grouping.linkedClassIds, grouping.linkedClasses, partners, state.classId, state.room?.name, state.room?.accentColor, mySectionTag]);
+  }, [manage, grouping.shared, grouping.linkedClassIds, grouping.linkedClasses, partners, state.classId]);
 
   const combinedEligible = useMemo(() => {
     const seen = new Set<string>();
@@ -422,7 +405,7 @@ function GroupingCard({
                 {totalGuests > 0 ? ` · ${totalGuests} guest${totalGuests === 1 ? '' : 's'}` : ''}
                 {myGroup ? ` · ${myGroup.name}` : ''}
                 {grouping.locked ? ' · Locked' : ''}
-                {!myGroup && state.takes(grouping.courseId) && (
+                {!myGroup && !grouping.locked && grouping.selfJoin && state.takes(grouping.courseId) && (
                   <>
                     {' · '}
                     <span className="grp-req-pill">{myPendingGroup ? 'No group yet · Pending' : 'No group yet'}</span>
@@ -446,7 +429,7 @@ function GroupingCard({
               title={grouping.title}
               items={[
                 { label: 'Copy group list', icon: 'list', onClick: () => void copyList() },
-                manage && grouping.shared && { label: 'Share code & linked classes', icon: 'link', onClick: () => setSharingOpen(true) },
+                manage && grouping.shared && { label: isHost ? 'Share code & linked classes' : 'Linked classes', icon: 'link', onClick: () => setSharingOpen(true) },
                 manage && { label: grouping.hasLeader ? 'Turn off leaders' : 'Turn on leaders', icon: 'shield', onClick: onToggleLeader },
                 manage && { label: grouping.locked ? 'Unlock grouping' : 'Lock grouping', icon: 'lock', onClick: onToggleLock },
                 manage && { label: 'Add a group', icon: 'plus', onClick: () => setAddingSlot(true) },
@@ -465,7 +448,7 @@ function GroupingCard({
 
         {cardOpen && (
           <>
-            {!myGroup && state.takes(grouping.courseId) && (
+            {!myGroup && !grouping.locked && grouping.selfJoin && state.takes(grouping.courseId) && (
               <Notice tone="danger">
                 {myPendingGroup
                   ? `You do not have a group yet. Waiting for ${myPendingGroup.name} to approve your request.`
@@ -486,7 +469,7 @@ function GroupingCard({
                     </span>
                   ))}
                 </div>
-                {manage && grouping.shareCode && (
+                {manage && isHost && grouping.shareCode && (
                   <button type="button" className="grp-code-pill" onClick={() => setSharingOpen(true)}>
                     {grouping.shareCode}
                   </button>
@@ -1396,11 +1379,11 @@ function ShareLinkedDialog({
 
   return (
     <Dialog
-      title="Share & linked classes"
+      title={isHost ? 'Share & linked classes' : 'Linked classes'}
       onClose={run.busy ? () => undefined : onClose}
       actions={
         <>
-          {grouping.shareCode && (
+          {isHost && grouping.shareCode && (
             <button type="button" className="btn outline" onClick={() => void copyCode()}>
               Copy code
             </button>
@@ -1412,7 +1395,7 @@ function ShareLinkedDialog({
       }
     >
       <div className="stack">
-        {grouping.shareCode && <div className="grp-code-hero">{grouping.shareCode}</div>}
+        {isHost && grouping.shareCode && <div className="grp-code-hero">{grouping.shareCode}</div>}
         <div className="small bold">{`Linked (${linked.length}/${SHARED_MAX_CLASSES})`}</div>
         <div className="stack" style={{ gap: 6 }}>
           {linked.map((c) => (
