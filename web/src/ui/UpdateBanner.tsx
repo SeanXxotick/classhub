@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../data/firebase';
 import { Button, Notice } from '../design';
-import { installedVersion, updateState, type LatestRelease } from '../domain/appUpdate';
+import { browserDownloadUrl, installedVersion, updateState, type LatestRelease } from '../domain/appUpdate';
 
 // Later hides the banner only until the app is opened again: a fresh start, or coming back to it after
 // AWAY_MS in the background (most people never close an Android app, they switch back to it). Nothing is
@@ -56,6 +56,7 @@ export function UpdateBanner() {
   const [installed] = useState(installedAppVersion);
   const latest = useLatestRelease(installed !== null);
   const [dismissed, setDismissed] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (installed === null) return;
@@ -73,6 +74,16 @@ export function UpdateBanner() {
   if (state === 'none' || !latest) return null;
 
   const later = () => setDismissed(latest.versionCode);
+  const downloadHref = browserDownloadUrl(latest.downloadUrl);
+  const copyLink = () => {
+    navigator.clipboard?.writeText(downloadHref).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      },
+      () => undefined,
+    );
+  };
 
   return (
     <div className="update-banner">
@@ -82,9 +93,12 @@ export function UpdateBanner() {
           {latest.notes && <div className="muted small">What is new: {latest.notes}</div>}
         </div>
         <div className="update-banner-actions">
-          <a className="ch-btn ch-solid ch-small" href={latest.downloadUrl} target="_blank" rel="noopener noreferrer">
+          <a className="ch-btn ch-solid ch-small" href={downloadHref} target="_blank" rel="noopener noreferrer">
             Download
           </a>
+          <Button variant="outline" size="small" onClick={copyLink}>
+            {copied ? 'Copied' : 'Copy link'}
+          </Button>
           {state === 'available' && (
             <Button variant="text" size="small" onClick={later}>
               Later

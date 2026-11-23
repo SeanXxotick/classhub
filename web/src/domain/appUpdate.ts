@@ -41,3 +41,22 @@ export function updateState(installed: number | null, latest: LatestRelease | nu
   if (installed < latest.minVersionCode) return 'required';
   return dismissedCode === latest.versionCode ? 'none' : 'available';
 }
+
+/**
+ * Rewrites a drive.google.com file link to Google's direct download host (drive.usercontent.google.com).
+ * Android's Google Drive app claims drive.google.com links via App Links, then immediately exits on APK
+ * download URLs and bounces the user back to ClassHub without downloading anything.
+ */
+export function browserDownloadUrl(rawUrl: string): string {
+  try {
+    const u = new URL(rawUrl);
+    if (u.hostname !== 'drive.google.com') return rawUrl;
+    const fromQuery = u.searchParams.get('id');
+    const fromPath = /^\/file\/d\/([^/]+)/.exec(u.pathname)?.[1];
+    const id = fromQuery || fromPath;
+    if (!id) return rawUrl;
+    return `https://drive.usercontent.google.com/download?id=${encodeURIComponent(id)}&export=download&confirm=t`;
+  } catch {
+    return rawUrl;
+  }
+}

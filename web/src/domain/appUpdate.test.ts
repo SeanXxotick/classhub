@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { installedVersion, updateState, type LatestRelease } from './appUpdate';
+import { browserDownloadUrl, installedVersion, updateState, type LatestRelease } from './appUpdate';
 
 const latest = (versionCode: number, minVersionCode = 0, downloadUrl = 'https://example.com/app.apk'): LatestRelease => ({
   versionCode,
@@ -42,5 +42,28 @@ describe('updateState', () => {
   });
   it('ignores a link that is not https', () => {
     expect(updateState(7, latest(8, 0, 'http://example.com/app.apk'), null)).toBe('none');
+  });
+});
+
+describe('browserDownloadUrl', () => {
+  it('rewrites drive.google.com uc and file links to drive.usercontent.google.com', () => {
+    expect(browserDownloadUrl('https://drive.google.com/uc?export=download&id=abc123')).toBe(
+      'https://drive.usercontent.google.com/download?id=abc123&export=download&confirm=t',
+    );
+    expect(browserDownloadUrl('https://drive.google.com/file/d/xyz789/view?usp=sharing')).toBe(
+      'https://drive.usercontent.google.com/download?id=xyz789&export=download&confirm=t',
+    );
+    expect(browserDownloadUrl('https://drive.google.com/open?id=open456')).toBe(
+      'https://drive.usercontent.google.com/download?id=open456&export=download&confirm=t',
+    );
+  });
+
+  it('leaves non-Drive links unchanged', () => {
+    expect(browserDownloadUrl('https://github.com/org/repo/releases/download/v2.0.5/app.apk')).toBe(
+      'https://github.com/org/repo/releases/download/v2.0.5/app.apk',
+    );
+    expect(browserDownloadUrl('https://drive.usercontent.google.com/download?id=abc123&export=download')).toBe(
+      'https://drive.usercontent.google.com/download?id=abc123&export=download',
+    );
   });
 });
