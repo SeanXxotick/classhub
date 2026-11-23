@@ -88,6 +88,21 @@ describe('unseenCounts', () => {
     expect(unseenCounts(base({ joinRequests: 1, groupActions: 2 })).MEMBERS).toBe(3);
     expect(unseenCounts(base({ seen: null, joinRequests: 0, groupActions: 2 })).MEMBERS).toBe(2);
   });
+
+  it('for an irregular student, skips untagged announcements, untagged polls, and shared polls', () => {
+    const takes = (id: string) => id === 'se';
+    const posts = [
+      { id: 'block', courseId: '', createdByUid: 'x', createdAtMillis: 150 },
+      { id: 'se', courseId: 'se', createdByUid: 'x', createdAtMillis: 160 },
+      { id: 'pe', courseId: 'pe', createdByUid: 'x', createdAtMillis: 170 },
+    ];
+    const polls = [
+      { courseId: '', createdByUid: 'x', createdAtMillis: 150 },
+      { courseId: 'se', createdByUid: 'x', createdAtMillis: 160 },
+      { courseId: '', createdByUid: 'partner', createdAtMillis: 170, shared: true },
+    ];
+    expect(unseenCounts(base({ posts, polls, isIrregular: true, takes })).NEWS).toBe(2);
+  });
 });
 
 describe('groupingAttentionCount', () => {

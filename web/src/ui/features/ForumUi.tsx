@@ -82,13 +82,15 @@ export function TagBadge({ state, courseId }: { state: ClassState; courseId: str
   );
 }
 
-/** The tag picker: all tags, General, or one course. */
+/** The tag picker: all tags, General, or one course. Irregular students only see their taken courses. */
 export function TagSelect({ state, value, onChange, label, all, allLabel = 'All tags' }: { state: ClassState; value: string; onChange: (v: string) => void; label: string; all?: boolean; allLabel?: string }) {
+  const courseOnly = state.isIrregular && !state.can('ANNOUNCEMENTS_MANAGE');
+  const courses = courseOnly ? state.courses.filter((c) => state.takes(c.id)) : state.courses;
   return (
     <select className="input forum-tag-select" aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}>
       {all && <option value="*">{allLabel}</option>}
-      <option value="">{all ? 'General' : 'General (the whole class)'}</option>
-      {state.courses.map((c) => (
+      {!courseOnly && <option value="">{all ? 'General' : 'General (the whole class)'}</option>}
+      {courses.map((c) => (
         <option key={c.id} value={c.id}>
           {c.name}
         </option>
@@ -468,9 +470,11 @@ function QuestionPage({ state, q, authors, onBack, onPromote }: {
 
 function AskDialog({ state, question, onClose, onAsked }: { state: ClassState; question?: ForumQuestion; onClose: () => void; onAsked?: (id: string) => void }) {
   const run = useRun();
+  const courseOnly = state.isIrregular && !state.can('ANNOUNCEMENTS_MANAGE');
+  const takenCourses = courseOnly ? state.courses.filter((c) => state.takes(c.id)) : state.courses;
   const [title, setTitle] = useState(question?.title ?? '');
   const [body, setBody] = useState(question?.body ?? '');
-  const [courseId, setCourseId] = useState(question?.courseId ?? '');
+  const [courseId, setCourseId] = useState(() => question?.courseId ?? (courseOnly ? takenCourses[0]?.id ?? '' : ''));
   const [anonymous, setAnonymous] = useState(false);
   const course = state.courses.find((c) => c.id === courseId);
   const me = { uid: state.myUid, name: state.members.find((m) => m.id === state.myUid)?.name ?? '' };
@@ -487,7 +491,7 @@ function AskDialog({ state, question, onClose, onAsked }: { state: ClassState; q
           <button className="btn text" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn solid" disabled={!title.trim() || run.busy} onClick={save}>
+          <button className="btn solid" disabled={!title.trim() || (courseOnly && !courseId) || run.busy} onClick={save}>
             {question ? 'Save' : 'Ask'}
           </button>
         </>

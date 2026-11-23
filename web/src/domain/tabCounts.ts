@@ -60,7 +60,7 @@ export interface CountInput {
   records: { memberId: string; createdByUid: string; createdAtMillis: number; voidedAtMillis: number }[];
   schedule: { courseId: string; createdByUid: string; createdAtMillis: number; status: string }[];
   contents: { courseId: string; createdByUid: string; createdAtMillis: number }[];
-  posts: { id: string; createdByUid: string; createdAtMillis: number }[];
+  posts: { id: string; courseId?: string; createdByUid: string; createdAtMillis: number }[];
   /** Polls (local and shared); new ones from someone else count on News. */
   polls?: { courseId: string; createdByUid: string; createdAtMillis: number; shared?: boolean }[];
   /** Comments and replies (at least those newer than the News time). */
@@ -71,6 +71,8 @@ export interface CountInput {
   joinRequests: number;
   /** Grouping items needing attention (pending requests to approve + open unassigned groupings). */
   groupActions?: number;
+  /** True for irregular students who only see items tagged with a course they take (never shared/untagged). */
+  isIrregular?: boolean;
   /** False for a course this user does not take. */
   takes: (courseId: string) => boolean;
 }
@@ -88,8 +90,10 @@ export function unseenCounts(i: CountInput): TabCounts {
   counts.CONTENTS = i.contents.filter((c) => i.takes(c.courseId) && fresh('CONTENTS', c.createdAtMillis, c.createdByUid)).length;
 
   const myPosts = new Set(i.posts.filter((p) => p.createdByUid === i.myUid).map((p) => p.id));
-  const newPosts = i.posts.filter((p) => fresh('NEWS', p.createdAtMillis, p.createdByUid)).length;
-  const newPolls = (i.polls ?? []).filter((p) => (p.shared || i.takes(p.courseId)) && fresh('NEWS', p.createdAtMillis, p.createdByUid)).length;
+  const newPosts = i.posts.filter((p) => i.takes(p.courseId ?? '') && fresh('NEWS', p.createdAtMillis, p.createdByUid)).length;
+  const newPolls = (i.polls ?? []).filter(
+    (p) => ((p.shared && !i.isIrregular) || i.takes(p.courseId)) && fresh('NEWS', p.createdAtMillis, p.createdByUid),
+  ).length;
   // A comment on my announcement, or a reply to my comment.
   const toMe = i.comments.filter(
     (c) => c.removedAtMillis === 0 && fresh('NEWS', c.createdAtMillis, c.uid) && (myPosts.has(c.postId) || (c.parentId !== '' && i.myCommentIds.has(c.parentId))),

@@ -140,8 +140,9 @@ function MemberDetailContent({ member, readOnly }: { member: Member; readOnly: b
         <Avatar photo={state.avatars.get(member.id)} name={member.name} color={hexColor(currentRole?.colorHex, '#6B768A')} size={52} />
         <span className="grow">
           <span className="bold" style={{ display: 'block' }}>{member.id === state.myUid ? `${member.name} (you)` : member.name}</span>
-          <span className="small muted">Current role</span>
+          <span className="small muted">{member.irregular ? 'Irregular student' : 'Current role'}</span>
         </span>
+        {member.irregular && <RoleChip name="Irregular" color="#D97706" />}
         <RoleChip name={currentRole?.name ?? 'No role'} color={currentRole?.colorHex ?? '#6B768A'} />
       </div>
 
@@ -209,9 +210,33 @@ function MemberDetailContent({ member, readOnly }: { member: Member; readOnly: b
       </div>
       )}
 
+      {!readOnly && canChangeRole && !(currentRole && (currentRole.locked || currentRole.permissions.length > 0)) && (
+      <div className="card">
+        <div className="section-label" style={{ padding: '0 0 6px' }}>Enrollment status</div>
+        <Switch
+          label="Irregular student"
+          sub="Only sees announcements, schedule, contents, groups, and polls for the courses they take. Excluded from whole-class charges and block fund totals."
+          checked={!!member.irregular}
+          onChange={(on) => actions.setIrregular(member, on)}
+        />
+      </div>
+      )}
+
       {!readOnly && (
       <div className="card">
-        <div className="section-label" style={{ padding: '0 0 6px' }}>Courses</div>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <div className="section-label" style={{ padding: 0 }}>Courses</div>
+          {member.irregular && state.courses.length > 0 && taken.size > 0 && (
+            <button type="button" className="btn text small" onClick={() => setTakenDraft({ key: takenKey, ids: new Set() })}>
+              Uncheck all
+            </button>
+          )}
+        </div>
+        {member.irregular && state.courses.length > 0 && (
+          <p className="small muted" style={{ margin: '0 0 8px' }}>
+            Turn on only the courses this irregular student takes.
+          </p>
+        )}
         {state.courses.length === 0 ? (
           <p className="muted" style={{ margin: 0 }}>This class has no courses yet. Add them under Home → Courses.</p>
         ) : (

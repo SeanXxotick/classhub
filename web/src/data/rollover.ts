@@ -101,9 +101,11 @@ export async function rolloverClass(db: Firestore, ownerUid: string, source: Rol
   first.set(doc(db, 'classes', classId, 'rollover', 'source'), { fromClassId: source.room.id });
   await first.commit();
 
-  const others = source.members.filter((m) => m.id !== ownerUid);
+  // Irregular students are cross-enrolled for specific courses only and do not carry over with the block.
+  const carriedMembers = source.members.filter((m) => m.id === ownerUid || !m.irregular);
+  const others = carriedMembers.filter((m) => m.id !== ownerUid);
   const openingRecords = input.carryBalances
-    ? source.members
+    ? carriedMembers
         .map((m) => ({ m, balance: source.balances.get(m.id) ?? 0 }))
         .filter(({ balance }) => Number.isSafeInteger(balance) && balance !== 0 && Math.abs(balance) <= 100_000_000)
         .map(({ m, balance }) =>

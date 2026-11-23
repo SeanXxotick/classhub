@@ -316,7 +316,7 @@ export function LedgerSummaryCard({ state }: { state: ClassState }) {
   ) : (
     <>
       <MyBalanceCard records={state.records} balanceCentavos={state.balanceOf(state.myUid)} myUid={state.myUid} />
-      {state.summary && (
+      {!state.isIrregular && state.summary && (
         <div className="card">
           <div className="small semibold muted">Class fund</div>
           <div className="tiles">
@@ -413,10 +413,11 @@ export function LedgerTab({
   onUndoCharge: (batch: ChargeBatch, reason: string) => void;
   onRecordPayout: (batchId: string) => void;
 }) {
-  const [filter, setFilter] = useState<LedgerFilter>(() => (ledgerStartsOnMine(state.classId) ? 'MINE' : 'ALL'));
+  const [filter, setFilter] = useState<LedgerFilter>(() => (state.isIrregular || ledgerStartsOnMine(state.classId) ? 'MINE' : 'ALL'));
+  const activeFilter: LedgerFilter = state.isIrregular ? 'MINE' : filter;
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<LedgerEntry | null>(null);
-  const filteredEntries = useMemo(() => LedgerView.filter(state.records, filter, state.myUid), [state.records, filter, state.myUid]);
+  const filteredEntries = useMemo(() => LedgerView.filter(state.records, activeFilter, state.myUid), [state.records, activeFilter, state.myUid]);
   const entries = useMemo(() => {
     const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
     if (words.length === 0) return filteredEntries;
@@ -456,18 +457,22 @@ export function LedgerTab({
           {state.records.length > 0 && (
             <SearchInput aria-label="Search ledger" placeholder="Search by student, note or course" value={search} onChange={(e) => setSearch(e.target.value)} />
           )}
-          <div className="chips" role="tablist" aria-label="Filter records">
-            {LEDGER_FILTERS.map((f) => (
-              <button key={f.id} type="button" role="tab" aria-selected={f.id === filter} className={'chip' + (f.id === filter ? ' selected' : '')} onClick={() => setFilter(f.id)}>
-                {f.label}
-              </button>
-            ))}
-          </div>
+          {!state.isIrregular && (
+            <div className="chips" role="tablist" aria-label="Filter records">
+              {LEDGER_FILTERS.map((f) => (
+                <button key={f.id} type="button" role="tab" aria-selected={f.id === activeFilter} className={'chip' + (f.id === activeFilter ? ' selected' : '')} onClick={() => setFilter(f.id)}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="card flush">
             {entries.length === 0 && (
               <p className="empty">
                 {state.records.length === 0
-                  ? 'No records yet. Officers with the ledger permission can add one with the + button.'
+                  ? state.isIrregular
+                    ? 'No records yet.'
+                    : 'No records yet. Officers with the ledger permission can add one with the + button.'
                   : search.trim()
                     ? 'Nothing matches your search.'
                     : 'Nothing here for this filter.'}

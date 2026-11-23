@@ -68,16 +68,17 @@ export function watchVisibleRecords(
     recordUnsubs = [];
   };
 
-  const key = () => `${roleId}|${room?.balanceVisibility ?? ''}|${role?.permissions.join(',') ?? ''}|${role?.locked ?? ''}`;
+  const key = () => `${roleId}|${room?.balanceVisibility ?? ''}|${role?.permissions.join(',') ?? ''}|${role?.locked ?? ''}|${member?.irregular ? '1' : '0'}`;
 
   const decide = () => {
     if (stopped) return;
+    const irregular = !!member?.irregular;
     let wanted: RecordScope | 'WAIT';
     if (member === null || room === null || role === null) wanted = 'NONE';
     else if (member === undefined || room === undefined || role === undefined) wanted = 'WAIT';
-    else wanted = recordScope(role, room);
+    else wanted = irregular ? 'OWN' : recordScope(role, room);
     if (wanted === 'ALL' && refusedFor === key()) wanted = 'OWN';
-    if (wanted === current) return;
+    if (wanted === current && (wanted !== 'OWN' || !irregular)) return;
     current = wanted;
     stopRecords();
     if (wanted === 'WAIT') return;
@@ -101,7 +102,7 @@ export function watchVisibleRecords(
       return;
     }
     let own: LedgerRecord[] | undefined;
-    let payouts: LedgerRecord[] | undefined;
+    let payouts: LedgerRecord[] | undefined = irregular ? [] : undefined;
     const emit = () => {
       if (!own || !payouts) return;
       const byId = new Map<string, LedgerRecord>();
@@ -116,8 +117,10 @@ export function watchVisibleRecords(
     };
     options.onListen?.('OWN');
     recordUnsubs.push(onSnapshot(query(recordsCol(db, classId), where('memberId', '==', uid)), (s) => { own = s.docs.map(toRecord); emit(); }, refused));
-    options.onListen?.('EXPENSE');
-    recordUnsubs.push(onSnapshot(query(recordsCol(db, classId), where('type', '==', 'EXPENSE')), (s) => { payouts = s.docs.map(toRecord); emit(); }, refused));
+    if (!irregular) {
+      options.onListen?.('EXPENSE');
+      recordUnsubs.push(onSnapshot(query(recordsCol(db, classId), where('type', '==', 'EXPENSE')), (s) => { payouts = s.docs.map(toRecord); emit(); }, refused));
+    }
   };
 
   const watchRole = (id: string) => {

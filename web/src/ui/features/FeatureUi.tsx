@@ -484,7 +484,11 @@ export function StatementCard({ state }: { state: ClassState }) {
 
 export function NewsTab({ state }: { state: ClassState }) {
   const manage = state.can('ANNOUNCEMENTS_MANAGE');
-  const allPosts = useAnnouncements(db, state.classId, true).data;
+  const rawPosts = useAnnouncements(db, state.classId, true).data;
+  const allPosts = useMemo(
+    () => (rawPosts ? (manage ? rawPosts : rawPosts.filter((p) => state.takes(p.courseId))) : undefined),
+    [rawPosts, manage, state],
+  );
   // ?forum=all opens the Forum, ?forum=<id> one question, ?polls=1 opens Polls.
   const [params, setParams] = useSearchParams();
   const forumParam = params.get('forum');
@@ -493,7 +497,11 @@ export function NewsTab({ state }: { state: ClassState }) {
   const openForum = (id: string) => setParams({ tab: 'NEWS', forum: id || 'all' }, { replace: !id });
   const openPolls = () => setParams({ tab: 'NEWS', polls: '1' }, { replace: true });
   const showAnnouncements = () => setParams({ tab: 'NEWS' }, { replace: true });
-  const questions = useForum(db, state.classId, manage, true).data;
+  const rawQuestions = useForum(db, state.classId, manage, true).data;
+  const questions = useMemo(
+    () => (rawQuestions ? (manage ? rawQuestions : rawQuestions.filter((q) => state.takes(q.courseId))) : undefined),
+    [rawQuestions, manage, state],
+  );
   const authors = useForumAuthors(db, state.classId, state.myUid, manage, true).data ?? [];
   const localPolls = usePolls(db, state.classId, true).data;
   const sharedPolls = useSharedPolls(db, state.classId, state.myUid, true, true);
@@ -514,7 +522,7 @@ export function NewsTab({ state }: { state: ClassState }) {
   const openPollsCount = useMemo(
     () =>
       (polls ?? []).filter(
-        (p) => (p.shared || state.takes(p.courseId)) && isPollOpen(p, Date.now()) && !myVotedPollIds.has(p.id),
+        (p) => ((!state.isIrregular && p.shared) || state.takes(p.courseId)) && isPollOpen(p, Date.now()) && !myVotedPollIds.has(p.id),
       ).length,
     [polls, state, myVotedPollIds],
   );

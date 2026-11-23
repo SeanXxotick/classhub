@@ -807,8 +807,9 @@ service cloud.firestore {
 
     function isCoursesChangeByManager(c) {
       return can(c, 'MEMBERS_MANAGE')
-        && changesOnly(['excludedCourseIds'])
-        && request.resource.data.excludedCourseIds is list;
+        && changesOnly(['excludedCourseIds', 'irregular'])
+        && request.resource.data.excludedCourseIds is list
+        && request.resource.data.get('irregular', false) is bool;
     }
 
     // Deleting a role moves its members to the default role in the same batch.
@@ -952,20 +953,25 @@ service cloud.firestore {
     // The locked Mayor role, anyone with RECORDS_MANAGE, any member when the class shows balances to
     // EVERYONE, and any officer (a role with at least one permission) when it shows them to OFFICERS.
     // Matches canSeeAllBalances in web/src/domain/permissions.ts.
+    function isIrregular(c) {
+      return isMember(c) && get(memberPath(c, uid())).data.get('irregular', false) == true;
+    }
+
     function seesAllRecords(c) {
       let role = myRole(c);
       let visibility = get(classPath(c)).data.balanceVisibility;
       return isMember(c)
+        && !isIrregular(c)
         && (role.get('locked', false) == true
             || 'RECORDS_MANAGE' in role.permissions
             || visibility == 'EVERYONE'
             || (visibility == 'OFFICERS' && role.permissions.size() > 0));
     }
 
-    // Everyone else in the class reads their own records and every pay-out. Their queries must say so:
-    // where('memberId', '==', uid) or where('type', '==', 'EXPENSE').
+    // Everyone else in the class reads their own records and (for regular block members) every pay-out.
+    // Irregular students read only their own records.
     function seesOwnRecord(c) {
-      return isMember(c) && (resource.data.memberId == uid() || resource.data.type == 'EXPENSE');
+      return isMember(c) && (resource.data.memberId == uid() || (resource.data.type == 'EXPENSE' && !isIrregular(c)));
     }
 
     // ---- Payment claims

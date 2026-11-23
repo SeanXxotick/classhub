@@ -43,7 +43,8 @@ const toFields = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k,
 /** The uids a notice is for, without the person who caused it. members and roles are the class's documents. */
 export function audienceOf(notice, members, roles, doneUids = new Set()) {
   let list = members;
-  if (notice.audience === 'COURSE') list = members.filter((m) => !(m.excludedCourseIds ?? []).includes(notice.audienceId));
+  if (notice.audience === 'CLASS') list = members.filter((m) => !m.irregular);
+  else if (notice.audience === 'COURSE') list = members.filter((m) => !(m.excludedCourseIds ?? []).includes(notice.audienceId));
   else if (notice.audience === 'USER') list = members.filter((m) => m.id === notice.audienceId);
   else if (notice.audience === 'PERMISSION') {
     const allowed = new Set(roles.filter((r) => r.locked === true || (r.permissions ?? []).includes(notice.audienceId)).map((r) => r.id));

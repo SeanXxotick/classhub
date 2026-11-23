@@ -306,6 +306,32 @@ export async function setMemberCourses(db: Firestore, actorUid: string, classId:
   await explainRefusal(db, classId, () => batch.commit());
 }
 
+/** Marks or unmarks a member as an irregular student, optionally updating their excluded courses in the same write. */
+export async function setMemberIrregular(
+  db: Firestore,
+  actorUid: string,
+  classId: string,
+  memberUid: string,
+  irregular: boolean,
+  excludedCourseIds?: string[],
+): Promise<void> {
+  const batch = writeBatch(db);
+  batch.update(memberRef(db, classId, memberUid), {
+    irregular,
+    ...(excludedCourseIds !== undefined ? { excludedCourseIds: [...new Set(excludedCourseIds)] } : {}),
+  });
+  const name = await memberName(db, classId, memberUid);
+  await logToBatch(
+    batch,
+    db,
+    classId,
+    actorUid,
+    'MEMBER_COURSES',
+    irregular ? `Marked ${name} as an irregular student` : `Removed irregular status from ${name}`,
+  );
+  await explainRefusal(db, classId, () => batch.commit());
+}
+
 /** Removes someone else from the class. Their records stay. The Mayor cannot be removed. */
 export async function removeMember(db: Firestore, actorUid: string, classId: string, memberUid: string): Promise<void> {
   if (memberUid === actorUid) throw new UserError('OWN_ROLE', 'Use Leave class to leave the class yourself.');

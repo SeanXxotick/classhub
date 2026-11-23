@@ -73,7 +73,9 @@ export function PollsView({ state, polls, votes }: { state: ClassState; polls: P
   const run = useRun();
 
   const visible = useMemo(() => {
-    return (polls ?? []).filter((p) => (manage || p.shared || state.takes(p.courseId)) && (tag === '*' || p.courseId === tag));
+    return (polls ?? []).filter(
+      (p) => (manage || (!state.isIrregular && p.shared) || state.takes(p.courseId)) && (tag === '*' || p.courseId === tag),
+    );
   }, [polls, manage, state, tag]);
 
   return (

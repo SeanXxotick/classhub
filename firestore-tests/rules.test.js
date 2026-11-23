@@ -2418,6 +2418,23 @@ async function main() {
     await assertFails(setDoc(doc(db('ann'), 'classes/grp2/outbox/p3'), notice('grp', 'ann')));
   });
 
+  await test('Irregular student: officer toggles irregular status, and irregular students read only their own records', async () => {
+    // Only MEMBERS_MANAGE can mark a member irregular.
+    await assertFails(updateDoc(doc(db('ann'), 'classes/grp/members/cat'), { irregular: true, excludedCourseIds: ['pe'] }));
+    await assertSucceeds(updateDoc(doc(db('gmayor'), 'classes/grp/members/cat'), { irregular: true, excludedCourseIds: ['pe'] }));
+    // Seed a record for ann, a record for cat, and a class EXPENSE in grp (whose balanceVisibility is EVERYONE).
+    await admin(async (s) => {
+      await setDoc(doc(s, 'classes/grp/records/r_ann'), { type: 'PAYMENT', amountCentavos: 1000, memberId: 'ann', memberName: 'Ann', note: '', dateMillis: now(), createdByUid: 'gmayor', createdAtMillis: now(), voidedAtMillis: 0, voidedByUid: '', voidReason: '', batchId: '', courseId: '', settlesBatchId: '', paidTo: '' });
+      await setDoc(doc(s, 'classes/grp/records/r_cat'), { type: 'CHARGE', amountCentavos: 500, memberId: 'cat', memberName: 'Cat', note: '', dateMillis: now(), createdByUid: 'gmayor', createdAtMillis: now(), voidedAtMillis: 0, voidedByUid: '', voidReason: '', batchId: '', courseId: 'se', settlesBatchId: '', paidTo: '' });
+      await setDoc(doc(s, 'classes/grp/records/r_exp'), { type: 'EXPENSE', amountCentavos: 2000, memberId: '', memberName: '', note: 'Block party', dateMillis: now(), createdByUid: 'gmayor', createdAtMillis: now(), voidedAtMillis: 0, voidedByUid: '', voidReason: '', batchId: '', courseId: '', settlesBatchId: '', paidTo: 'Shop' });
+    });
+    // Regular member ann can read all records; irregular member cat can read ONLY their own record.
+    await assertSucceeds(getDoc(doc(db('ann'), 'classes/grp/records/r_cat')));
+    await assertSucceeds(getDoc(doc(db('cat'), 'classes/grp/records/r_cat')));
+    await assertFails(getDoc(doc(db('cat'), 'classes/grp/records/r_ann')));
+    await assertFails(getDoc(doc(db('cat'), 'classes/grp/records/r_exp')));
+  });
+
   await env.cleanup();
 
   // ---------------------------------------------------------------- Report

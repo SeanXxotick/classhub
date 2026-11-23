@@ -88,10 +88,12 @@ export interface ClassState {
   isOfficer: boolean;
   /** True when an officer has turned on the client-side "View as member" preview. */
   previewAsMember: boolean;
+  /** True when this member is marked as an irregular student (course-scoped view only). */
+  isIrregular: boolean;
   balanceOf: (memberId: string) => number;
   roleOf: (member: Member | null | undefined) => Role | null;
   can: (permission: Permission) => boolean;
-  /** False only for a course this user does not take. Items with no course belong to everyone. */
+  /** False for a course this user does not take (and for untagged class-wide items when irregular). */
   takes: (courseId: string | null | undefined) => boolean;
 }
 
@@ -107,6 +109,7 @@ export interface ClassActions {
   removeClassPhoto: () => void;
   setRole: (member: Member, roleId: string, onDone?: Done) => void;
   setCoursesTaken: (member: Member, taken: Set<string>, onDone?: Done) => void;
+  setIrregular: (member: Member, irregular: boolean, onDone?: Done) => void;
   removeMember: (member: Member, onDone?: Done) => void;
   leaveClass: (newMayorUid: string | null, onDone: Done) => void;
   deleteClass: (onDone: Done) => void;
@@ -218,11 +221,13 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
       ? roleList.find((r) => r.id === roomValue?.defaultRoleId && !r.locked && r.permissions.length === 0) ?? null
       : realRole;
     const can = (p: Permission) => !previewAsMember && roleCan(realRole, p);
-    const effectiveSeeAll = previewAsMember ? roomValue?.balanceVisibility === 'EVERYONE' : seeAll;
+    const isIrregular = !!meValue?.irregular;
+    const effectiveSeeAll = isIrregular ? false : previewAsMember ? roomValue?.balanceVisibility === 'EVERYONE' : seeAll;
     const error = otherError ? friendlyMessage(otherError) : null;
-    // A student sees nothing of a course they do not take. Officers who manage a tab still see all of it.
+    // A student sees nothing of a course they do not take. Irregular students also skip untagged block-wide items.
     const skipped = new Set(meValue?.excludedCourseIds ?? []);
-    const takes = (courseId: string | null | undefined) => !courseId || !skipped.has(courseId);
+    const takes = (courseId: string | null | undefined) =>
+      isIrregular ? !!courseId && !skipped.has(courseId) : !courseId || !skipped.has(courseId);
     const allContents = contents.data ?? [];
     const allSchedule = [...(schedule.data ?? [])].sort((a, b) => a.dueMillis - b.dueMillis);
     return {
@@ -234,7 +239,11 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
       roles: roleList,
       members: memberList,
       courses: [...(courses.data ?? [])].sort((a, b) => compareStrings(a.name.toLowerCase(), b.name.toLowerCase())),
-      records: effectiveSeeAll ? recordList : recordList.filter((r) => r.memberId === uid || r.type === 'EXPENSE'),
+      records: isIrregular
+        ? recordList.filter((r) => r.memberId === uid)
+        : effectiveSeeAll
+          ? recordList
+          : recordList.filter((r) => r.memberId === uid || r.type === 'EXPENSE'),
       seeAll: effectiveSeeAll,
       summary: summary.data ?? null,
       charges: charges.data ?? [],
@@ -252,6 +261,7 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
       myRole,
       isOfficer,
       previewAsMember,
+      isIrregular,
       balanceOf: (id) => balances.get(id) ?? 0,
       roleOf,
       can,
@@ -353,6 +363,16 @@ export function ClassProvider({ classId, uid, children }: { classId: string; uid
         if (!c.can('MEMBERS_MANAGE')) return deny('You do not have permission to change courses.');
         const excluded = c.courses.map((x) => x.id).filter((id) => !taken.has(id));
         runAction(`${member.name}'s courses were saved.`, onDone, () => membership.setMemberCourses(db, uid, classId, member.id, excluded));
+      },
+
+      setIrregular(member, irregular, onDone) {
+        const c = st();
+        if (!c.can('MEMBERS_MANAGE')) return deny('You do not have permission to change member status.');
+        runAction(
+          irregular ? `${member.name} is now marked as irregular.` : `${member.name} is now a regular block member.`,
+          onDone,
+          () => membership.setMemberIrregular(db, uid, classId, member.id, irregular),
+        );
       },
 
       removeMember(member, onDone) {

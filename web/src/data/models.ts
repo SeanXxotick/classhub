@@ -132,6 +132,8 @@ export interface Member {
   roleId: string;
   joinedAtMillis: number;
   excludedCourseIds: string[];
+  /** True for cross-enrolled / irregular students who only take specific courses and do not belong to the block. */
+  irregular?: boolean;
   approvedByUid: string;
   /** "Garcia, Paolo M.": the name in lists sorted by last name. Set by the member's own app; empty until then. */
   sortName?: string;

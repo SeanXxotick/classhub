@@ -10,9 +10,11 @@ export interface ChargePreview {
 }
 
 export const ChargePlanner = {
-  /** Members who take the course. A blank courseId means the whole class. */
+  /** Members who take the course. A blank courseId means regular block members (irregular students are skipped by default). */
   eligible(members: Member[], courseId: string): Member[] {
-    return courseId ? members.filter((m) => !m.excludedCourseIds.includes(courseId)) : members;
+    return courseId
+      ? members.filter((m) => !m.excludedCourseIds.includes(courseId))
+      : members.filter((m) => !m.irregular);
   },
 
   /**

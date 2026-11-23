@@ -125,7 +125,8 @@ function ClassScreen() {
   const newComments = useCommentsSince(db, state.classId, seen?.NEWS ?? 0, newsOn && !!seen).data ?? [];
   const myComments = useMyComments(db, state.classId, state.myUid, newsOn && !!seen).data ?? [];
   // The Forum counts on the News tab too: new questions, and answers or replies to this member's posts.
-  const questions = useForum(db, state.classId, state.can('ANNOUNCEMENTS_MANAGE'), newsOn).data ?? [];
+  const allQuestions = useForum(db, state.classId, state.can('ANNOUNCEMENTS_MANAGE'), newsOn).data ?? [];
+  const questions = state.can('ANNOUNCEMENTS_MANAGE') ? allQuestions : allQuestions.filter((q) => state.takes(q.courseId));
   const myForumIds = new Set((useForumAuthors(db, state.classId, state.myUid, false, newsOn).data ?? []).map((a) => a.id));
   const forumAnswers = useForumAnswersSince(db, state.classId, seen?.NEWS ?? 0, newsOn && !!seen).data ?? [];
   const forumNew = forumUnseen(questions, forumAnswers, state.myUid, myForumIds, seen?.NEWS ?? 0).total;
@@ -141,6 +142,7 @@ function ClassScreen() {
     myCommentIds: new Set(myComments.map((c) => c.id)),
     joinRequests: state.can('MEMBERS_MANAGE') ? state.joinRequests.length : 0,
     groupActions,
+    isIrregular: state.isIrregular,
     takes: state.takes,
   });
   const counts = { ...tabCounts, NEWS: tabCounts.NEWS + forumNew };
@@ -620,8 +622,9 @@ function MembersTab({
 
 function MembersList({ state, canManage, onOpenMember }: { state: ClassState; canManage: boolean; onOpenMember: (id: string) => void }) {
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<'ALL' | 'OWES' | 'OFFICERS'>('ALL');
+  const [filter, setFilter] = useState<'ALL' | 'OWES' | 'OFFICERS' | 'IRREGULAR'>('ALL');
   const canFilterOwes = state.room?.ledgerEnabled !== false && state.seeAll;
+  const hasIrregular = canManage && state.members.some((m) => m.irregular);
   const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const shown = byLastName(state.members).filter((m) => {
     if (filter === 'OWES' && canFilterOwes && state.balanceOf(m.id) >= 0) return false;
@@ -629,12 +632,13 @@ function MembersList({ state, canManage, onOpenMember }: { state: ClassState; ca
       const role = state.roleOf(m);
       if (!role || (!role.locked && role.permissions.length === 0)) return false;
     }
+    if (filter === 'IRREGULAR' && !m.irregular) return false;
     if (words.length === 0) return true;
     const roleName = state.roleOf(m)?.name ?? '';
-    const hay = `${m.name} ${listName(m)} ${roleName}`.toLowerCase();
+    const hay = `${m.name} ${listName(m)} ${roleName}${m.irregular ? ' irregular' : ''}`.toLowerCase();
     return words.every((w) => hay.includes(w));
   });
-  const activeFilter = filter === 'OWES' && !canFilterOwes ? 'ALL' : filter;
+  const activeFilter = (filter === 'OWES' && !canFilterOwes) || (filter === 'IRREGULAR' && !hasIrregular) ? 'ALL' : filter;
   return (
     <div className="stack">
       {state.members.length > 0 && (
@@ -646,6 +650,7 @@ function MembersList({ state, canManage, onOpenMember }: { state: ClassState; ca
                 ['ALL', 'All'],
                 ...(canFilterOwes ? ([['OWES', 'Owes money']] as const) : []),
                 ['OFFICERS', 'Officers'],
+                ...(hasIrregular ? ([['IRREGULAR', 'Irregular']] as const) : []),
               ] as const
             ).map(([id, label]) => (
               <button key={id} type="button" role="tab" aria-selected={activeFilter === id} className={'chip' + (activeFilter === id ? ' selected' : '')} onClick={() => setFilter(id)}>
@@ -711,6 +716,7 @@ function MemberRow({ member, state, isMe, onClick }: { member: Member; state: Cl
           </span>
         )}
       </span>
+      {member.irregular && <RoleChip name="Irregular" color="#D97706" />}
       <RoleChip name={role?.name ?? 'No role'} color={role?.colorHex ?? '#6B768A'} />
     </>
   );
