@@ -86,3 +86,30 @@ export function realErrors(errors: string[], failedRequests: string[] = []) {
     return true;
   });
 }
+
+/** Runs in the page: writes down every red count the News switch shows, also one that is there for a single frame. */
+function recordNewsCounts() {
+  const w = window as unknown as { newsCounts: string[]; newsWatch?: MutationObserver };
+  w.newsCounts = [];
+  w.newsWatch?.disconnect();
+  w.newsWatch = new MutationObserver(() => {
+    for (const n of document.querySelectorAll('.news-switch .news-count')) w.newsCounts.push((n.closest('button')?.textContent ?? '').trim());
+  });
+  w.newsWatch.observe(document, { childList: true, subtree: true, characterData: true });
+}
+
+/** Watches the red counts of the News switch from now on, and from the start of every page opened later. */
+export async function watchNewsCounts(page: Page) {
+  await page.addInitScript(recordNewsCounts);
+  await page.evaluate(recordNewsCounts);
+}
+
+/** Forgets the counts seen so far. */
+export const clearNewsCounts = (page: Page) =>
+  page.evaluate(() => {
+    (window as unknown as { newsCounts: string[] }).newsCounts = [];
+  });
+
+/** The counts seen since then, for example "Forum1". */
+export const newsCountsShown = (page: Page) =>
+  page.evaluate(() => [...new Set((window as unknown as { newsCounts: string[] }).newsCounts)]);

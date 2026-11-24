@@ -502,7 +502,8 @@ export function NewsTab({ state }: { state: ClassState }) {
     () => (rawQuestions ? (manage ? rawQuestions : rawQuestions.filter((q) => state.takes(q.courseId))) : undefined),
     [rawQuestions, manage, state],
   );
-  const authors = useForumAuthors(db, state.classId, state.myUid, manage, true).data ?? [];
+  const loadedAuthors = useForumAuthors(db, state.classId, state.myUid, manage, true).data;
+  const authors = loadedAuthors ?? [];
   const localPolls = usePolls(db, state.classId, true).data;
   const sharedPolls = useSharedPolls(db, state.classId, state.myUid, true, true);
   const polls = useMemo(() => {
@@ -519,16 +520,23 @@ export function NewsTab({ state }: { state: ClassState }) {
     () => new Set(pollVotes.filter((v) => v.uid === state.myUid && v.choices.length > 0).map((v) => v.pollId)),
     [pollVotes, state.myUid],
   );
+  // The red counts wait for everything they are worked out from: a count made while the votes or the seen
+  // marks are still loading would show for a moment and then go away.
   const openPollsCount = useMemo(
     () =>
       (polls ?? []).filter(
-        (p) => ((!state.isIrregular && p.shared) || state.takes(p.courseId)) && isPollOpen(p, Date.now()) && !myVotedPollIds.has(p.id),
+        (p) =>
+          ((!state.isIrregular && p.shared) || state.takes(p.courseId)) &&
+          isPollOpen(p, Date.now()) &&
+          (p.shared ? sharedPolls.votesLoaded.has(p.id) : !!(p.anonymous ? myBallots : openVotes)) &&
+          !myVotedPollIds.has(p.id),
       ).length,
-    [polls, state, myVotedPollIds],
+    [polls, state, myVotedPollIds, sharedPolls.votesLoaded, myBallots, openVotes],
   );
   const [tag, setTag] = useState('*');
   const posts = allPosts?.filter((p) => tag === '*' || p.courseId === tag);
-  const seen = useSeen(db, state.classId, true).data ?? [];
+  const loadedSeen = useSeen(db, state.classId, true).data;
+  const seen = loadedSeen ?? [];
   const votes = useVotes(db, state.classId, true).data ?? [];
   const memberIds = useMemo(() => new Set(state.members.map((m) => m.id)), [state.members]);
   const run = useRun();
@@ -538,13 +546,13 @@ export function NewsTab({ state }: { state: ClassState }) {
   const [deleting, setDeleting] = useState<Announcement | null>(null);
   const mine = seen.find((s) => s.id === state.myUid);
   const mySeen = mine?.announcements ?? {};
-  const unseen = inForum || inPolls ? '' : (allPosts ?? []).filter((p) => !mySeen[p.id]).map((p) => p.id).join(',');
-  const unseenPosts = (allPosts ?? []).filter((p) => !mySeen[p.id] && p.createdByUid !== state.myUid).length;
+  const unseen = !loadedSeen || inForum || inPolls ? '' : (allPosts ?? []).filter((p) => !mySeen[p.id]).map((p) => p.id).join(',');
+  const unseenPosts = loadedSeen ? (allPosts ?? []).filter((p) => !mySeen[p.id] && p.createdByUid !== state.myUid).length : 0;
   // What is new in the Forum since this member last opened it: questions, and answers or replies to them.
   const myPostIds = new Set(authors.filter((a) => a.uid === state.myUid).map((a) => a.id));
   const forumAt = mine?.forumAt ?? 0;
   const answersSince = useForumAnswersSince(db, state.classId, forumAt, !!mine && !inForum).data ?? [];
-  const newQuestions = forumUnseen(questions ?? [], answersSince, state.myUid, myPostIds, forumAt).total;
+  const newQuestions = loadedSeen && loadedAuthors ? forumUnseen(questions ?? [], answersSince, state.myUid, myPostIds, forumAt).total : 0;
 
   // Showing the list counts as opening the posts.
   useEffect(() => {

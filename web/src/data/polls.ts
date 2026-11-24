@@ -590,5 +590,7 @@ export function useSharedPolls(db: Firestore, classId: string, uid: string, enab
 
   // The same array until a vote changes, so screens that memoize on it do not recount every poll each render.
   const votes = useMemo(() => Object.values(votesByPoll).flat(), [votesByPoll]);
-  return { polls, votes };
+  // The polls whose votes have arrived (also when there are none).
+  const votesLoaded: ReadonlySet<string> = useMemo(() => new Set(Object.keys(votesByPoll)), [votesByPoll]);
+  return { polls, votes, votesLoaded };
 }

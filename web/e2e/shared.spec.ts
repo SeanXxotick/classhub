@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectNotice, joinWithApproval, newUser, openTab, realErrors, signUp } from './helpers';
+import { clearNewsCounts, expectNotice, joinWithApproval, newsCountsShown, newUser, openTab, realErrors, signUp, watchNewsCounts } from './helpers';
 
 // Two classes working together: G1 hosts a shared grouping with group leaders and G2 links it with the
 // share code; a student from each class joins the same group (the G2 student asks, the G1 leader approves).
@@ -200,6 +200,19 @@ test.describe.serial('shared groupings and shared polls across two classes', () 
     await expect(edit.getByLabel('Maximum choices per student').locator('option')).toHaveText(['Up to 3']);
     await shot(h, '10-host-edit-poll-after-votes');
     await edit.getByRole('button', { name: 'Cancel' }).click();
+  });
+
+  test('a shared poll a student voted on never shows as a red count, not even for a moment', async () => {
+    const b = ben.page;
+    await b.goto(partnerUrl);
+    await watchNewsCounts(b);
+    for (let i = 0; i < 2; i++) {
+      await openTab(b, 'Home');
+      await clearNewsCounts(b);
+      await openTab(b, 'News');
+      await b.waitForTimeout(1200);
+      expect(await newsCountsShown(b)).toEqual([]);
+    }
   });
 
   test('no console errors', async () => {
