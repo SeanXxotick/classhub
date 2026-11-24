@@ -220,7 +220,7 @@ function PollCard({
         <div className="card-head">
           <div className="stack" style={{ gap: 6 }}>
             <div className="ch-row ch-wrap ch-gap-2" style={{ alignItems: 'center' }}>
-              {!poll.shared && <TagBadge state={state} courseId={poll.courseId} />}
+              <TagBadge state={state} courseId={poll.courseId} />
               {poll.shared && <Badge tone="primary">Shared poll</Badge>}
               {open ? (
                 <Badge tone="success">
@@ -397,7 +397,7 @@ function NewPollDialog({ state, onClose }: { state: ClassState; onClose: () => v
         createPoll(db, state.myUid, state.classId, {
           question,
           options,
-          courseId: selectedPartners.length > 0 ? '' : courseId,
+          courseId,
           multi,
           maxChoices,
           anonymous,
@@ -461,9 +461,9 @@ function NewPollDialog({ state, onClose }: { state: ClassState; onClose: () => v
             </button>
           )}
         </div>
-        {selectedPartners.length === 0 && state.courses.length > 0 && (
-          <Field label="Who votes">
-            <TagSelect state={state} value={courseId} onChange={setCourseId} label="Who votes" />
+        {state.courses.length > 0 && (
+          <Field label="Course tag / Who votes">
+            <TagSelect state={state} value={courseId} onChange={setCourseId} label="Course tag" />
           </Field>
         )}
         {partners.length > 0 && (
@@ -581,7 +581,7 @@ function EditPollDialog({
         updatePoll(db, state.myUid, state.classId, poll, {
           question,
           options,
-          courseId: poll.shared ? '' : courseId,
+          courseId,
           multi,
           maxChoices,
           closesAtMillis,
@@ -653,7 +653,7 @@ function EditPollDialog({
             </button>
           )}
         </div>
-        {!poll.shared && state.courses.length > 0 && (
+        {state.courses.length > 0 && (
           <Field label="Course tag / Who votes">
             <TagSelect state={state} value={courseId} onChange={setCourseId} label="Course tag" />
           </Field>

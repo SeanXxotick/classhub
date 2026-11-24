@@ -555,7 +555,7 @@ service cloud.firestore {
           && request.resource.data.closesAtMillis is int)
         || (can(resource.data.hostClassId, 'ANNOUNCEMENTS_MANAGE')
           && isOpen(resource.data.hostClassId)
-          && changesOnly(['question', 'options', 'multi', 'maxChoices', 'closed', 'closesAtMillis'])
+          && changesOnly(['question', 'options', 'multi', 'maxChoices', 'closed', 'closesAtMillis', 'linkedClasses'])
           && isFilled(request.resource.data.question, 150)
           && request.resource.data.options is list
           && request.resource.data.options.size() >= 2
@@ -565,7 +565,8 @@ service cloud.firestore {
           && request.resource.data.maxChoices >= 1
           && request.resource.data.maxChoices <= request.resource.data.options.size()
           && request.resource.data.closed is bool
-          && request.resource.data.closesAtMillis is int)
+          && request.resource.data.closesAtMillis is int
+          && request.resource.data.linkedClasses is map)
         || (isSharedGroupingMember(resource.data.linkedClassIds)
           && resource.data.get('anonymous', false) == true
           && changesOnly(['tally', 'voters'])

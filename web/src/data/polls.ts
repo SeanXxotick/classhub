@@ -37,6 +37,7 @@ export const POLL_MAX_OPTIONS = 10;
 export interface SharedPollClassLink {
   name: string;
   tag: string;
+  courseId?: string;
   accentColor?: string;
 }
 
@@ -155,6 +156,7 @@ export async function createPoll(db: Firestore, actorUid: string, classId: strin
       [classId]: {
         name: hostName,
         tag: hostTag,
+        ...(input.courseId ? { courseId: input.courseId } : {}),
         ...(input.hostAccentColor ? { accentColor: input.hostAccentColor } : {}),
       },
     };
@@ -328,9 +330,36 @@ export async function updatePoll(
   const maxChoices = input.multi ? Math.min(options.length, Math.max(2, Math.trunc(input.maxChoices))) : 1;
   const closesAtMillis = input.closesAtMillis > 0 ? input.closesAtMillis : 0;
   const target = poll.shared ? sharedPollRef(db, poll.id) : doc(pollsCol(db, classId), poll.id);
-  const patch = poll.shared
-    ? { question, options, multi: input.multi, maxChoices, closesAtMillis }
-    : { question, options, courseId: input.courseId, multi: input.multi, maxChoices, closesAtMillis };
+  if (poll.shared) {
+    const curLink = poll.linkedClasses?.[classId];
+    const ownLink: unknown[] = curLink
+      ? [new FieldPath('linkedClasses', classId), { ...curLink, courseId: input.courseId }]
+      : [];
+    await explainRefusal(db, classId, () =>
+      commitLogged(
+        db,
+        classId,
+        { actorUid, kind: 'POLL_UPDATED', text: `Edited the poll "${question}"` },
+        (b) =>
+          b.update(
+            target,
+            new FieldPath('question'),
+            question,
+            new FieldPath('options'),
+            options,
+            new FieldPath('multi'),
+            input.multi,
+            new FieldPath('maxChoices'),
+            maxChoices,
+            new FieldPath('closesAtMillis'),
+            closesAtMillis,
+            ...ownLink,
+          ),
+      ),
+    );
+    return;
+  }
+  const patch = { question, options, courseId: input.courseId, multi: input.multi, maxChoices, closesAtMillis };
   await explainRefusal(db, classId, () =>
     commitLogged(
       db,
@@ -512,6 +541,7 @@ export function useSharedPolls(db: Firestore, classId: string, uid: string, enab
           } else {
             const parsed = fromDoc(newPoll({}), docSnap);
             parsed.shared = true;
+            parsed.courseId = parsed.linkedClasses?.[classId]?.courseId ?? '';
             pollsMap.set(id, parsed);
             syncVoteSub(id, parsed.anonymous);
           }
