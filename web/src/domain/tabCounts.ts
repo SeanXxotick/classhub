@@ -92,7 +92,7 @@ export function unseenCounts(i: CountInput): TabCounts {
   const myPosts = new Set(i.posts.filter((p) => p.createdByUid === i.myUid).map((p) => p.id));
   const newPosts = i.posts.filter((p) => i.takes(p.courseId ?? '') && fresh('NEWS', p.createdAtMillis, p.createdByUid)).length;
   const newPolls = (i.polls ?? []).filter(
-    (p) => ((p.shared && !i.isIrregular) || i.takes(p.courseId)) && fresh('NEWS', p.createdAtMillis, p.createdByUid),
+    (p) => i.takes(p.courseId) && fresh('NEWS', p.createdAtMillis, p.createdByUid),
   ).length;
   // A comment on my announcement, or a reply to my comment.
   const toMe = i.comments.filter(

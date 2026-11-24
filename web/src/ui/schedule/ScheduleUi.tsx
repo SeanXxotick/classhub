@@ -488,8 +488,10 @@ function ScheduleDetailsDialog({
   const [showWho, setShowWho] = useState(false);
   const due = dayOf(item.dueMillis);
   const dueParts = parseDay(due);
-  // Only the students who take the course are expected to finish it.
-  const takers = item.courseId ? state.members.filter((m) => !m.excludedCourseIds.includes(item.courseId)) : state.members;
+  // Only the students who take the course are expected to finish it (untagged block items skip irregular students).
+  const takers = item.courseId
+    ? state.members.filter((m) => !m.excludedCourseIds.includes(item.courseId))
+    : state.members.filter((m) => !m.irregular);
   const summary = ScheduleView.completion(item.id, takers, progress);
 
   return (

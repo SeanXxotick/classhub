@@ -529,7 +529,7 @@ export function NewsTab({ state }: { state: ClassState }) {
     () =>
       (polls ?? []).filter(
         (p) =>
-          ((!state.isIrregular && p.shared) || state.takes(p.courseId)) &&
+          state.takes(p.courseId) &&
           isPollOpen(p, Date.now()) &&
           (p.shared ? sharedPolls.votesLoaded.has(p.id) : !!(p.anonymous ? myBallots : openVotes)) &&
           !myVotedPollIds.has(p.id),
@@ -1200,10 +1200,12 @@ export function TimetableCard({ state }: { state: ClassState }) {
     .sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
   // Marks saved together (a suspension over several days) show as one entry.
   // For students (regular or irregular), hide any entry that affects 0 of their taken classes.
-  const comingGroups = groupNoClass(coming, (day) => meetings.some((m) => m.dayOfWeek === weekdayOf(day))).filter(
+  const comingGroups = groupNoClass(coming, (day) => meetings.some((m) => meetingOccursOn(m, day, weekdayOf(day)))).filter(
     (group) =>
       seesAll ||
-      group.some((k) => meetings.some((m) => m.dayOfWeek === weekdayOf(k.dateKey) && (!k.courseId || k.courseId === m.courseId))),
+      group.some((k) =>
+        meetings.some((m) => meetingOccursOn(m, k.dateKey, weekdayOf(k.dateKey)) && (!k.courseId || (!!m.courseId && k.courseId === m.courseId))),
+      ),
   );
   const [removing, setRemoving] = useState<NoClassMark[] | null>(null);
   const viewingCancelled = viewing ? nextCancelled(viewing, meetings, marks, now) : null;
@@ -1232,7 +1234,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
     <Section title="Timetable">
       {(manage || state.can('ATTENDANCE_MANAGE')) && (
         <div className="ch-row ch-wrap ch-gap-2">
-          {state.can('ATTENDANCE_MANAGE') && meetings.length > 0 && (
+          {state.can('ATTENDANCE_MANAGE') && meetings.some(meetingTracksAttendance) && (
             <Button size="small" icon="check" onClick={() => setTaking(true)}>
               Take attendance
             </Button>
@@ -1302,16 +1304,21 @@ export function TimetableCard({ state }: { state: ClassState }) {
           {!fullWeek && laterOneTime.length > 0 && (
             <div>
               <DayHeader>Upcoming one-time meetings</DayHeader>
-              {laterOneTime.map((m) => (
-                <ListRow
-                  key={m.id}
-                  leading={<TimeTile minutes={m.startMinutes} color={courseColor(m.courseId)} />}
-                  title={meetingTitle(m)}
-                  subtitle={`${niceDate(m.dateKey!)} · ${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}${notMine(m)}`}
-                  chevron={manage}
-                  onClick={manage ? () => setEditing(m) : undefined}
-                />
-              ))}
+              {laterOneTime.map((m) => {
+                const cancelled = marks.find((k) => k.dateKey === m.dateKey && (!k.courseId || (!!m.courseId && k.courseId === m.courseId))) ?? null;
+                return (
+                  <ListRow
+                    key={m.id}
+                    voided={!!cancelled}
+                    leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} color={courseColor(m.courseId)} />}
+                    title={meetingTitle(m)}
+                    subtitle={`${niceDate(m.dateKey!)} · ${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}${notMine(m)}`}
+                    children={cancelled ? <CancelledNote reason={cancelled.reason} /> : undefined}
+                    chevron={manage}
+                    onClick={manage ? () => setEditing(m) : undefined}
+                  />
+                );
+              })}
             </div>
           )}
           {fullWeek && <WeekGrid state={state} meetings={recurringMeetings} marks={marks} onOpen={manage ? setEditing : setViewing} />}
@@ -1321,9 +1328,11 @@ export function TimetableCard({ state }: { state: ClassState }) {
                 {moreDays ? 'Show less' : 'Show more'}
               </Button>
             )}
-            <Button size="small" variant="text" icon={fullWeek ? 'x' : 'list'} onClick={() => (setFullWeek(!fullWeek), setMoreDays(false))}>
-              {fullWeek ? 'Show today and tomorrow only' : 'Full week'}
-            </Button>
+            {recurringMeetings.length > 0 && (
+              <Button size="small" variant="text" icon={fullWeek ? 'x' : 'list'} onClick={() => (setFullWeek(!fullWeek), setMoreDays(false))}>
+                {fullWeek ? 'Show today and tomorrow only' : 'Full week'}
+              </Button>
+            )}
             {fullWeek && (
               <Button size="small" variant="text" icon="download" disabled={saving} onClick={saveImage}>
                 Save as image
@@ -1337,8 +1346,10 @@ export function TimetableCard({ state }: { state: ClassState }) {
           <DayHeader>No classes</DayHeader>
           {comingGroups.map((group) => {
             const dates = [...new Set(group.map((k) => k.dateKey))];
-            const affected = group.flatMap((k) => meetings.filter((m) => m.dayOfWeek === weekdayOf(k.dateKey) && (!k.courseId || k.courseId === m.courseId)));
-            const which = group.every((k) => !k.courseId) ? 'Whole day' : [...new Set(affected.map((m) => courseName(m.courseId)))].join(', ');
+            const affected = group.flatMap((k) =>
+              meetings.filter((m) => meetingOccursOn(m, k.dateKey, weekdayOf(k.dateKey)) && (!k.courseId || (!!m.courseId && k.courseId === m.courseId))),
+            );
+            const which = group.every((k) => !k.courseId) ? 'Whole day' : [...new Set(affected.map((m) => meetingTitle(m)))].join(', ');
             return (
               <ListRow
                 key={group[0].id}
@@ -1606,7 +1617,11 @@ function NoClassDialog({ state, meetings, onClose }: { state: ClassState; meetin
 
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
-  const meetingsOnDay = (day: string) => meetings.filter((m) => meetingOccursOn(m, day, weekdayOf(day))).sort((a, b) => a.startMinutes - b.startMinutes);
+  // General non-course one-time meetings are edited or deleted directly instead of using a whole-day No classes mark.
+  const meetingsOnDay = (day: string) =>
+    meetings
+      .filter((m) => !!m.courseId && meetingOccursOn(m, day, weekdayOf(day)))
+      .sort((a, b) => a.startMinutes - b.startMinutes);
   const alreadyOff = (day: string, courseId: string) => marks.some((k) => k.dateKey === day && (!k.courseId || k.courseId === courseId));
   const open = (day: string) => meetingsOnDay(day).filter((m) => !alreadyOff(day, m.courseId));
   const tickKey = (day: string, m: Meeting) => `${day}|${m.id}`;
@@ -2285,7 +2300,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
                   title={
                     <span className="ch-row ch-wrap" style={{ gap: 8 }}>
                       <span className="ch-grow">
-                        <CourseDot color={state.courses.find((c) => c.id === id)?.color} />
+                        <CourseDot color={state.courses.find((c) => c.id === id)?.color || 'var(--accent)'} />
                         {courseName(id)}
                       </span>
                       <span className="ch-row" style={{ gap: 6 }}>{counts(a.length, l.length, e.length)}</span>
@@ -2344,7 +2359,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
               {perCourse.map((c) => (
                 <ListRow
                   key={c.courseId}
-                  title={<><CourseDot color={state.courses.find((x) => x.id === c.courseId)?.color} />{courseName(c.courseId)}</>}
+                  title={<><CourseDot color={state.courses.find((x) => x.id === c.courseId)?.color || 'var(--accent)'} />{courseName(c.courseId)}</>}
                   subtitle={`Taken ${times(c.taken)}`}
                   chevron={c.rows.length > 0}
                   onClick={c.rows.length > 0 ? () => setOpenCourse(c.courseId) : undefined}

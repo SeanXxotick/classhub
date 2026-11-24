@@ -962,11 +962,11 @@ service cloud.firestore {
       let role = myRole(c);
       let visibility = get(classPath(c)).data.balanceVisibility;
       return isMember(c)
-        && !isIrregular(c)
         && (role.get('locked', false) == true
             || 'RECORDS_MANAGE' in role.permissions
-            || visibility == 'EVERYONE'
-            || (visibility == 'OFFICERS' && role.permissions.size() > 0));
+            || (!isIrregular(c)
+                && (visibility == 'EVERYONE'
+                    || (visibility == 'OFFICERS' && role.permissions.size() > 0))));
     }
 
     // Everyone else in the class reads their own records and (for regular block members) every pay-out.

@@ -188,6 +188,8 @@ function MemberDetailContent({ member, readOnly }: { member: Member; readOnly: b
         <div className="section-label" style={{ padding: '0 0 6px' }}>Role</div>
         {!canChangeRole ? (
           <p className="muted" style={{ margin: 0 }}>{member.id === ownerUid ? "The Mayor's role cannot be changed." : 'You cannot change your own role.'}</p>
+        ) : member.irregular ? (
+          <p className="muted" style={{ margin: 0 }}>Turn off Irregular student below before assigning a different role.</p>
         ) : (
           <div role="radiogroup" aria-label="Role">
             {MemberRules.assignableRoles(state.roles).map((role) => (
@@ -210,7 +212,7 @@ function MemberDetailContent({ member, readOnly }: { member: Member; readOnly: b
       </div>
       )}
 
-      {!readOnly && canChangeRole && !(currentRole && (currentRole.locked || currentRole.permissions.length > 0)) && (
+      {!readOnly && canChangeRole && (member.irregular || !(currentRole && (currentRole.locked || currentRole.permissions.length > 0))) && (
       <div className="card">
         <div className="section-label" style={{ padding: '0 0 6px' }}>Enrollment status</div>
         <Switch

@@ -229,7 +229,7 @@ function GroupingCard({
       byLastName(
         grouping.courseId
           ? state.members.filter((m) => !m.excludedCourseIds.includes(grouping.courseId))
-          : state.members,
+          : state.members.filter((m) => !m.irregular),
       ),
     [state.members, grouping.courseId],
   );
@@ -1158,7 +1158,9 @@ function NewGroupingDialog({ state, onClose }: { state: ClassState; onClose: () 
           accentColor: state.room?.accentColor ?? '',
           roster: shared
             ? byLastName(
-                courseId ? state.members.filter((m) => !m.excludedCourseIds.includes(courseId)) : state.members,
+                courseId
+                  ? state.members.filter((m) => !m.excludedCourseIds.includes(courseId))
+                  : state.members.filter((m) => !m.irregular),
               ).map((m) => ({ uid: m.id, name: listName(m) }))
             : undefined,
         }),
@@ -1308,7 +1310,9 @@ function LinkSharedGroupingDialog({ state, onClose }: { state: ClassState; onClo
                     courseId,
                     state.room?.accentColor ?? '',
                     byLastName(
-                      courseId ? state.members.filter((m) => !m.excludedCourseIds.includes(courseId)) : state.members,
+                      courseId
+                  ? state.members.filter((m) => !m.excludedCourseIds.includes(courseId))
+                  : state.members.filter((m) => !m.irregular),
                     ).map((m) => ({ uid: m.id, name: listName(m) })),
                   ),
                 onClose,
@@ -1523,7 +1527,9 @@ function EditGroupingDialog({ state, grouping, onClose }: { state: ClassState; g
   function save() {
     if (!title.trim()) return;
     const roster = byLastName(
-      courseId ? state.members.filter((m) => !m.excludedCourseIds.includes(courseId)) : state.members,
+      courseId
+        ? state.members.filter((m) => !m.excludedCourseIds.includes(courseId))
+        : state.members.filter((m) => !m.irregular),
     ).map((m) => ({ uid: m.id, name: listName(m) }));
 
     if (!grouping.shared && shared) {

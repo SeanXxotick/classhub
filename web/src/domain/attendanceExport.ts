@@ -38,10 +38,12 @@ export interface ExportNoClass {
   courseId: string;
 }
 
-/** A weekly meeting in the timetable. dayOfWeek 0 is Sunday. */
+/** A weekly or one-time meeting in the timetable. dayOfWeek 0 is Sunday. */
 export interface ExportMeeting {
   courseId: string;
   dayOfWeek: number;
+  /** Set for one-time meetings so they do not count as meeting every week. */
+  dateKey?: string;
 }
 
 export interface ExportCancellations {
@@ -64,13 +66,16 @@ const weekdayOf = (dateKey: string) => new Date(Date.UTC(+dateKey.slice(0, 4), +
 
 /**
  * The days up to today on which this course was cancelled: a mark for the course itself, or a whole-day mark
- * on a weekday the course meets. Days when attendance was still taken are left out, so what was recorded shows.
+ * on a weekday the course meets (or on a one-time meeting's exact date). Days when attendance was still taken
+ * are left out, so what was recorded shows.
  */
 export function cancelledDays(courseId: string, takenKeys: Set<string>, c: ExportCancellations): string[] {
-  const meetsOn = new Set(c.meetings.filter((m) => m.courseId === courseId).map((m) => m.dayOfWeek));
+  const courseMeetings = c.meetings.filter((m) => m.courseId === courseId);
+  const meetsOn = new Set(courseMeetings.filter((m) => !m.dateKey).map((m) => m.dayOfWeek));
+  const oneTimeDates = new Set(courseMeetings.filter((m) => m.dateKey).map((m) => m.dateKey!));
   const days = c.noClass
     .filter((k) => k.dateKey <= c.todayKey && !takenKeys.has(k.dateKey))
-    .filter((k) => k.courseId === courseId || (!k.courseId && meetsOn.has(weekdayOf(k.dateKey))))
+    .filter((k) => k.courseId === courseId || (!k.courseId && (meetsOn.has(weekdayOf(k.dateKey)) || oneTimeDates.has(k.dateKey))))
     .map((k) => k.dateKey);
   return [...new Set(days)];
 }

@@ -169,4 +169,20 @@ describe('untakenMeetings', () => {
       ['Garcia, Paolo', 0, 0],
     ]);
   });
+
+  it('does not treat a one-time meeting as recurring weekly when computing cancelled days', () => {
+    const sheets = attendanceExportSheets(
+      [{ id: 'or', name: 'OR' }],
+      students,
+      [{ courseId: 'or', dateKey: '2026-07-01', absent: [], late: [] }],
+      {
+        // One-time Saturday make-up class on 2026-07-04; whole-day holiday on a DIFFERENT Saturday 2026-07-11.
+        meetings: [{ courseId: 'or', dayOfWeek: 6, dateKey: '2026-07-04' }],
+        noClass: [{ dateKey: '2026-07-11', courseId: '' }],
+        todayKey: '2026-07-15',
+      },
+    );
+    // 2026-07-11 should NOT appear as an NC column because OR only met on 2026-07-04, not every Saturday.
+    expect(sheets[0].rows[0]).toEqual(['Name', 'Summary', '07/01/26']);
+  });
 });

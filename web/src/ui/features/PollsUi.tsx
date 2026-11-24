@@ -73,9 +73,7 @@ export function PollsView({ state, polls, votes }: { state: ClassState; polls: P
   const run = useRun();
 
   const visible = useMemo(() => {
-    return (polls ?? []).filter(
-      (p) => (manage || (!state.isIrregular && p.shared) || state.takes(p.courseId)) && (tag === '*' || p.courseId === tag),
-    );
+    return (polls ?? []).filter((p) => (manage || state.takes(p.courseId)) && (tag === '*' || p.courseId === tag));
   }, [polls, manage, state, tag]);
 
   return (
@@ -164,7 +162,12 @@ function PollCard({
   const open = isPollOpen(poll, Date.now());
   const isHost = !poll.shared || poll.hostClassId === state.classId;
   const eligibleMembers = useMemo(
-    () => byLastName(poll.courseId ? state.members.filter((m) => !m.excludedCourseIds.includes(poll.courseId)) : state.members),
+    () =>
+      byLastName(
+        poll.courseId
+          ? state.members.filter((m) => !m.excludedCourseIds.includes(poll.courseId))
+          : state.members.filter((m) => !m.irregular),
+      ),
     [state.members, poll.courseId],
   );
   // An anonymous poll's votes are private: its counts come from the poll itself, and only your own ballot loads.
