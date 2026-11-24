@@ -15,12 +15,16 @@ export interface ExportStudent {
   /** As it should appear in the file, for example "Garcia, Paolo". */
   name: string;
   excludedCourseIds: string[];
+  /** Irregular students are excluded from general (non-course) one-time event sheets. */
+  irregular?: boolean;
 }
 
 export interface ExportSheet {
   courseId: string;
   /** YYYY-MM-DD */
   dateKey: string;
+  /** Event title for general (non-course) one-time meetings. */
+  eventTitle?: string;
   absent: string[];
   late: string[];
   /** Missing on sheets saved before Excused existed. */
@@ -82,7 +86,7 @@ export function attendanceExportSheets(
   sheets: ExportSheet[],
   cancellations: ExportCancellations = { noClass: [], meetings: [], todayKey: '' },
 ): { name: string; rows: (string | number)[][] }[] {
-  return courses.flatMap((course) => {
+  const courseSheets = courses.flatMap((course) => {
     const taken = sheets.filter((s) => s.courseId === course.id);
     const takers = students.filter((s) => !s.excludedCourseIds.includes(course.id));
     if (taken.length === 0 || takers.length === 0) return [];
@@ -102,6 +106,26 @@ export function attendanceExportSheets(
     const header = columns.map((c) => (c.sheet && markedNoClass.has(c.dateKey) ? `${shortDate(c.dateKey)} (NC)` : shortDate(c.dateKey)));
     return [{ name: course.name, rows: [['Name', 'Summary', ...header], ...rows, [], [LEGEND]] }];
   });
+
+  // Separate sheets for general (non-course) one-time meetings, listing regular block members.
+  const knownCourseIds = new Set(courses.map((c) => c.id));
+  const extraIds = [...new Set(sheets.map((s) => s.courseId).filter((id) => id && !knownCourseIds.has(id)))];
+  const blockStudents = students.filter((s) => !s.irregular);
+  const eventSheets = extraIds.flatMap((eventId) => {
+    const taken = sheets.filter((s) => s.courseId === eventId).sort((a, b) => (a.dateKey < b.dateKey ? -1 : a.dateKey > b.dateKey ? 1 : 0));
+    if (taken.length === 0 || blockStudents.length === 0) return [];
+    const sheetName = taken.find((s) => s.eventTitle)?.eventTitle || 'One-time meeting';
+    const rows = blockStudents.map((student) => {
+      const marks = taken.map((s) =>
+        s.absent.includes(student.id) ? 0 : (s.excused ?? []).includes(student.id) ? EXCUSED_MARK : s.late.includes(student.id) ? LATE_MARK : 1,
+      );
+      return [student.name, marks.filter((m) => m === 1 || m === LATE_MARK).length, ...marks];
+    });
+    const header = taken.map((s) => shortDate(s.dateKey));
+    return [{ name: sheetName, rows: [['Name', 'Summary', ...header], ...rows, [], [LEGEND]] }];
+  });
+
+  return [...courseSheets, ...eventSheets];
 }
 
 /** A timetable meeting with its id and end time, for finding classes whose attendance was never taken. */
@@ -110,6 +134,8 @@ export interface UntakenMeeting {
   courseId: string;
   dayOfWeek: number;
   endMinutes: number;
+  dateKey?: string;
+  takeAttendance?: boolean;
 }
 
 /** One class meeting on one day with no attendance sheet. */
@@ -135,15 +161,16 @@ export function untakenMeetings(
 ): Untaken[] {
   if (sheets.length === 0) return [];
   const taken = new Set(sheets.map((s) => `${s.dateKey}|${s.meetingId}`));
-  const off = (day: string, courseId: string) => noClass.some((k) => k.dateKey === day && (!k.courseId || k.courseId === courseId));
+  const off = (day: string, courseId: string) => noClass.some((k) => k.dateKey === day && (!k.courseId || (!!courseId && k.courseId === courseId)));
   const out: Untaken[] = [];
   let day = sheets.reduce((min, s) => (s.dateKey < min ? s.dateKey : min), sheets[0].dateKey);
   for (; day <= todayKey; day = addDay(day, 1)) {
     for (const m of meetings) {
-      if (m.dayOfWeek !== weekdayOf(day)) continue;
+      if (m.dateKey && m.takeAttendance === false) continue;
+      if (m.dateKey ? m.dateKey !== day : m.dayOfWeek !== weekdayOf(day)) continue;
       if (day === todayKey && m.endMinutes > nowMinutes) continue;
       if (taken.has(`${day}|${m.id}`) || off(day, m.courseId)) continue;
-      out.push({ dateKey: day, meetingId: m.id, courseId: m.courseId });
+      out.push({ dateKey: day, meetingId: m.id, courseId: m.courseId || `event_${m.id}` });
     }
   }
   return out;

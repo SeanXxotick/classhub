@@ -21,8 +21,11 @@ import {
   confirmClaim,
   deleteAnnouncement,
   deleteMeeting,
+  isOneTimeMeeting,
   manilaDay,
   markSeen,
+  meetingOccursOn,
+  meetingTracksAttendance,
   meetingsOn,
   newAnnouncement,
   newMeeting,
@@ -59,7 +62,7 @@ import { attendanceExportSheets, untakenMeetings } from '../../domain/attendance
 import { groupNoClass } from '../../domain/noClassGroups';
 import { xlsxFile } from '../../domain/xlsx';
 import { Avatar, ConfirmDialog, CourseDot, Dialog, Field, LinkifiedText, RoleChip, hexColor, inAndroidApp, saveFile, shortDate, shortDateTime } from '../common';
-import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, SearchInput, Section, StatusBadge, TypeIcon } from '../../design';
+import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, SearchInput, Section, StatusBadge, Switch, TypeIcon } from '../../design';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 import { useSearchParams } from 'react-router-dom';
 import { useForum, useForumAnswersSince, useForumAuthors } from '../../data/forum';
@@ -1013,6 +1016,8 @@ export function TodayCard({ state }: { state: ClassState }) {
   const now = useClockTick();
   if (meetings.length === 0) return null;
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
+  const meetingTitle = (m: Meeting) =>
+    m.courseId ? (m.title?.trim() ? `${courseName(m.courseId)} · ${m.title.trim()}` : courseName(m.courseId)) : m.title?.trim() || 'One-time meeting';
   const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
   const mine = (m: Meeting) => state.takes(m.courseId);
   const days: [string, number][] = [
@@ -1035,8 +1040,8 @@ export function TodayCard({ state }: { state: ClassState }) {
                     key={m.id}
                     voided={look.struck}
                     leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} ended={look.ended} color={courseColor(m.courseId)} />}
-                    title={courseName(m.courseId)}
-                    subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}${look.suffix}`}
+                    title={meetingTitle(m)}
+                    subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}${isOneTimeMeeting(m) ? ' · One-time' : ''}${look.suffix}`}
                     trailing={look.trailing}
                     children={cancelled ? <CancelledNote reason={cancelled.reason} /> : undefined}
                   />
@@ -1162,14 +1167,17 @@ export function TimetableCard({ state }: { state: ClassState }) {
   const [moreDays, setMoreDays] = useState(false);
   const [viewing, setViewing] = useState<Meeting | null>(null);
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
+  const meetingTitle = (m: Meeting) =>
+    m.courseId ? (m.title?.trim() ? `${courseName(m.courseId)} · ${m.title.trim()}` : courseName(m.courseId)) : m.title?.trim() || 'One-time meeting';
   const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
+  const recurringMeetings = meetings.filter((m) => !isOneTimeMeeting(m));
   const now = useClockTick();
   const todayKey = manilaDay(now).dateKey;
   // Officers who take attendance see on today's meetings whether it was taken.
   const attends = state.can('ATTENDANCE_MANAGE');
   const sheets = useAttendance(db, state.classId, attends).data;
   const attendanceBadge = (m: Meeting, phase: MeetingPhase, isToday: boolean, cancelled: boolean) => {
-    if (!attends || !isToday || cancelled || !sheets) return null;
+    if (!attends || !isToday || cancelled || !sheets || !meetingTracksAttendance(m)) return null;
     if (sheets.some((x) => x.id === sheetId(todayKey, m.id))) return <Badge tone="success" icon="check">Attendance taken</Badge>;
     return phase === 'LATER' ? null : <Badge tone="neutral">Attendance not taken</Badge>;
   };
@@ -1180,6 +1188,10 @@ export function TimetableCard({ state }: { state: ClassState }) {
     const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : null;
     return [label ? `${label} · ${DAYS[manilaDay(millis).dayOfWeek]}` : niceDate(manilaDay(millis).dateKey), millis];
   });
+  const lastSoonKey = manilaDay(soon[soon.length - 1][1]).dateKey;
+  const laterOneTime = meetings
+    .filter((m) => isOneTimeMeeting(m) && (m.dateKey ?? '') > lastSoonKey)
+    .sort((a, b) => (a.dateKey! < b.dateKey! ? -1 : a.dateKey! > b.dateKey! ? 1 : a.startMinutes - b.startMinutes));
   const coming = marks
     .filter((k) => k.dateKey >= todayKey && (seesAll || !k.courseId || state.takes(k.courseId)))
     .sort((a, b) => (a.dateKey < b.dateKey ? -1 : 1));
@@ -1201,8 +1213,8 @@ export function TimetableCard({ state }: { state: ClassState }) {
       const className = state.room?.name ?? 'Class';
       const blob = await weekImage({
         title: className,
-        subtitle: meetings.length === everyMeeting.length ? 'Weekly timetable' : 'Weekly timetable · My courses',
-        meetings,
+        subtitle: recurringMeetings.length === everyMeeting.filter((m) => !isOneTimeMeeting(m)).length ? 'Weekly timetable' : 'Weekly timetable · My courses',
+        meetings: recurringMeetings,
         course: (id) => state.courses.find((c) => c.id === id),
       });
       await saveFile(`${className} timetable.png`, blob, actions.showNotice);
@@ -1223,7 +1235,18 @@ export function TimetableCard({ state }: { state: ClassState }) {
             </Button>
           )}
           {manage && (
-            <Button size="small" variant="outline" icon="plus" disabled={state.courses.length === 0} onClick={() => setEditing(newMeeting({ courseId: state.courses[0]?.id ?? '' }))}>
+            <Button
+              size="small"
+              variant="outline"
+              icon="plus"
+              onClick={() =>
+                setEditing(
+                  state.courses.length > 0
+                    ? newMeeting({ courseId: state.courses[0].id })
+                    : newMeeting({ courseId: '', dateKey: todayKey, takeAttendance: true }),
+                )
+              }
+            >
               Add meeting
             </Button>
           )}
@@ -1260,8 +1283,8 @@ export function TimetableCard({ state }: { state: ClassState }) {
                         key={m.id}
                         voided={look.struck}
                         leading={<TimeTile minutes={m.startMinutes} cancelled={!!cancelled} ended={look.ended} color={courseColor(m.courseId)} />}
-                        title={courseName(m.courseId)}
-                        subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}${notMine(m)}${look.suffix}`}
+                        title={meetingTitle(m)}
+                        subtitle={`${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}${isOneTimeMeeting(m) ? ' · One-time' : ''}${notMine(m)}${look.suffix}`}
                         trailing={look.trailing}
                         // Under the time and room, not beside them, so a long course name keeps its width on a phone.
                         children={cancelled ? <CancelledNote reason={cancelled.reason} /> : taken ? <span className="att-row-badge">{taken}</span> : undefined}
@@ -1273,7 +1296,22 @@ export function TimetableCard({ state }: { state: ClassState }) {
                 </div>
               );
             })}
-          {fullWeek && <WeekGrid state={state} meetings={meetings} marks={marks} onOpen={manage ? setEditing : setViewing} />}
+          {!fullWeek && laterOneTime.length > 0 && (
+            <div>
+              <DayHeader>Upcoming one-time meetings</DayHeader>
+              {laterOneTime.map((m) => (
+                <ListRow
+                  key={m.id}
+                  leading={<TimeTile minutes={m.startMinutes} color={courseColor(m.courseId)} />}
+                  title={meetingTitle(m)}
+                  subtitle={`${niceDate(m.dateKey!)} · ${clockText(m.startMinutes)} to ${clockText(m.endMinutes)}${m.room ? ` · ${m.room}` : ''}${m.instructor ? ` · ${m.instructor}` : ''}${notMine(m)}`}
+                  chevron={manage}
+                  onClick={manage ? () => setEditing(m) : undefined}
+                />
+              ))}
+            </div>
+          )}
+          {fullWeek && <WeekGrid state={state} meetings={recurringMeetings} marks={marks} onOpen={manage ? setEditing : setViewing} />}
           <div className="ch-row ch-wrap" style={{ padding: '4px 12px 0' }}>
             {!fullWeek && (
               <Button size="small" variant="text" icon={moreDays ? 'up' : 'down'} onClick={() => setMoreDays(!moreDays)}>
@@ -1356,19 +1394,42 @@ export function TimetableCard({ state }: { state: ClassState }) {
 
 function MeetingDialog({ state, meeting, meetings, onClose }: { state: ClassState; meeting: Meeting; meetings: Meeting[]; onClose: () => void }) {
   const run = useRun();
+  const todayKey = manilaDay(Date.now()).dateKey;
   // A course usually has one professor: the name already saved on another meeting of the course is filled in.
-  const knownInstructor = (courseId: string) => meetings.find((x) => x.courseId === courseId && x.id !== meeting.id && x.instructor)?.instructor ?? '';
-  const [m, setM] = useState(() => (meeting.id ? meeting : { ...meeting, instructor: knownInstructor(meeting.courseId) }));
+  const knownInstructor = (courseId: string) =>
+    courseId ? meetings.find((x) => x.courseId === courseId && x.id !== meeting.id && x.instructor)?.instructor ?? '' : '';
+  const [oneTime, setOneTime] = useState(() => isOneTimeMeeting(meeting) || state.courses.length === 0);
+  const [m, setM] = useState(() => ({
+    ...meeting,
+    instructor: meeting.id ? meeting.instructor : knownInstructor(meeting.courseId),
+    dateKey: meeting.dateKey || todayKey,
+    title: meeting.title ?? '',
+    takeAttendance: meeting.takeAttendance !== false,
+  }));
+  const [notifyStudents, setNotifyStudents] = useState(!meeting.id);
   // Once the officer types a name, changing the course leaves it alone.
   const [typedInstructor, setTypedInstructor] = useState(false);
   const pickCourse = (courseId: string) => {
     if (typedInstructor) return setM({ ...m, courseId });
     const saved = meeting.id && courseId === meeting.courseId ? meeting.instructor : '';
-    setM({ ...m, courseId, instructor: saved || knownInstructor(courseId) });
+    setM({ ...m, courseId, instructor: courseId ? saved || knownInstructor(courseId) : '' });
+  };
+  const toggleOneTime = (on: boolean) => {
+    setOneTime(on);
+    if (!on && !m.courseId && state.courses.length > 0) {
+      pickCourse(state.courses[0].id);
+    }
   };
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const meetingText = (x: Meeting) =>
-    `${state.courses.find((c) => c.id === x.courseId)?.name ?? 'Course'}, ${DAY_SHORT[x.dayOfWeek]} ${clockText(x.startMinutes)} to ${clockText(x.endMinutes)}${x.room.trim() ? `, ${x.room.trim()}` : ''}`;
+  const labelOf = (x: Meeting, isOnce: boolean) => {
+    const base = x.courseId
+      ? state.courses.find((c) => c.id === x.courseId)?.name ?? 'Course'
+      : x.title?.trim() || 'One-time meeting';
+    return isOnce && x.courseId && x.title?.trim() ? `${base} (${x.title.trim()})` : base;
+  };
+  const meetingText = (x: Meeting, isOnce = isOneTimeMeeting(x)) =>
+    `${labelOf(x, isOnce)}, ${isOnce && x.dateKey ? niceDate(x.dateKey) : DAY_SHORT[x.dayOfWeek]} ${clockText(x.startMinutes)} to ${clockText(x.endMinutes)}${x.room.trim() ? `, ${x.room.trim()}` : ''}`;
+  const valid = oneTime ? !!(m.dateKey && (m.courseId || m.title.trim())) : !!m.courseId;
   if (confirmDelete)
     return (
       <ConfirmDialog
@@ -1402,18 +1463,38 @@ function MeetingDialog({ state, meeting, meetings, onClose }: { state: ClassStat
           </button>
           <button
             className="btn solid"
-            onClick={() =>
+            disabled={!valid || run.busy}
+            onClick={() => {
+              const toSave: Meeting = oneTime
+                ? { ...m, dateKey: m.dateKey, title: m.title, takeAttendance: m.takeAttendance }
+                : { ...m, dateKey: '', title: '', takeAttendance: true };
+              const notify =
+                oneTime && !meeting.id && notifyStudents
+                  ? {
+                      actorUid: state.myUid,
+                      title: `One-time meeting: ${labelOf(toSave, true)}`,
+                      body: `${niceDate(toSave.dateKey!)} · ${clockText(toSave.startMinutes)} to ${clockText(toSave.endMinutes)}${toSave.room.trim() ? ` · ${toSave.room.trim()}` : ''}`,
+                    }
+                  : undefined;
               run(
                 'Meeting saved.',
                 () =>
-                  saveMeeting(db, state.classId, m, {
-                    actorUid: state.myUid,
-                    kind: meeting.id ? 'MEETING_EDITED' : 'MEETING_ADDED',
-                    text: meeting.id ? `Edited the timetable meeting ${meetingText(meeting)} (now ${meetingText(m)})` : `Added the timetable meeting ${meetingText(m)}`,
-                  }),
+                  saveMeeting(
+                    db,
+                    state.classId,
+                    toSave,
+                    {
+                      actorUid: state.myUid,
+                      kind: meeting.id ? 'MEETING_EDITED' : 'MEETING_ADDED',
+                      text: meeting.id
+                        ? `Edited the timetable meeting ${meetingText(meeting)} (now ${meetingText(toSave, oneTime)})`
+                        : `Added the ${oneTime ? 'one-time' : 'timetable'} meeting ${meetingText(toSave, oneTime)}`,
+                    },
+                    notify,
+                  ),
                 onClose,
-              )
-            }
+              );
+            }}
           >
             Save
           </button>
@@ -1421,8 +1502,16 @@ function MeetingDialog({ state, meeting, meetings, onClose }: { state: ClassStat
       }
     >
       <div className="stack">
-        <Field label="Course">
+        <Switch
+          checked={oneTime}
+          onChange={toggleOneTime}
+          disabled={state.courses.length === 0}
+          label="One-time meeting"
+          description="Scheduled on a single date outside the weekly timetable."
+        />
+        <Field label={oneTime ? 'Course (optional)' : 'Course'}>
           <select value={m.courseId} onChange={(e) => pickCourse(e.target.value)}>
+            {oneTime && <option value="">General (no course)</option>}
             {state.courses.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -1430,15 +1519,31 @@ function MeetingDialog({ state, meeting, meetings, onClose }: { state: ClassStat
             ))}
           </select>
         </Field>
-        <Field label="Day">
-          <select value={m.dayOfWeek} onChange={(e) => setM({ ...m, dayOfWeek: Number(e.target.value) })}>
-            {DAYS.map((d, i) => (
-              <option key={d} value={i}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </Field>
+        {oneTime && (
+          <Field label={m.courseId ? 'Label (optional)' : 'Title'}>
+            <input
+              value={m.title}
+              maxLength={100}
+              placeholder={m.courseId ? 'e.g. Make-up lecture' : 'e.g. Block assembly or Guest seminar'}
+              onChange={(e) => setM({ ...m, title: e.target.value })}
+            />
+          </Field>
+        )}
+        {oneTime ? (
+          <Field label="Date">
+            <input type="date" min={meeting.id ? undefined : todayKey} value={m.dateKey} onChange={(e) => setM({ ...m, dateKey: e.target.value })} />
+          </Field>
+        ) : (
+          <Field label="Day">
+            <select value={m.dayOfWeek} onChange={(e) => setM({ ...m, dayOfWeek: Number(e.target.value) })}>
+              {DAYS.map((d, i) => (
+                <option key={d} value={i}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Starts">
           <input type="time" value={toClock(m.startMinutes)} onChange={(e) => setM({ ...m, startMinutes: fromClock(e.target.value) })} />
         </Field>
@@ -1451,6 +1556,26 @@ function MeetingDialog({ state, meeting, meetings, onClose }: { state: ClassStat
         <Field label="Professor or instructor (optional)">
           <input value={m.instructor} maxLength={80} onChange={(e) => (setTypedInstructor(true), setM({ ...m, instructor: e.target.value }))} />
         </Field>
+        {oneTime && (
+          <Switch
+            checked={m.takeAttendance}
+            onChange={(on) => setM({ ...m, takeAttendance: on })}
+            label="Take attendance"
+            description={
+              m.courseId
+                ? 'Include this meeting in the course attendance sheet.'
+                : 'Creates a separate attendance sheet for this event.'
+            }
+          />
+        )}
+        {oneTime && !meeting.id && (
+          <Switch
+            checked={notifyStudents}
+            onChange={setNotifyStudents}
+            label="Notify students"
+            description={m.courseId ? 'Send a push notification to students taking this course.' : 'Send a push notification to regular block members.'}
+          />
+        )}
       </div>
     </Dialog>
   );
@@ -1478,7 +1603,7 @@ function NoClassDialog({ state, meetings, onClose }: { state: ClassState; meetin
 
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
-  const meetingsOnDay = (day: string) => meetings.filter((m) => m.dayOfWeek === weekdayOf(day)).sort((a, b) => a.startMinutes - b.startMinutes);
+  const meetingsOnDay = (day: string) => meetings.filter((m) => meetingOccursOn(m, day, weekdayOf(day))).sort((a, b) => a.startMinutes - b.startMinutes);
   const alreadyOff = (day: string, courseId: string) => marks.some((k) => k.dateKey === day && (!k.courseId || k.courseId === courseId));
   const open = (day: string) => meetingsOnDay(day).filter((m) => !alreadyOff(day, m.courseId));
   const tickKey = (day: string, m: Meeting) => `${day}|${m.id}`;
@@ -1768,8 +1893,13 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
   const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
   const courseColor = (id: string) => state.courses.find((c) => c.id === id)?.color || undefined;
   const sheetFor = (day: string, meetingId: string) => sheets?.find((x) => x.id === sheetId(day, meetingId));
-  const cancelledOn = (day: string, courseId: string) => noClass.find((x) => x.dateKey === day && (!x.courseId || x.courseId === courseId));
-  const meetingsOnDay = (day: string) => meetings.filter((m) => m.dayOfWeek === weekdayOf(day)).sort((a, b) => a.startMinutes - b.startMinutes);
+  const cancelledOn = (day: string, courseId: string) => noClass.find((x) => x.dateKey === day && (!x.courseId || (!!courseId && x.courseId === courseId)));
+  const meetingsOnDay = (day: string) =>
+    meetings
+      .filter((m) => meetingOccursOn(m, day, weekdayOf(day)) && meetingTracksAttendance(m))
+      .sort((a, b) => a.startMinutes - b.startMinutes);
+  const meetingTitle = (m: Meeting) =>
+    m.courseId ? (m.title?.trim() ? `${courseName(m.courseId)} · ${m.title.trim()}` : courseName(m.courseId)) : m.title?.trim() || 'One-time meeting';
   const takerName = (uid: string) => state.members.find((m) => m.id === uid)?.name ?? 'a former member';
 
   const todays = meetingsOnDay(dateKey);
@@ -1780,7 +1910,13 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
     todays.find((m) => !sheetFor(dateKey, m.id) && started(m)) ??
     todays.find((m) => !sheetFor(dateKey, m.id)) ??
     todays[0];
-  const students = meeting ? byLastName(state.members.filter((m) => !m.excludedCourseIds.includes(meeting.courseId))) : [];
+  const students = meeting
+    ? byLastName(
+        meeting.courseId
+          ? state.members.filter((m) => !m.excludedCourseIds.includes(meeting.courseId))
+          : state.members.filter((m) => !m.irregular),
+      )
+    : [];
   const saved = meeting ? sheetFor(dateKey, meeting.id) : undefined;
   const cancelled = meeting ? cancelledOn(dateKey, meeting.courseId) : undefined;
   const key = `${dateKey}|${meeting?.id ?? ''}|${saved?.takenAtMillis ?? 0}`;
@@ -1808,7 +1944,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
   const save = () => {
     if (!meeting) return;
     const counts = `${withMark('PRESENT').length} present, ${withMark('LATE').length} late, ${withMark('ABSENT').length} absent, ${withMark('EXCUSED').length} excused`;
-    const which = `${courseName(meeting.courseId)}, ${niceDate(dateKey)} ${clockText(meeting.startMinutes)}`;
+    const which = `${meetingTitle(meeting)}, ${niceDate(dateKey)} ${clockText(meeting.startMinutes)}`;
     const logText = saved
       ? `Changed the attendance for ${which}: ${changes.map((s) => `${listName(s)} ${MARK_LABELS[savedMarks[s.id] ?? 'PRESENT']} to ${MARK_LABELS[markOf(s.id)]}`).join('; ')}`
       : `Took attendance for ${which}: ${counts}${cancelled ? ' (the day was marked No classes)' : ''}`;
@@ -1820,7 +1956,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
     return (
       <ConfirmDialog
         title="Remove this attendance?"
-        text={`${courseName(meeting.courseId)} · ${niceDate(dateKey)} goes back to not taken. The marks saved for it are deleted.`}
+        text={`${meetingTitle(meeting)} · ${niceDate(dateKey)} goes back to not taken. The marks saved for it are deleted.`}
         confirm="Remove"
         danger
         onClose={() => setRemovingSheet(false)}
@@ -1831,7 +1967,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
               removeAttendance(db, state.classId, saved, {
                 actorUid: state.myUid,
                 kind: 'ATTENDANCE_REMOVED',
-                text: `Removed the attendance for ${courseName(meeting.courseId)}, ${niceDate(dateKey)} ${clockText(meeting.startMinutes)} (taken by ${takerName(saved.takenByUid)} on ${shortDateTime(saved.takenAtMillis)})`,
+                text: `Removed the attendance for ${meetingTitle(meeting)}, ${niceDate(dateKey)} ${clockText(meeting.startMinutes)} (taken by ${takerName(saved.takenByUid)} on ${shortDateTime(saved.takenAtMillis)})`,
               }),
             () => setRemovingSheet(false),
           )
@@ -1841,7 +1977,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
   }
 
   if (confirming && meeting) {
-    const where = `${courseName(meeting.courseId)} · ${niceDate(dateKey)} · ${clockText(meeting.startMinutes)}`;
+    const where = `${meetingTitle(meeting)} · ${niceDate(dateKey)} · ${clockText(meeting.startMinutes)}`;
     const names = (list: typeof students) => (list.length ? list.map(listName).join('; ') : 'None');
     return (
       <Dialog
@@ -1971,8 +2107,8 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
                   <span className="att-radio" />
                   <span className="grow">
                     <span className="att-meeting-title">
-                      <span className="semibold">{clockText(m.startMinutes)}</span> <CourseDot color={courseColor(m.courseId)} />
-                      {courseName(m.courseId)}
+                      <span className="semibold">{clockText(m.startMinutes)}</span> <CourseDot color={courseColor(m.courseId) || 'var(--accent)'} />
+                      {meetingTitle(m)}
                     </span>
                     {sheet ? (
                       <span className="att-status ok">
@@ -2070,13 +2206,21 @@ export function AttendanceCard({ state }: { state: ClassState }) {
   const meetings = useMeetings(db, state.classId, manage).data ?? [];
   const noClass = useNoClass(db, state.classId, manage).data ?? [];
   const totals = useAttendanceTotals(db, state.classId, true);
-  const courseName = (id: string) => state.courses.find((c) => c.id === id)?.name ?? 'Course';
+  const courseName = (id: string) =>
+    state.courses.find((c) => c.id === id)?.name ??
+    all.find((s) => s.courseId === id && s.eventTitle)?.eventTitle ??
+    [...mine.absent, ...mine.late, ...mine.excused].find((s) => s.courseId === id && s.eventTitle)?.eventTitle ??
+    meetings.find((m) => `event_${m.id}` === id && m.title)?.title ??
+    (id.startsWith('event_') ? 'One-time meeting' : 'Course');
   // Marks from a course the student no longer takes stay in the records but are not shown or counted.
-  const courseIds = [...new Set([...mine.absent, ...mine.late, ...mine.excused].map((x) => x.courseId))].filter((id) => state.takes(id));
+  const courseIds = [...new Set([...mine.absent, ...mine.late, ...mine.excused].map((x) => x.courseId))].filter((id) =>
+    id.startsWith('event_') ? !state.isIrregular : state.takes(id),
+  );
   const perCourse = [...new Set(all.map((x) => x.courseId))].map((courseId) => {
     const sheets = all.filter((x) => x.courseId === courseId);
+    const isEvent = courseId.startsWith('event_');
     const rows = state.members
-      .filter((m) => !m.excludedCourseIds.includes(courseId))
+      .filter((m) => (isEvent ? !m.irregular : !m.excludedCourseIds.includes(courseId)))
       .map((m) => ({
         id: m.id,
         name: listName(m),
@@ -2098,14 +2242,19 @@ export function AttendanceCard({ state }: { state: ClassState }) {
   const [untaken, setUntaken] = useState<{ dateKey: string; courseId: string }[] | null>(null);
   // Warns first when a class meeting since attendance began has no sheet and was not marked "No classes".
   function exportAttendance() {
-    const known = meetings.filter((m) => state.courses.some((c) => c.id === m.courseId));
+    const known = meetings.filter((m) => meetingTracksAttendance(m) && (isOneTimeMeeting(m) || state.courses.some((c) => c.id === m.courseId)));
     const missing = untakenMeetings(known, all, noClass, manilaDay(Date.now()).dateKey, manilaMinutes(Date.now()));
     if (missing.length > 0) setUntaken(missing);
     else writeExport();
   }
   function writeExport() {
     const courses = [...state.courses].sort((x, y) => x.name.localeCompare(y.name));
-    const students = byLastName(state.members).map((m) => ({ id: m.id, name: listName(m), excludedCourseIds: m.excludedCourseIds }));
+    const students = byLastName(state.members).map((m) => ({
+      id: m.id,
+      name: listName(m),
+      excludedCourseIds: m.excludedCourseIds,
+      irregular: m.irregular,
+    }));
     // One sheet per course. Columns: name, days attended, then a column per day attendance was taken or the meeting was cancelled.
     const cancellations = { noClass, meetings, todayKey: manilaDay(Date.now()).dateKey };
     const sheets = attendanceExportSheets(courses, students, all, cancellations).map((s) => ({ ...s, widths: [30, 10, ...s.rows[0].slice(2).map(() => 10)] }));

@@ -2435,6 +2435,25 @@ async function main() {
     await assertFails(getDoc(doc(db('cat'), 'classes/grp/records/r_exp')));
   });
 
+  await test('One-time meetings: officer can save a general one-time meeting with optional attendance and separate event sheet', async () => {
+    // Weekly meeting still requires courseId.
+    await assertFails(setDoc(doc(db('gmayor'), 'classes/grp/meetings/bad_weekly'), {
+      courseId: '', dayOfWeek: 1, startMinutes: 480, endMinutes: 540, room: '', instructor: '', note: '',
+    }));
+    // One-time meeting without courseId requires title.
+    await assertFails(setDoc(doc(db('gmayor'), 'classes/grp/meetings/bad_once'), {
+      courseId: '', dayOfWeek: 3, startMinutes: 600, endMinutes: 660, room: 'AVR', instructor: '', note: '', dateKey: '2026-11-25', title: '', takeAttendance: false,
+    }));
+    // Valid general one-time meeting (no course, no professor, attendance on).
+    await assertSucceeds(setDoc(doc(db('gmayor'), 'classes/grp/meetings/once1'), {
+      courseId: '', dayOfWeek: 3, startMinutes: 600, endMinutes: 660, room: 'AVR', instructor: '', note: '', dateKey: '2026-11-25', title: 'Block assembly', takeAttendance: true,
+    }));
+    // Attendance sheet for that general one-time meeting uses event_once1 and stores eventTitle.
+    await assertSucceeds(setDoc(doc(db('gmayor'), 'classes/grp/attendance/2026-11-25_once1'), {
+      dateKey: '2026-11-25', meetingId: 'once1', courseId: 'event_once1', eventTitle: 'Block assembly', absent: ['ben'], late: [], excused: [], takenByUid: 'gmayor', takenAtMillis: now(),
+    }));
+  });
+
   await env.cleanup();
 
   // ---------------------------------------------------------------- Report

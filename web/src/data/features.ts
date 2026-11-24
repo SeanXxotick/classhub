@@ -341,9 +341,32 @@ export interface Meeting {
   /** The professor or instructor. Empty when not given, and missing on meetings saved before it existed. */
   instructor: string;
   note: string;
+  /** YYYY-MM-DD in Philippine time for a one-time meeting; empty/omitted for a recurring weekly meeting. */
+  dateKey?: string;
+  /** Event title for a one-time meeting (required when courseId is empty; optional label when courseId is set). */
+  title?: string;
+  /** Whether attendance can be taken for this meeting. Defaults to true. */
+  takeAttendance?: boolean;
 }
 
-export const newMeeting = (m: Partial<Meeting>): Meeting => ({ id: '', courseId: '', dayOfWeek: 1, startMinutes: 480, endMinutes: 540, room: '', instructor: '', note: '', ...m });
+export const newMeeting = (m: Partial<Meeting>): Meeting => ({
+  id: '',
+  courseId: '',
+  dayOfWeek: 1,
+  startMinutes: 480,
+  endMinutes: 540,
+  room: '',
+  instructor: '',
+  note: '',
+  ...m,
+});
+
+export const isOneTimeMeeting = (m: Pick<Meeting, 'dateKey'>): boolean => !!(m.dateKey && m.dateKey.length === 10);
+export const meetingTracksAttendance = (m: Pick<Meeting, 'dateKey' | 'takeAttendance'>): boolean =>
+  !isOneTimeMeeting(m) || m.takeAttendance !== false;
+export const attendanceCourseId = (m: Pick<Meeting, 'id' | 'courseId'>): string => m.courseId || `event_${m.id}`;
+export const meetingOccursOn = (m: Pick<Meeting, 'dayOfWeek' | 'dateKey'>, dateKey: string, dayOfWeek: number): boolean =>
+  isOneTimeMeeting(m) ? m.dateKey === dateKey : m.dayOfWeek === dayOfWeek;
 
 export interface NoClassMark {
   id: string;
@@ -358,12 +381,47 @@ export interface NoClassMark {
 export const meetingsCol = (db: Firestore, classId: string) => sub(db, classId, 'meetings');
 export const noClassCol = (db: Firestore, classId: string) => sub(db, classId, 'noClass');
 
-/** Adds or changes a weekly meeting (SCHEDULE_MANAGE). */
-export async function saveMeeting(db: Firestore, classId: string, meeting: Meeting, log?: LogNote): Promise<void> {
-  if (!meeting.courseId) throw new UserError('NAME_MISSING', 'Choose the course of this meeting.');
+/** Adds or changes a weekly or one-time meeting (SCHEDULE_MANAGE). */
+export async function saveMeeting(
+  db: Firestore,
+  classId: string,
+  meeting: Meeting,
+  log?: LogNote,
+  notify?: { actorUid: string; title: string; body: string },
+): Promise<void> {
+  const dateKey = (meeting.dateKey ?? '').trim();
+  const title = (meeting.title ?? '').trim().slice(0, 100);
+  const oneTime = dateKey.length > 0;
+  if (oneTime) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) throw new UserError('NAME_MISSING', 'Choose the date of this one-time meeting.');
+    if (!meeting.courseId && !title) throw new UserError('NAME_MISSING', 'Choose a course or give this meeting a title.');
+  } else if (!meeting.courseId) {
+    throw new UserError('NAME_MISSING', 'Choose the course of this meeting.');
+  }
   if (meeting.endMinutes <= meeting.startMinutes) throw new UserError('AMOUNT_INVALID', 'The meeting must end after it starts.');
-  const clean = { ...meeting, room: meeting.room.trim().slice(0, 60), instructor: meeting.instructor.trim().slice(0, 80), note: meeting.note.trim().slice(0, 200) };
-  await explainRefusal(db, classId, () => commitLogged(db, classId, log, (b) => b.set(doc(meetingsCol(db, classId), meeting.id || newId()), withoutId(clean))));
+  const dayOfWeek = oneTime
+    ? new Date(Date.UTC(+dateKey.slice(0, 4), +dateKey.slice(5, 7) - 1, +dateKey.slice(8, 10))).getUTCDay()
+    : meeting.dayOfWeek;
+  const clean: Record<string, unknown> = {
+    courseId: meeting.courseId,
+    dayOfWeek,
+    startMinutes: meeting.startMinutes,
+    endMinutes: meeting.endMinutes,
+    room: meeting.room.trim().slice(0, 60),
+    instructor: meeting.instructor.trim().slice(0, 80),
+    note: meeting.note.trim().slice(0, 200),
+    ...(oneTime ? { dateKey, title, takeAttendance: meeting.takeAttendance !== false } : {}),
+  };
+  await explainRefusal(db, classId, () => commitLogged(db, classId, log, (b) => b.set(doc(meetingsCol(db, classId), meeting.id || newId()), clean)));
+  if (notify) {
+    void queueNotice(db, notify.actorUid, classId, {
+      kind: 'SCHEDULE_NEW',
+      audience: meeting.courseId ? 'COURSE' : 'CLASS',
+      audienceId: meeting.courseId,
+      title: notify.title,
+      body: notify.body,
+    });
+  }
 }
 
 export const deleteMeeting = (db: Firestore, classId: string, meetingId: string, log?: LogNote) =>
@@ -446,9 +504,12 @@ export function meetingsOn(meetings: Meeting[], marks: NoClassMark[], millis: nu
   const { dateKey, dayOfWeek } = manilaDay(millis);
   const today = marks.filter((k) => k.dateKey === dateKey);
   return meetings
-    .filter((m) => m.dayOfWeek === dayOfWeek)
+    .filter((m) => meetingOccursOn(m, dateKey, dayOfWeek))
     .sort((a, b) => a.startMinutes - b.startMinutes)
-    .map((meeting) => ({ meeting, cancelled: today.find((k) => !k.courseId || k.courseId === meeting.courseId) ?? null }));
+    .map((meeting) => ({
+      meeting,
+      cancelled: today.find((k) => !k.courseId || (!!meeting.courseId && k.courseId === meeting.courseId)) ?? null,
+    }));
 }
 
 // ---------------------------------------------------------------- Attendance
@@ -459,6 +520,8 @@ export interface AttendanceSheet {
   dateKey: string;
   meetingId: string;
   courseId: string;
+  /** For general one-time meetings without a course: the event title shown on exports and My attendance. */
+  eventTitle?: string;
   absent: string[];
   late: string[];
   /** Absent with a reason the officer accepted. Missing on sheets saved before Excused existed. */
@@ -484,10 +547,21 @@ export async function saveAttendance(
   db: Firestore, actorUid: string, classId: string, dateKey: string, meeting: Meeting, marks: Record<string, AttendanceMark>, isNew = true, logText?: string,
 ): Promise<void> {
   const of = (mark: AttendanceMark) => Object.keys(marks).filter((uid) => marks[uid] === mark).sort();
-  const sheet = { dateKey, meetingId: meeting.id, courseId: meeting.courseId, absent: of('ABSENT'), late: of('LATE'), excused: of('EXCUSED'), takenByUid: actorUid, takenAtMillis: nowMillis() };
+  const cid = attendanceCourseId(meeting);
+  const sheet = {
+    dateKey,
+    meetingId: meeting.id,
+    courseId: cid,
+    ...(meeting.courseId ? {} : { eventTitle: (meeting.title ?? '').trim().slice(0, 100) || 'One-time meeting' }),
+    absent: of('ABSENT'),
+    late: of('LATE'),
+    excused: of('EXCUSED'),
+    takenByUid: actorUid,
+    takenAtMillis: nowMillis(),
+  };
   const batch = writeBatch(db);
   batch.set(doc(attendanceCol(db, classId), sheetId(dateKey, meeting.id)), sheet);
-  if (isNew) batch.set(doc(sub(db, classId, 'attendanceTotals'), meeting.courseId), { taken: increment(1) }, { merge: true });
+  if (isNew) batch.set(doc(sub(db, classId, 'attendanceTotals'), cid), { taken: increment(1) }, { merge: true });
   if (logText) await logToBatch(batch, db, classId, actorUid, isNew ? 'ATTENDANCE_TAKEN' : 'ATTENDANCE_REPLACED', logText);
   await explainRefusal(db, classId, () => batch.commit());
 }

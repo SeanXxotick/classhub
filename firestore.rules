@@ -1178,12 +1178,19 @@ service cloud.firestore {
 
     function isMeeting() {
       let d = request.resource.data;
-      // 'instructor' is optional: meetings saved before it existed, and older copies of the app, do not send it.
+      let oneTime = d.get('dateKey', '') != '';
+      // 'instructor', 'dateKey', 'title' and 'takeAttendance' are optional for backwards compatibility.
       return d.keys().hasAll(['courseId', 'dayOfWeek', 'startMinutes', 'endMinutes', 'room', 'note'])
-        && d.keys().hasOnly(['courseId', 'dayOfWeek', 'startMinutes', 'endMinutes', 'room', 'note', 'instructor', 'id'])
+        && d.keys().hasOnly(['courseId', 'dayOfWeek', 'startMinutes', 'endMinutes', 'room', 'note', 'instructor', 'dateKey', 'title', 'takeAttendance', 'id'])
         && d.get('id', '') == ''
         && isText(d.get('instructor', ''), 80)
-        && isFilled(d.courseId, 128)
+        && isText(d.get('title', ''), 100)
+        && d.get('takeAttendance', true) is bool
+        && (oneTime
+          ? (d.dateKey is string && d.dateKey.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+            && isText(d.courseId, 128)
+            && (isFilled(d.courseId, 128) || isFilled(d.get('title', ''), 100)))
+          : isFilled(d.courseId, 128))
         && d.dayOfWeek is int && d.dayOfWeek >= 0 && d.dayOfWeek <= 6
         && d.startMinutes is int && d.startMinutes >= 0 && d.startMinutes < 1440
         && d.endMinutes is int && d.endMinutes > d.startMinutes && d.endMinutes <= 1440
@@ -1205,8 +1212,9 @@ service cloud.firestore {
     function isAttendance() {
       let d = request.resource.data;
       let keys = ['dateKey', 'meetingId', 'courseId', 'absent', 'late', 'takenByUid', 'takenAtMillis'];
-      return d.keys().hasAll(keys) && d.keys().hasOnly(keys.concat(['excused', 'id'])) && d.get('id', '') == ''
+      return d.keys().hasAll(keys) && d.keys().hasOnly(keys.concat(['excused', 'eventTitle', 'id'])) && d.get('id', '') == ''
         && d.get('excused', []) is list && d.get('excused', []).size() <= 500
+        && isText(d.get('eventTitle', ''), 100)
         && d.dateKey is string && d.dateKey.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
         && isId(d.meetingId)
         && isFilled(d.courseId, 128)

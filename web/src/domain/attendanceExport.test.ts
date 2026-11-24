@@ -144,4 +144,29 @@ describe('untakenMeetings', () => {
   it('is empty when attendance was never taken', () => {
     expect(untakenMeetings(meetings, [], [], '2026-07-08', 0)).toEqual([]);
   });
+
+  it('handles one-time meetings on their exact date and skips ones with takeAttendance off', () => {
+    const sheets = [{ dateKey: '2026-07-01', meetingId: 'orW' }];
+    const extra = [
+      { id: 'onceTrack', courseId: '', dayOfWeek: 4, endMinutes: 600, dateKey: '2026-07-02', takeAttendance: true },
+      { id: 'onceSkip', courseId: '', dayOfWeek: 4, endMinutes: 600, dateKey: '2026-07-02', takeAttendance: false },
+    ];
+    const missing = untakenMeetings(extra, sheets, [], '2026-07-09', 24 * 60);
+    expect(missing).toEqual([{ dateKey: '2026-07-02', meetingId: 'onceTrack', courseId: 'event_onceTrack' }]);
+  });
+
+  it('generates a separate Excel sheet for general one-time meetings excluding irregular students', () => {
+    const sheets = attendanceExportSheets(
+      courses,
+      [...students, { id: 'irr', name: 'Sy, Lia', excludedCourseIds: ['or'], irregular: true }],
+      [{ courseId: 'event_m1', eventTitle: 'Block assembly', dateKey: '2026-07-02', absent: ['paolo'], late: [] }],
+    );
+    expect(sheets).toHaveLength(1);
+    expect(sheets[0].name).toBe('Block assembly');
+    expect(sheets[0].rows[0]).toEqual(['Name', 'Summary', '07/02/26']);
+    expect(sheets[0].rows.slice(1, 3)).toEqual([
+      ['Lim, Ana', 1, 1],
+      ['Garcia, Paolo', 0, 0],
+    ]);
+  });
 });

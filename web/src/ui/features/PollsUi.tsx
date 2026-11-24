@@ -654,8 +654,8 @@ function EditPollDialog({
           )}
         </div>
         {!poll.shared && state.courses.length > 0 && (
-          <Field label="Who votes">
-            <TagSelect state={state} value={courseId} onChange={setCourseId} label="Who votes" />
+          <Field label="Course tag / Who votes">
+            <TagSelect state={state} value={courseId} onChange={setCourseId} label="Course tag" />
           </Field>
         )}
         <Switch checked={multi} onChange={setMulti} label="Allow multiple choices" disabled={keepMulti} />
