@@ -1006,7 +1006,10 @@ function phaseLook(phase: MeetingPhase, cancelled: boolean) {
 /** The timetable without the meetings of a course that has since been deleted. */
 function useLiveMeetings(state: ClassState): Meeting[] {
   const all = useMeetings(db, state.classId, true).data;
-  return useMemo(() => (all ?? []).filter((m) => state.courses.some((c) => c.id === m.courseId)), [all, state.courses]);
+  return useMemo(
+    () => (all ?? []).filter((m) => (isOneTimeMeeting(m) && !m.courseId) || state.courses.some((c) => c.id === m.courseId)),
+    [all, state.courses],
+  );
 }
 
 /** Today and tomorrow, for Home. Shows nothing when the class has no timetable. */
