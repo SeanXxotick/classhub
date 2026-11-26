@@ -127,7 +127,7 @@ export function readableColor(hex: string): string {
  * a very light choice is darkened so white text on it stays readable.
  */
 export function ColorPicker({ choices, selected, onSelect, label, custom }: { choices: string[]; selected: string; onSelect: (hex: string) => void; label: string; custom?: boolean }) {
-  const isCustom = !!custom && !choices.some((hex) => hex.toLowerCase() === selected.toLowerCase());
+  const isCustom = !!custom && !!selected && !choices.some((hex) => hex.toLowerCase() === selected.toLowerCase());
   return (
     <div className="swatches" role="radiogroup" aria-label={label}>
       {choices.map((hex) => {

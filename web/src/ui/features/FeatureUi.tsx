@@ -62,6 +62,7 @@ import { attendanceExportSheets, untakenMeetings } from '../../domain/attendance
 import { groupNoClass } from '../../domain/noClassGroups';
 import { xlsxFile } from '../../domain/xlsx';
 import { Avatar, ConfirmDialog, CourseDot, Dialog, Field, LinkifiedText, RoleChip, hexColor, inAndroidApp, saveFile, shortDate, shortDateTime } from '../common';
+import { myAccent } from '../settings';
 import { Badge, Button, Card, DayHeader, Icon, ListRow, Money, Notice, SearchInput, Section, StatusBadge, Switch, TypeIcon } from '../../design';
 import { useClass, type ClassState } from '../classroom/ClassContext';
 import { useSearchParams } from 'react-router-dom';
@@ -1221,6 +1222,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
         subtitle: recurringMeetings.length === everyMeeting.filter((m) => !isOneTimeMeeting(m)).length ? 'Weekly timetable' : 'Weekly timetable · My courses',
         meetings: recurringMeetings,
         course: (id) => state.courses.find((c) => c.id === id),
+        accentColor: hexColor(myAccent(state.classId) ?? state.room?.accentColor),
       });
       await saveFile(`${className} timetable.png`, blob, actions.showNotice);
     } catch (e) {

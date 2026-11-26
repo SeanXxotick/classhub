@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { wrapLines } from './weekImage';
+import { resolveMeetingColor, wrapLines } from './weekImage';
 
 // Every character is 1 wide, so widths are lengths.
 const measure = (s: string) => s.length;
@@ -19,5 +19,17 @@ describe('wrapLines', () => {
 
   it('breaks a word longer than a line', () => {
     expect(wrapLines('Specialization', 6, measure, 5)).toEqual(['Specia', 'lizati', 'on']);
+  });
+});
+
+describe('resolveMeetingColor', () => {
+  it('keeps a custom or preset course color when set', () => {
+    expect(resolveMeetingColor('#C76FA7', '#CC4A0A')).toBe('#C76FA7');
+    expect(resolveMeetingColor(' #4F46E5 ', '#CC4A0A')).toBe('#4F46E5');
+  });
+
+  it('falls back to the class or device accent when the course has no color', () => {
+    expect(resolveMeetingColor('', '#CC4A0A')).toBe('#CC4A0A');
+    expect(resolveMeetingColor(undefined, '#585BE8')).toBe('#585BE8');
   });
 });

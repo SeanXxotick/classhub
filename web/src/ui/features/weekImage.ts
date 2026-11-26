@@ -22,6 +22,14 @@ export interface WeekImageInput {
   subtitle: string;
   meetings: ImageMeeting[];
   course: (id: string) => { name: string; color?: string } | undefined;
+  /** Fallback color for courses without their own color (the class accent or this device's accent). */
+  accentColor?: string;
+}
+
+/** Picks the meeting block's color: the course's own color when set, otherwise the class or device accent. */
+export function resolveMeetingColor(courseColor: string | undefined, fallbackColor: string): string {
+  const own = courseColor?.trim();
+  return own || fallbackColor;
 }
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -86,11 +94,16 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 }
 
 /** The timetable picture as a PNG. */
-export async function weekImage({ title, subtitle, meetings, course }: WeekImageInput): Promise<Blob> {
+export async function weekImage({ title, subtitle, meetings, course, accentColor }: WeekImageInput): Promise<Blob> {
   const week = layoutWeek(meetings);
   const root = getComputedStyle(document.documentElement);
+  const frame = document.querySelector('.class-frame, .ch-accented');
   const family = root.getPropertyValue('--ch-font').trim() || 'system-ui, sans-serif';
-  const fallbackColor = root.getPropertyValue('--ch-accent').trim() || '#0F766E';
+  const fallbackColor =
+    accentColor?.trim() ||
+    (frame ? getComputedStyle(frame).getPropertyValue('--ch-accent').trim() : '') ||
+    root.getPropertyValue('--ch-accent').trim() ||
+    '#0F766E';
   await document.fonts?.ready;
 
   const gridH = ((week.toMinutes - week.fromMinutes) / 60) * HOUR;
@@ -159,7 +172,7 @@ export async function weekImage({ title, subtitle, meetings, course }: WeekImage
       const w = laneW - 8;
       const h = ((b.endMinutes - b.startMinutes) / 60) * HOUR - 4;
       ctx.save();
-      ctx.fillStyle = info?.color || fallbackColor;
+      ctx.fillStyle = resolveMeetingColor(info?.color, fallbackColor);
       roundRect(ctx, x, y, w, h, 8);
       ctx.fill();
       ctx.clip();
