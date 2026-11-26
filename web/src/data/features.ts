@@ -590,13 +590,17 @@ export async function removeAttendance(
   sheet: { dateKey: string; meetingId: string; courseId: string },
   log?: LogNote,
   nextFirstDateKey?: string,
+  remainingCount?: number,
 ): Promise<void> {
   await explainRefusal(db, classId, () =>
     commitLogged(db, classId, log, (b) => {
       b.delete(doc(attendanceCol(db, classId), sheetId(sheet.dateKey, sheet.meetingId)));
       b.set(
         doc(sub(db, classId, 'attendanceTotals'), sheet.courseId),
-        { taken: increment(-1), ...(nextFirstDateKey !== undefined ? { firstDateKey: nextFirstDateKey } : {}) },
+        {
+          taken: remainingCount !== undefined ? Math.max(0, remainingCount) : increment(-1),
+          ...(nextFirstDateKey !== undefined ? { firstDateKey: nextFirstDateKey } : {}),
+        },
         { merge: true },
       );
     }),

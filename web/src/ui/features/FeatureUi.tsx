@@ -40,6 +40,7 @@ import {
   useAttendanceTotalsDocs,
   useMyAttendance,
   type AttendanceMark,
+  type AttendanceSheet,
   saveAnnouncement,
   saveMeeting,
   sendClaim,
@@ -2069,6 +2070,7 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
                   text: `Removed the attendance for ${meetingTitle(meeting)}, ${niceDate(dateKey)} ${clockText(meeting.startMinutes)} (taken by ${takerName(saved.takenByUid)} on ${shortDateTime(saved.takenAtMillis)})`,
                 },
                 nextFirstDateKey,
+                remainingDates.length,
               ),
             () => setRemovingSheet(false),
           )
@@ -2139,6 +2141,11 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
       onClose={onClose}
       actions={
         <>
+          {meeting && saved && (
+            <button className="btn text danger" style={{ marginRight: 'auto' }} onClick={() => setRemovingSheet(true)}>
+              Remove
+            </button>
+          )}
           <button className="btn text" onClick={onClose}>
             Cancel
           </button>
@@ -2305,6 +2312,8 @@ export function AttendanceCard({ state }: { state: ClassState }) {
   const mine = useMyAttendance(db, state.classId, state.myUid, true);
   const [openCourse, setOpenCourse] = useState<string | null>(null);
   const [openMine, setOpenMine] = useState<string | null>(null);
+  const [removingSheet, setRemovingSheet] = useState<AttendanceSheet | null>(null);
+  const run = useRun();
   const { actions } = useClass();
   const all = useAttendance(db, state.classId, manage).data ?? [];
   // For the export: cancelled meetings get their own NC column.
@@ -2321,12 +2330,23 @@ export function AttendanceCard({ state }: { state: ClassState }) {
     [...mine.absent, ...mine.late, ...mine.excused].find((s) => s.courseId === id && s.eventTitle)?.eventTitle ??
     meetings.find((m) => `event_${m.id}` === id && m.title)?.title ??
     (id.startsWith('event_') ? 'One-time meeting' : 'Course');
+  const takerName = (uid: string) => state.members.find((m) => m.id === uid)?.name ?? 'a former member';
+  const sheetSummary = (s: AttendanceSheet) => {
+    const parts = [
+      s.absent.length > 0 ? `${s.absent.length} absent` : '',
+      s.late.length > 0 ? `${s.late.length} late` : '',
+      s.excused.length > 0 ? `${s.excused.length} excused` : '',
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(' · ') : 'Everyone present';
+  };
   // Marks from a course the student no longer takes stay in the records but are not shown or counted.
   const courseIds = [...new Set([...mine.absent, ...mine.late, ...mine.excused].map((x) => x.courseId))].filter((id) =>
     id.startsWith('event_') ? !state.isIrregular : state.takes(id),
   );
   const perCourse = [...new Set(all.map((x) => x.courseId))].map((courseId) => {
-    const sheets = all.filter((x) => x.courseId === courseId);
+    const sheets = all
+      .filter((x) => x.courseId === courseId)
+      .sort((a, b) => (b.dateKey < a.dateKey ? -1 : b.dateKey > a.dateKey ? 1 : b.takenAtMillis - a.takenAtMillis));
     const isEvent = courseId.startsWith('event_');
     const rows = state.members
       .filter((m) => (isEvent ? !m.irregular : !m.excludedCourseIds.includes(courseId)))
@@ -2339,7 +2359,7 @@ export function AttendanceCard({ state }: { state: ClassState }) {
       }))
       .filter((r) => r.absent || r.late || r.excused)
       .sort((a, b) => b.absent - a.absent || b.late - a.late || b.excused - a.excused);
-    return { courseId, taken: sheets.length, rows };
+    return { courseId, taken: sheets.length, sheets, rows };
   });
   const counts = (absent: number, late: number, excused: number) => (
     <>
@@ -2452,15 +2472,16 @@ export function AttendanceCard({ state }: { state: ClassState }) {
                   key={c.courseId}
                   title={<><CourseDot color={state.courses.find((x) => x.id === c.courseId)?.color || 'var(--accent)'} />{courseName(c.courseId)}</>}
                   subtitle={`Taken ${times(c.taken)}`}
-                  chevron={c.rows.length > 0}
-                  onClick={c.rows.length > 0 ? () => setOpenCourse(c.courseId) : undefined}
+                  chevron
+                  onClick={() => setOpenCourse(c.courseId)}
                 />
               ))}
             </Card>
           )}
-          {perCourse
-            .filter((c) => c.courseId === openCourse)
-            .map((c) => (
+          {!removingSheet &&
+            perCourse
+              .filter((c) => c.courseId === openCourse)
+              .map((c) => (
               <Dialog
                 key={c.courseId}
                 title={`Attendance: ${courseName(c.courseId)}`}
@@ -2471,16 +2492,83 @@ export function AttendanceCard({ state }: { state: ClassState }) {
                   </button>
                 }
               >
-                <p className="small muted" style={{ marginTop: 0 }}>
-                  Taken {times(c.taken)}.
-                </p>
-                <Card flush>
-                  {c.rows.map((r) => (
-                    <ListRow key={r.id} title={r.name} trailing={counts(r.absent, r.late, r.excused)} />
-                  ))}
-                </Card>
+                <div className="stack">
+                  <div>
+                    <div className="ch-small ch-muted" style={{ fontWeight: 700, marginBottom: 6 }}>
+                      {`Sessions (${c.taken})`}
+                    </div>
+                    <Card flush>
+                      {c.sheets.map((s) => {
+                        const mtg = meetings.find((m) => m.id === s.meetingId);
+                        return (
+                          <ListRow
+                            key={s.id}
+                            title={`${niceDate(s.dateKey)}${mtg ? ` · ${clockText(mtg.startMinutes)}` : ''}`}
+                            subtitle={sheetSummary(s)}
+                            actions={
+                              <Button size="small" variant="text" danger onClick={() => setRemovingSheet(s)}>
+                                Remove
+                              </Button>
+                            }
+                          />
+                        );
+                      })}
+                    </Card>
+                  </div>
+                  {c.rows.length > 0 && (
+                    <div>
+                      <div className="ch-small ch-muted" style={{ fontWeight: 700, marginBottom: 6 }}>
+                        Absences, lates and excused
+                      </div>
+                      <Card flush>
+                        {c.rows.map((r) => (
+                          <ListRow key={r.id} title={r.name} trailing={counts(r.absent, r.late, r.excused)} />
+                        ))}
+                      </Card>
+                    </div>
+                  )}
+                </div>
               </Dialog>
             ))}
+          {removingSheet && (() => {
+            const mtg = meetings.find((m) => m.id === removingSheet.meetingId);
+            const remaining = all
+              .filter((s) => s.courseId === removingSheet.courseId && s.id !== removingSheet.id)
+              .map((s) => s.dateKey)
+              .sort();
+            const nextFirstDateKey = remaining[0] ?? '';
+            return (
+              <ConfirmDialog
+                title="Remove this attendance?"
+                text={`${courseName(removingSheet.courseId)} · ${niceDate(removingSheet.dateKey)}${mtg ? ` ${clockText(mtg.startMinutes)}` : ''} goes back to not taken. The marks saved for it are deleted.`}
+                confirm="Remove"
+                danger
+                onClose={() => setRemovingSheet(null)}
+                onConfirm={() =>
+                  run(
+                    'Attendance removed.',
+                    () =>
+                      removeAttendance(
+                        db,
+                        state.classId,
+                        removingSheet,
+                        {
+                          actorUid: state.myUid,
+                          kind: 'ATTENDANCE_REMOVED',
+                          text: `Removed the attendance for ${courseName(removingSheet.courseId)}, ${niceDate(removingSheet.dateKey)}${mtg ? ` ${clockText(mtg.startMinutes)}` : ''} (taken by ${takerName(removingSheet.takenByUid)} on ${shortDateTime(removingSheet.takenAtMillis)})`,
+                        },
+                        nextFirstDateKey,
+                        remaining.length,
+                      ),
+                    () => {
+                      setRemovingSheet(null);
+                      if (remaining.length === 0) setOpenCourse(null);
+                    },
+                  )
+                }
+              />
+            );
+          })()}
         </Section>
       )}
       {untaken && (
