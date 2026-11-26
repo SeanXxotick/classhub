@@ -2454,6 +2454,17 @@ async function main() {
     }));
   });
 
+  await test('Attendance totals: officers store taken count and optional firstDateKey; members can read', async () => {
+    const T = 'classes/grp/attendanceTotals';
+    await assertSucceeds(setDoc(doc(db('gmayor'), `${T}/math`), { taken: 1, firstDateKey: '2026-11-16' }));
+    await assertSucceeds(setDoc(doc(db('gmayor'), `${T}/legacy`), { taken: 2 }));
+    await assertSucceeds(setDoc(doc(db('gmayor'), `${T}/cleared`), { taken: 0, firstDateKey: '' }));
+    await assertFails(setDoc(doc(db('gmayor'), `${T}/bad_date`), { taken: 1, firstDateKey: 'Nov 16' }));
+    await assertFails(setDoc(doc(db('gmayor'), `${T}/bad_key`), { taken: 1, firstDateKey: '2026-11-16', extra: true }));
+    await assertFails(setDoc(doc(db('ben'), `${T}/math`), { taken: 2, firstDateKey: '2026-11-16' }));
+    await assertSucceeds(getDoc(doc(db('ben'), `${T}/math`)));
+  });
+
   await env.cleanup();
 
   // ---------------------------------------------------------------- Report

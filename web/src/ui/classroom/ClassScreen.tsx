@@ -10,7 +10,7 @@ import { usePolls, useSharedPolls } from '../../data/polls';
 import { forumUnseen } from '../../domain/forumUnseen';
 import { markTabsSeen, useTabsSeen } from '../../data/tabsSeen';
 import { countLabel, groupingAttentionCount, SEEN_TABS, unseenCounts, type SeenTab } from '../../domain/tabCounts';
-import { AttendanceCard, ClaimsCard, NewsTab, RemindersCard, StatementCard, TimetableCard, TodayCard } from '../features/FeatureUi';
+import { AttendanceCard, ClaimsCard, ClassWeekBadge, NewsTab, RemindersCard, StatementCard, TimetableCard, TodayCard } from '../features/FeatureUi';
 import { GroupingsView } from '../features/GroupingsUi';
 import { InviteDialog } from './InviteDialog';
 import { LedgerView } from '../../domain/ledgerView';
@@ -354,7 +354,10 @@ function HomeTab({
         <section className="card class-header home-order-1" aria-label={room.name}>
           <Avatar photo={state.classPhoto} name={room.name} color="var(--primary)" size={56} circle={false} />
           <span className="grow ellipsis-box">
-            <span className="class-name">{room.name}</span>
+            <span className="class-name-row">
+              <span className="class-name">{room.name}</span>
+              <ClassWeekBadge state={state} />
+            </span>
             {room.description.trim() && <span className="muted clamp-2">{room.description}</span>}
             <span className="small semibold muted class-meta">
               {state.members.length} member{s(state.members.length)}&nbsp;&nbsp;·&nbsp;&nbsp;You are {state.myRole?.name ?? 'a member'}

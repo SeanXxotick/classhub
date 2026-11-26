@@ -1695,6 +1695,13 @@ a.list-row:hover {
   gap: 14px;
 }
 
+.class-name-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
 .class-name {
   display: block;
   font-size: 22px;

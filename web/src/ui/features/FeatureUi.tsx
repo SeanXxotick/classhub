@@ -6,6 +6,7 @@ import {
   CLAIM_METHOD_LABELS,
   addComment,
   addNoClasses,
+  attendanceCourseId,
   removeComment,
   setVote,
   tally,
@@ -34,8 +35,9 @@ import {
   removeAttendance,
   saveAttendance,
   sheetId,
+  syncAttendanceFirstDates,
   useAttendance,
-  useAttendanceTotals,
+  useAttendanceTotalsDocs,
   useMyAttendance,
   type AttendanceMark,
   saveAnnouncement,
@@ -53,6 +55,7 @@ import {
   type NoClassMark,
 } from '../../data/features';
 import { meetingPhase, type MeetingPhase } from '../../domain/meetingPhase';
+import { classWeekNumber, earliestAttendanceDate } from '../../domain/classWeek';
 import { Ledger } from '../../domain/ledger';
 import { ROLE_MEMBER, byLastName, listName } from '../../data/models';
 import { formatMoney, parsePesos } from '../../domain/money';
@@ -1154,6 +1157,56 @@ function WeekGrid({ state, meetings, marks, onOpen }: { state: ClassState; meeti
   );
 }
 
+/** The class's current week number based on the first attendance taken (Monday-anchored), or null until taken. */
+export function useClassWeek(state: ClassState, enabled = true): { week: number; firstDateKey: string } | null {
+  const on = enabled && state.room?.scheduleEnabled !== false;
+  const canManage = on && state.can('ATTENDANCE_MANAGE');
+  const totalsLive = useAttendanceTotalsDocs(db, state.classId, on);
+  const officerLive = useAttendance(db, state.classId, canManage);
+  const totalsDocs = totalsLive.data ?? [];
+  const officerSheets = officerLive.data;
+  const syncedDates = useRef('');
+
+  // Self-heal legacy attendanceTotals docs (created before firstDateKey existed) when an attendance officer opens the class.
+  useEffect(() => {
+    if (!canManage || !officerLive.data || !totalsLive.data) return;
+    const earliestByCourse = new Map<string, string>();
+    for (const s of officerLive.data) {
+      if (!s.dateKey) continue;
+      const prev = earliestByCourse.get(s.courseId);
+      if (!prev || s.dateKey < prev) earliestByCourse.set(s.courseId, s.dateKey);
+    }
+    const updates = totalsLive.data
+      .map((t) => ({ courseId: t.id, current: t.firstDateKey, expected: t.taken > 0 ? earliestByCourse.get(t.id) ?? '' : '' }))
+      .filter((u) => u.expected !== u.current)
+      .map((u) => ({ courseId: u.courseId, firstDateKey: u.expected }));
+    if (updates.length === 0) return;
+    const key = `${state.classId}|${updates.map((u) => `${u.courseId}:${u.firstDateKey}`).sort().join('|')}`;
+    if (syncedDates.current === key) return;
+    syncedDates.current = key;
+    void syncAttendanceFirstDates(db, state.classId, updates).catch(() => undefined);
+  }, [canManage, state.classId, officerLive.data, totalsLive.data]);
+
+  const todayKey = manilaDay(Date.now()).dateKey;
+  return useMemo(() => {
+    const firstDateKey = earliestAttendanceDate(totalsDocs, officerSheets);
+    const week = classWeekNumber(firstDateKey, todayKey);
+    return firstDateKey && week ? { week, firstDateKey } : null;
+  }, [totalsDocs, officerSheets, todayKey]);
+}
+
+/** Compact "Week N" pill based on the class's first attendance taken. Renders nothing until attendance exists. */
+export function ClassWeekBadge({ state }: { state: ClassState }) {
+  const info = useClassWeek(state);
+  if (!info) return null;
+  const tip = `Based on first attendance taken on ${niceDate(info.firstDateKey)}`;
+  return (
+    <span title={tip} aria-label={`Week ${info.week}, ${tip.toLowerCase()}`}>
+      <Badge tone="primary" icon="schedule">{`Week ${info.week}`}</Badge>
+    </span>
+  );
+}
+
 /** The weekly timetable, in the Schedule tab. Officers with the schedule permission edit it and mark "no classes". */
 export function TimetableCard({ state }: { state: ClassState }) {
   const manage = state.can('SCHEDULE_MANAGE');
@@ -1233,7 +1286,7 @@ export function TimetableCard({ state }: { state: ClassState }) {
   };
 
   return (
-    <Section title="Timetable">
+    <Section title="Timetable" action={<ClassWeekBadge state={state} />}>
       {(manage || state.can('ATTENDANCE_MANAGE')) && (
         <div className="ch-row ch-wrap ch-gap-2">
           {state.can('ATTENDANCE_MANAGE') && meetings.some(meetingTracksAttendance) && (
@@ -1963,16 +2016,38 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
   };
   const save = () => {
     if (!meeting) return;
+    const cid = attendanceCourseId(meeting);
+    const courseDates = (sheets ?? []).filter((s) => s.courseId === cid).map((s) => s.dateKey);
+    const firstDateKey = [dateKey, ...courseDates].sort()[0];
     const counts = `${withMark('PRESENT').length} present, ${withMark('LATE').length} late, ${withMark('ABSENT').length} absent, ${withMark('EXCUSED').length} excused`;
     const which = `${meetingTitle(meeting)}, ${niceDate(dateKey)} ${clockText(meeting.startMinutes)}`;
     const logText = saved
       ? `Changed the attendance for ${which}: ${changes.map((s) => `${listName(s)} ${MARK_LABELS[savedMarks[s.id] ?? 'PRESENT']} to ${MARK_LABELS[markOf(s.id)]}`).join('; ')}`
       : `Took attendance for ${which}: ${counts}${cancelled ? ' (the day was marked No classes)' : ''}`;
-    run(`${saved ? 'Attendance replaced' : 'Attendance saved'}: ${counts}.`, () =>
-      saveAttendance(db, state.myUid, state.classId, dateKey, meeting, Object.fromEntries(students.map((m) => [m.id, markOf(m.id)])), !saved, logText), onClose);
+    run(
+      `${saved ? 'Attendance replaced' : 'Attendance saved'}: ${counts}.`,
+      () =>
+        saveAttendance(
+          db,
+          state.myUid,
+          state.classId,
+          dateKey,
+          meeting,
+          Object.fromEntries(students.map((m) => [m.id, markOf(m.id)])),
+          !saved,
+          logText,
+          firstDateKey,
+        ),
+      onClose,
+    );
   };
 
   if (removingSheet && meeting && saved) {
+    const remainingDates = (sheets ?? [])
+      .filter((s) => s.courseId === saved.courseId && s.id !== saved.id)
+      .map((s) => s.dateKey)
+      .sort();
+    const nextFirstDateKey = remainingDates[0] ?? '';
     return (
       <ConfirmDialog
         title="Remove this attendance?"
@@ -1984,11 +2059,17 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
           run(
             'Attendance removed.',
             () =>
-              removeAttendance(db, state.classId, saved, {
-                actorUid: state.myUid,
-                kind: 'ATTENDANCE_REMOVED',
-                text: `Removed the attendance for ${meetingTitle(meeting)}, ${niceDate(dateKey)} ${clockText(meeting.startMinutes)} (taken by ${takerName(saved.takenByUid)} on ${shortDateTime(saved.takenAtMillis)})`,
-              }),
+              removeAttendance(
+                db,
+                state.classId,
+                saved,
+                {
+                  actorUid: state.myUid,
+                  kind: 'ATTENDANCE_REMOVED',
+                  text: `Removed the attendance for ${meetingTitle(meeting)}, ${niceDate(dateKey)} ${clockText(meeting.startMinutes)} (taken by ${takerName(saved.takenByUid)} on ${shortDateTime(saved.takenAtMillis)})`,
+                },
+                nextFirstDateKey,
+              ),
             () => setRemovingSheet(false),
           )
         }
@@ -2050,6 +2131,8 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
   const weekLength = 7;
   const week = Array.from({ length: weekLength }, (_, i) => addDays(weekStart, i));
   const monthDay = (day: string) => niceDate(day).replace(/^[A-Za-z]+, /, '');
+  const firstSheetDate = earliestAttendanceDate([], sheets);
+  const shownWeek = classWeekNumber(firstSheetDate, week[0]);
   return (
     <Dialog
       title="Take attendance"
@@ -2071,7 +2154,9 @@ function AttendanceDialog({ state, meetings, onClose }: { state: ClassState; mee
             <button type="button" className="att-arrow" aria-label="Earlier week" onClick={() => setWeekStart(addDays(weekStart, -7))}>
               ‹
             </button>
-            <span className="semibold">{`${monthDay(week[0])} to ${monthDay(week[week.length - 1])}`}</span>
+            <span className="semibold">
+              {`${shownWeek ? `Week ${shownWeek} · ` : ''}${monthDay(week[0])} to ${monthDay(week[week.length - 1])}`}
+            </span>
             <button type="button" className="att-arrow" aria-label="Later week" disabled={addDays(weekStart, 7) > today} onClick={() => setWeekStart(addDays(weekStart, 7))}>
               ›
             </button>
@@ -2225,7 +2310,11 @@ export function AttendanceCard({ state }: { state: ClassState }) {
   // For the export: cancelled meetings get their own NC column.
   const meetings = useMeetings(db, state.classId, manage).data ?? [];
   const noClass = useNoClass(db, state.classId, manage).data ?? [];
-  const totals = useAttendanceTotals(db, state.classId, true);
+  const totalsLive = useAttendanceTotalsDocs(db, state.classId, true);
+  const totals = useMemo(
+    () => Object.fromEntries((totalsLive.data ?? []).map((t) => [t.id, t.taken])),
+    [totalsLive.data],
+  );
   const courseName = (id: string) =>
     state.courses.find((c) => c.id === id)?.name ??
     all.find((s) => s.courseId === id && s.eventTitle)?.eventTitle ??

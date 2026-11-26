@@ -1872,14 +1872,18 @@ service cloud.firestore {
         allow delete: if can(classId, 'ATTENDANCE_MANAGE');
       }
 
-      // How many times attendance was taken per course, so a student can see "absent 2 of 12" without
-      // reading the sheets of meetings they attended.
+      // How many times attendance was taken per course (and the earliest date), so every student can see
+      // "absent 2 of 12" and which week the class is in without reading the sheets of meetings they attended.
       match /attendanceTotals/{courseId} {
         allow read: if isMember(classId);
         allow create, update: if can(classId, 'ATTENDANCE_MANAGE') && isOpen(classId)
-          && request.resource.data.keys().hasOnly(['taken'])
+          && request.resource.data.keys().hasAll(['taken'])
+          && request.resource.data.keys().hasOnly(['taken', 'firstDateKey'])
           && request.resource.data.taken is int
-          && request.resource.data.taken >= 0;
+          && request.resource.data.taken >= 0
+          && (request.resource.data.get('firstDateKey', '') == ''
+              || (request.resource.data.firstDateKey is string
+                  && request.resource.data.firstDateKey.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')));
         allow delete: if can(classId, 'ATTENDANCE_MANAGE');
       }
 

@@ -542,9 +542,18 @@ export const sheetId = (dateKey: string, meetingId: string) => `${dateKey}_${mee
 /**
  * Saves the attendance of one meeting on one date (ATTENDANCE_MANAGE). Saving again replaces it.
  * isNew: no sheet existed for this meeting and date, so the course's count of meetings taken goes up by one.
+ * firstDateKey: earliest YYYY-MM-DD attendance date for this course after this save (for the class week badge).
  */
 export async function saveAttendance(
-  db: Firestore, actorUid: string, classId: string, dateKey: string, meeting: Meeting, marks: Record<string, AttendanceMark>, isNew = true, logText?: string,
+  db: Firestore,
+  actorUid: string,
+  classId: string,
+  dateKey: string,
+  meeting: Meeting,
+  marks: Record<string, AttendanceMark>,
+  isNew = true,
+  logText?: string,
+  firstDateKey?: string,
 ): Promise<void> {
   const of = (mark: AttendanceMark) => Object.keys(marks).filter((uid) => marks[uid] === mark).sort();
   const cid = attendanceCourseId(meeting);
@@ -561,26 +570,71 @@ export async function saveAttendance(
   };
   const batch = writeBatch(db);
   batch.set(doc(attendanceCol(db, classId), sheetId(dateKey, meeting.id)), sheet);
-  if (isNew) batch.set(doc(sub(db, classId, 'attendanceTotals'), cid), { taken: increment(1) }, { merge: true });
+  if (isNew) {
+    batch.set(
+      doc(sub(db, classId, 'attendanceTotals'), cid),
+      { taken: increment(1), ...(firstDateKey ? { firstDateKey } : {}) },
+      { merge: true },
+    );
+  } else if (firstDateKey) {
+    batch.set(doc(sub(db, classId, 'attendanceTotals'), cid), { firstDateKey }, { merge: true });
+  }
   if (logText) await logToBatch(batch, db, classId, actorUid, isNew ? 'ATTENDANCE_TAKEN' : 'ATTENDANCE_REPLACED', logText);
   await explainRefusal(db, classId, () => batch.commit());
 }
 
 /** Undoes a taken sheet: the meeting goes back to not taken, and the course's taken count drops by one. */
-export async function removeAttendance(db: Firestore, classId: string, sheet: { dateKey: string; meetingId: string; courseId: string }, log?: LogNote): Promise<void> {
+export async function removeAttendance(
+  db: Firestore,
+  classId: string,
+  sheet: { dateKey: string; meetingId: string; courseId: string },
+  log?: LogNote,
+  nextFirstDateKey?: string,
+): Promise<void> {
   await explainRefusal(db, classId, () =>
     commitLogged(db, classId, log, (b) => {
       b.delete(doc(attendanceCol(db, classId), sheetId(sheet.dateKey, sheet.meetingId)));
-      b.set(doc(sub(db, classId, 'attendanceTotals'), sheet.courseId), { taken: increment(-1) }, { merge: true });
+      b.set(
+        doc(sub(db, classId, 'attendanceTotals'), sheet.courseId),
+        { taken: increment(-1), ...(nextFirstDateKey !== undefined ? { firstDateKey: nextFirstDateKey } : {}) },
+        { merge: true },
+      );
     }),
+  );
+}
+
+/** Backfills missing or outdated firstDateKey values on existing attendanceTotals docs (ATTENDANCE_MANAGE). */
+export async function syncAttendanceFirstDates(
+  db: Firestore,
+  classId: string,
+  updates: { courseId: string; firstDateKey: string }[],
+): Promise<void> {
+  if (updates.length === 0) return;
+  const batch = writeBatch(db);
+  for (const u of updates) {
+    batch.set(doc(sub(db, classId, 'attendanceTotals'), u.courseId), { firstDateKey: u.firstDateKey }, { merge: true });
+  }
+  await batch.commit();
+}
+
+export interface AttendanceTotal {
+  id: string;
+  taken: number;
+  firstDateKey: string;
+}
+
+/** Raw per-course attendance totals (taken count and earliest attendance date). Every member may read it. */
+export function useAttendanceTotalsDocs(db: Firestore, classId: string, enabled: boolean) {
+  return useQueryList<AttendanceTotal>(
+    `v2/attendanceTotals/${classId}/${enabled}`,
+    enabled ? sub(db, classId, 'attendanceTotals') : null,
+    (d) => fromDoc<AttendanceTotal>({ id: '', taken: 0, firstDateKey: '' }, d),
   );
 }
 
 /** How many times attendance was taken for each course (course id to count). Every member may read it. */
 export function useAttendanceTotals(db: Firestore, classId: string, enabled: boolean): Record<string, number> {
-  const live = useQueryList<{ id: string; taken: number }>(`v2/attendanceTotals/${classId}/${enabled}`, enabled ? sub(db, classId, 'attendanceTotals') : null, (d) =>
-    fromDoc<{ id: string; taken: number }>({ id: '', taken: 0 }, d),
-  );
+  const live = useAttendanceTotalsDocs(db, classId, enabled);
   return Object.fromEntries((live.data ?? []).map((t) => [t.id, t.taken]));
 }
 
